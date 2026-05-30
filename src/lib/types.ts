@@ -1,6 +1,10 @@
 // Mirrored from Rust backend (serde rename_all = "camelCase")
 
-export type ConnectionStatus = "connected" | "disconnected" | "connecting" | "game_not_running";
+export type ConnectionStatus =
+  | "connected"
+  | "disconnected"
+  | "connecting"
+  | "game_not_running";
 
 export type Team = 0 | 1;
 
@@ -138,7 +142,13 @@ export interface MatchFilters {
   offset?: number;
 }
 
-export type AnalyticsPeriod = "day" | "week" | "month" | "session" | "year" | "alltime";
+export type AnalyticsPeriod =
+  | "day"
+  | "week"
+  | "month"
+  | "session"
+  | "year"
+  | "alltime";
 
 export interface AnalyticsData {
   period: AnalyticsPeriod;
@@ -272,7 +282,12 @@ export interface OverlayUrl {
   url: string;
 }
 
-export type MatchType = "ranked" | "casual" | "tournament" | "training" | "other";
+export type MatchType =
+  | "ranked"
+  | "casual"
+  | "tournament"
+  | "training"
+  | "other";
 
 export type PlaylistFilter =
   | "all"
@@ -289,6 +304,56 @@ export type PlaylistFilter =
 export type MatchTypeFilter = "all" | MatchType;
 
 export type DataScope = "me" | "team";
+
+export interface CloudConfig {
+  enabled: boolean;
+  supabase_url?: string | null;
+  supabase_anon_key?: string | null;
+  device_name?: string | null;
+  cloud_profile_id?: string | null;
+  cloud_profile_ids?: Record<string, string>;
+  cloud_sync_enabled: boolean;
+  plan_code?: string | null;
+  plan_status?: string | null;
+  last_sync_at?: string | null;
+}
+
+export interface CloudSyncStatus {
+  configured: boolean;
+  enabled: boolean;
+  cloud_sync_enabled: boolean;
+  plan_code?: string | null;
+  plan_status?: string | null;
+  device_id: string;
+  pending_app_changes: number;
+  failed_app_changes: number;
+  last_sync_at?: string | null;
+}
+
+export interface SyncStatus {
+  device_id: string;
+  protocol_version: string;
+  pending_changes: number;
+  failed_changes: number;
+  last_pulled_revision: number;
+}
+
+export interface CloudPushRequest {
+  p_local_device_id: string;
+  p_device_name?: string | null;
+  p_platform: string;
+  p_app_version: string;
+  p_batch_idempotency_key: string;
+  p_profile_id?: string | null;
+  p_changes: Array<{
+    local_outbox_id: number;
+    entity_type: string;
+    entity_key: string;
+    operation: "upsert" | "delete";
+    payload_json: unknown;
+    idempotency_key: string;
+  }>;
+}
 
 export interface AppSettings {
   playerName?: string;
@@ -325,6 +390,9 @@ export interface AppSettings {
   overlayShowMmr?: boolean;
   overlayShowSpeed?: boolean;
   gameRunning?: boolean;
+  warnOnProfileMismatch?: boolean;
+  autoSwitchProfileOnExactMatch?: boolean;
+  autoSyncOnMatchEnd?: boolean;
 }
 
 // ─── Overlay Window ─────────────────────────────────────────────────────────
@@ -354,7 +422,12 @@ export interface OverlayDisplaySettings {
   showSpeed: boolean;
 }
 
-export type OverlayPositionPreset = "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
+export type OverlayPositionPreset =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "custom";
 
 export interface OverlayConfigForm {
   enabled: boolean;
@@ -693,7 +766,6 @@ export interface SharePlayer {
   isLocal: boolean;
 }
 
-
 export interface SharePlayer {
   name: string;
   score: number;
@@ -702,7 +774,6 @@ export interface SharePlayer {
   saves: number;
   isLocal: boolean;
 }
-
 
 export interface ShareStat {
   label: string;

@@ -33,13 +33,17 @@ import {
   type MatchTypeFilter,
   type DataScope,
   type FriendRecord,
+  type CloudConfig,
+  type CloudSyncStatus,
+  type SyncStatus,
+  type CloudPushRequest,
 } from "./types";
 import { formatLocalDateFromUnix } from "./utils";
 
 export class ApiError extends Error {
   constructor(
     message: string,
-    public code?: string
+    public code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -187,6 +191,9 @@ interface RawAppSettings {
   overlay_show_mmr?: boolean;
   overlay_show_speed?: boolean;
   game_running?: boolean;
+  warn_on_profile_mismatch?: boolean;
+  auto_switch_profile_on_exact_match?: boolean;
+  auto_sync_on_match_end?: boolean;
 }
 
 interface RawDailyRollup {
@@ -392,14 +399,18 @@ function mapRollup(rollup: RawDailyRollup): DailyRollup {
 
 function mapSummaryToAnalyticsData(
   period: AnalyticsPeriod,
-  summary: RawAnalyticsSummary
+  summary: RawAnalyticsSummary,
 ): AnalyticsData {
   return {
     period,
     totalMatches: summary.totalMatches,
     wins: summary.wins,
     losses: summary.losses,
-    winRate: summary.winRate ?? (summary.totalMatches > 0 ? Math.round((summary.wins / summary.totalMatches) * 100) : 0),
+    winRate:
+      summary.winRate ??
+      (summary.totalMatches > 0
+        ? Math.round((summary.wins / summary.totalMatches) * 100)
+        : 0),
     avgScore: summary.avgScore,
     avgGoals: summary.avgGoals,
     avgAssists: summary.avgAssists,
@@ -422,7 +433,10 @@ function mapSummaryToAnalyticsData(
   };
 }
 
-export async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+export async function invokeCommand<T>(
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   try {
     return await invoke<T>(command, args);
   } catch (error) {
@@ -435,37 +449,104 @@ export async function restartApp(): Promise<void> {
   return relaunch();
 }
 
+// ─── Cloud Sync ─────────────────────────────────────────────────────────────
+
+export async function getCloudConfig(): Promise<CloudConfig> {
+  return invokeCommand<CloudConfig>("get_cloud_config_cmd");
+}
+
+export async function setCloudConfig(config: CloudConfig): Promise<void> {
+  return invokeCommand<void>("set_cloud_config_cmd", { config });
+}
+
+export async function getCloudSyncStatus(): Promise<CloudSyncStatus> {
+  return invokeCommand<CloudSyncStatus>("get_cloud_sync_status_cmd");
+}
+
+export async function getProfileSyncStatus(): Promise<SyncStatus> {
+  return invokeCommand<SyncStatus>("get_profile_sync_status_cmd");
+}
+
+export async function prepareCloudPushBatch(
+  limit?: number,
+): Promise<CloudPushRequest | null> {
+  return invokeCommand<CloudPushRequest | null>(
+    "prepare_cloud_push_batch_cmd",
+    { limit },
+  );
+}
+
+export async function markCloudPushSucceeded(
+  outboxIds: number[],
+  serverRevision = 0,
+): Promise<void> {
+  return invokeCommand<void>("mark_cloud_push_succeeded_cmd", {
+    outboxIds,
+    serverRevision,
+  });
+}
+
+export async function markCloudPushFailed(
+  outboxIds: number[],
+  error: string,
+): Promise<void> {
+  return invokeCommand<void>("mark_cloud_push_failed_cmd", {
+    outboxIds,
+    error,
+  });
+}
+
+export async function enqueueExistingProfileHistoryForSync(): Promise<number> {
+  return invokeCommand<number>("enqueue_existing_profile_history_for_sync_cmd");
+}
+
+// ─── Live ───────────────────────────────────────────────────────────────────
 // Live match
 export async function getLiveState(): Promise<LiveMatchState | null> {
   const state = await invokeCommand<RawLiveMatchState | null>("get_live_state");
   return mapLiveState(state);
 }
 
-export async function getLiveHeadToHead(opponentIds: string[]): Promise<Record<string, NonNullable<PlayerStats["head_to_head"]>>> {
-  return invokeCommand<Record<string, NonNullable<PlayerStats["head_to_head"]>>>("get_live_head_to_head", {
+export async function getLiveHeadToHead(
+  opponentIds: string[],
+): Promise<Record<string, NonNullable<PlayerStats["head_to_head"]>>> {
+  return invokeCommand<
+    Record<string, NonNullable<PlayerStats["head_to_head"]>>
+  >("get_live_head_to_head", {
     opponentIds,
   });
 }
 
 export async function getConnectionStatus(): Promise<ConnectionStatus> {
-  const status = await invokeCommand<RawConnectionStatus>("get_connection_status");
+  const status = await invokeCommand<RawConnectionStatus>(
+    "get_connection_status",
+  );
   return mapConnectionStatus(status);
 }
 
 // History
-export async function getMatches(filters?: MatchFilters): Promise<MatchSummary[]> {
-  const response = await invokeCommand<{ matches: RawMatchSummary[] }>("get_matches", {
-    filters: {
-      limit: filters?.limit,
-      offset: filters?.offset,
-      match_type: filters?.matchType ?? undefined,
-      playlist: filters?.mode ?? undefined,
-      result: filters?.result ?? undefined,
-      date_from: filters?.dateFrom ? formatLocalDateFromUnix(filters.dateFrom) : undefined,
-      date_to: filters?.dateTo ? formatLocalDateFromUnix(filters.dateTo) : undefined,
-      search: filters?.search ?? undefined,
+export async function getMatches(
+  filters?: MatchFilters,
+): Promise<MatchSummary[]> {
+  const response = await invokeCommand<{ matches: RawMatchSummary[] }>(
+    "get_matches",
+    {
+      filters: {
+        limit: filters?.limit,
+        offset: filters?.offset,
+        match_type: filters?.matchType ?? undefined,
+        playlist: filters?.mode ?? undefined,
+        result: filters?.result ?? undefined,
+        date_from: filters?.dateFrom
+          ? formatLocalDateFromUnix(filters.dateFrom)
+          : undefined,
+        date_to: filters?.dateTo
+          ? formatLocalDateFromUnix(filters.dateTo)
+          : undefined,
+        search: filters?.search ?? undefined,
+      },
     },
-  });
+  );
   return response.matches.map(mapMatchSummary);
 }
 
@@ -492,7 +573,7 @@ export async function deleteMatch(matchId: number): Promise<void> {
 
 export async function updateMatch(
   matchId: number,
-  data: { matchType?: string | null; playlist?: string | null }
+  data: { matchType?: string | null; playlist?: string | null },
 ): Promise<void> {
   return invokeCommand<void>("update_match_cmd", {
     matchId,
@@ -504,8 +585,16 @@ export async function updateMatch(
 // Analytics
 export async function getAnalytics(
   period: AnalyticsPeriod,
-  filters?: { playlist?: PlaylistFilter; matchType?: MatchTypeFilter; scope?: DataScope }
-): Promise<{ data: AnalyticsData; rollups?: DailyRollup[]; sessions?: MatchSession[] }> {
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    scope?: DataScope;
+  },
+): Promise<{
+  data: AnalyticsData;
+  rollups?: DailyRollup[];
+  sessions?: MatchSession[];
+}> {
   const days = periodToDays(period);
   const args: Record<string, unknown> = { period: { days } };
   if (filters?.playlist && filters.playlist !== "all") {
@@ -517,7 +606,10 @@ export async function getAnalytics(
   if (filters?.scope) {
     args.scope = filters.scope;
   }
-  const response = await invokeCommand<RawAnalyticsResponse>("get_analytics", args);
+  const response = await invokeCommand<RawAnalyticsResponse>(
+    "get_analytics",
+    args,
+  );
 
   return {
     data: mapSummaryToAnalyticsData(period, response.summary),
@@ -528,19 +620,33 @@ export async function getAnalytics(
 
 export async function getSessions(
   gapMinutes?: number,
-  filters?: { playlist?: PlaylistFilter; matchType?: MatchTypeFilter; scope?: DataScope }
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    scope?: DataScope;
+  },
 ): Promise<MatchSession[]> {
   return invokeCommand<MatchSession[]>("get_sessions", {
     gapMinutes: gapMinutes ?? undefined,
-    playlist: filters?.playlist && filters.playlist !== "all" ? filters.playlist : undefined,
-    match_type: filters?.matchType && filters.matchType !== "all" ? filters.matchType : undefined,
+    playlist:
+      filters?.playlist && filters.playlist !== "all"
+        ? filters.playlist
+        : undefined,
+    match_type:
+      filters?.matchType && filters.matchType !== "all"
+        ? filters.matchType
+        : undefined,
     scope: filters?.scope ?? undefined,
   });
 }
 
 export async function getDailyRollups(
   period: AnalyticsPeriod,
-  filters?: { playlist?: PlaylistFilter; matchType?: MatchTypeFilter; scope?: DataScope }
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    scope?: DataScope;
+  },
 ): Promise<DailyRollup[]> {
   const end = new Date();
   const start = new Date(end);
@@ -558,13 +664,16 @@ export async function getDailyRollups(
   if (filters?.scope) {
     args.scope = filters.scope;
   }
-  const response = await invokeCommand<{ rollups: RawDailyRollup[] }>("get_daily_rollups", args);
+  const response = await invokeCommand<{ rollups: RawDailyRollup[] }>(
+    "get_daily_rollups",
+    args,
+  );
   return response.rollups.map(mapRollup);
 }
 
 export async function getSessionMatches(
   startTime: string,
-  endTime: string
+  endTime: string,
 ): Promise<SessionMatch[]> {
   return invokeCommand<SessionMatch[]>("get_session_matches", {
     startTime,
@@ -574,7 +683,11 @@ export async function getSessionMatches(
 
 export async function getInsights(
   period: AnalyticsPeriod,
-  filters?: { playlist?: PlaylistFilter; matchType?: MatchTypeFilter; scope?: DataScope }
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    scope?: DataScope;
+  },
 ): Promise<InsightsData> {
   const days = periodToDays(period);
   const args: Record<string, unknown> = { period: { days } };
@@ -598,7 +711,12 @@ export async function getSettings(): Promise<AppSettings> {
     localPrimaryId: settings.local_primary_id ?? null,
     autoStart: settings.auto_start,
     rlPath: settings.rl_path ?? null,
-    platform: (settings.platform === "epic" ? "epic" : settings.platform === "steam" ? "steam" : null),
+    platform:
+      settings.platform === "epic"
+        ? "epic"
+        : settings.platform === "steam"
+          ? "steam"
+          : null,
     defaultMatchType: (settings.default_match_type as MatchType) ?? "ranked",
     trackerApiKey: settings.tracker_api_key ?? null,
     trackerPlatform: settings.tracker_platform ?? null,
@@ -621,13 +739,19 @@ export async function getSettings(): Promise<AppSettings> {
     overlayShowTimer: settings.overlay_show_timer ?? true,
     overlayFontScale: settings.overlay_font_scale ?? "medium",
     overlayClickthrough: settings.overlay_clickthrough ?? true,
-    overlayPlayerScope: (settings.overlay_player_scope ?? "all") as "all" | "team",
+    overlayPlayerScope: (settings.overlay_player_scope ?? "all") as
+      | "all"
+      | "team",
     overlayShowNames: settings.overlay_show_names ?? true,
     overlayShowPlayerScore: settings.overlay_show_player_score ?? true,
     overlayShowBoost: settings.overlay_show_boost ?? false,
     overlayShowMmr: settings.overlay_show_mmr ?? false,
     overlayShowSpeed: settings.overlay_show_speed ?? false,
     gameRunning: settings.game_running ?? false,
+    warnOnProfileMismatch: settings.warn_on_profile_mismatch ?? true,
+    autoSwitchProfileOnExactMatch:
+      settings.auto_switch_profile_on_exact_match ?? false,
+    autoSyncOnMatchEnd: settings.auto_sync_on_match_end ?? true,
   };
 }
 
@@ -672,15 +796,27 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       overlay_show_mmr: settings.overlayShowMmr ?? false,
       overlay_show_speed: settings.overlayShowSpeed ?? false,
       game_running: settings.gameRunning ?? false,
+      warn_on_profile_mismatch: settings.warnOnProfileMismatch ?? true,
+      auto_switch_profile_on_exact_match:
+        settings.autoSwitchProfileOnExactMatch ?? false,
+      auto_sync_on_match_end: settings.autoSyncOnMatchEnd ?? true,
     },
   });
 }
 
-export async function configureRlIni(path: string, port?: number): Promise<void> {
-  return invokeCommand<void>("configure_rl_ini_cmd", { path, port: port ?? 49123 });
+export async function configureRlIni(
+  path: string,
+  port?: number,
+): Promise<void> {
+  return invokeCommand<void>("configure_rl_ini_cmd", {
+    path,
+    port: port ?? 49123,
+  });
 }
 
-export async function detectRlPath(platform?: "steam" | "epic" | null): Promise<RlInstallation[]> {
+export async function detectRlPath(
+  platform?: "steam" | "epic" | null,
+): Promise<RlInstallation[]> {
   return invokeCommand<RlInstallation[]>("detect_rl_path", { platform });
 }
 
@@ -706,7 +842,8 @@ export async function getStorageStats(): Promise<StorageStats> {
   return {
     totalMatches: stats.totalMatches ?? stats.total_matches ?? 0,
     totalEvents: stats.totalEvents ?? stats.total_events ?? 0,
-    databaseSizeBytes: stats.databaseSizeBytes ?? stats.database_size_bytes ?? 0,
+    databaseSizeBytes:
+      stats.databaseSizeBytes ?? stats.database_size_bytes ?? 0,
     oldestMatchDate: stats.oldestMatchDate ?? stats.oldest_match_date ?? null,
     dbPath: stats.dbPath ?? stats.db_path ?? null,
   };
@@ -723,7 +860,9 @@ export async function checkForUpdate(): Promise<Update | null> {
 
 // ─── Overlay / OBS Streaming ─────────────────────────────────────────────────
 
-export async function startOverlayServer(port: number): Promise<OverlayServerStatus> {
+export async function startOverlayServer(
+  port: number,
+): Promise<OverlayServerStatus> {
   return invokeCommand<OverlayServerStatus>("start_overlay_server", { port });
 }
 
@@ -761,27 +900,46 @@ export async function toggleOverlayEnabled(): Promise<OverlayWindowState> {
   return invokeCommand<OverlayWindowState>("toggle_overlay_enabled");
 }
 
-export async function updateOverlayPosition(x: number, y: number): Promise<OverlayWindowState> {
+export async function updateOverlayPosition(
+  x: number,
+  y: number,
+): Promise<OverlayWindowState> {
   return invokeCommand<OverlayWindowState>("update_overlay_position", { x, y });
 }
 
-export async function updateOverlaySize(width: number, height: number): Promise<OverlayWindowState> {
-  return invokeCommand<OverlayWindowState>("update_overlay_size", { width, height });
+export async function updateOverlaySize(
+  width: number,
+  height: number,
+): Promise<OverlayWindowState> {
+  return invokeCommand<OverlayWindowState>("update_overlay_size", {
+    width,
+    height,
+  });
 }
 
-export async function updateOverlayOpacity(opacity: number): Promise<OverlayWindowState> {
-  return invokeCommand<OverlayWindowState>("update_overlay_opacity", { opacity });
+export async function updateOverlayOpacity(
+  opacity: number,
+): Promise<OverlayWindowState> {
+  return invokeCommand<OverlayWindowState>("update_overlay_opacity", {
+    opacity,
+  });
 }
 
-export async function setOverlayClickthrough(clickthrough: boolean): Promise<OverlayWindowState> {
-  return invokeCommand<OverlayWindowState>("set_overlay_clickthrough", { clickthrough });
+export async function setOverlayClickthrough(
+  clickthrough: boolean,
+): Promise<OverlayWindowState> {
+  return invokeCommand<OverlayWindowState>("set_overlay_clickthrough", {
+    clickthrough,
+  });
 }
 
 export async function notifyOverlaySettingsChanged(): Promise<void> {
   return invokeCommand<void>("notify_overlay_settings_changed");
 }
 
-export async function setOverlayInteractive(durationSecs: number): Promise<void> {
+export async function setOverlayInteractive(
+  durationSecs: number,
+): Promise<void> {
   return invokeCommand<void>("set_overlay_interactive", { durationSecs });
 }
 
@@ -799,11 +957,17 @@ export async function refreshTrackerProfile(): Promise<TrackerProfile> {
   return invokeCommand<TrackerProfile>("refresh_tracker_profile");
 }
 
-export async function fetchLiveMmrSnapshot(forceRefresh?: boolean): Promise<LiveMmrSnapshot> {
-  return invokeCommand<LiveMmrSnapshot>("fetch_live_mmr_snapshot", { forceRefresh: forceRefresh ?? false });
+export async function fetchLiveMmrSnapshot(
+  forceRefresh?: boolean,
+): Promise<LiveMmrSnapshot> {
+  return invokeCommand<LiveMmrSnapshot>("fetch_live_mmr_snapshot", {
+    forceRefresh: forceRefresh ?? false,
+  });
 }
 
-export async function setSessionMmrSnapshot(mmrByPrimaryId: Record<string, number | null>): Promise<void> {
+export async function setSessionMmrSnapshot(
+  mmrByPrimaryId: Record<string, number | null>,
+): Promise<void> {
   return invokeCommand<void>("set_session_mmr_snapshot", { mmrByPrimaryId });
 }
 
@@ -840,12 +1004,14 @@ export async function getPlayerDirectory(filters?: {
         limit: filters?.limit ?? 100,
         offset: filters?.offset ?? 0,
       },
-    }
+    },
   );
   return response.players;
 }
 
-export async function getPlayerDetail(playerId: number): Promise<PlayerDetailRecord | null> {
+export async function getPlayerDetail(
+  playerId: number,
+): Promise<PlayerDetailRecord | null> {
   return invokeCommand<PlayerDetailRecord>("get_player_detail", { playerId });
 }
 
@@ -859,8 +1025,14 @@ export async function getActiveProfile(): Promise<Profile> {
   return invokeCommand<Profile>("get_active_profile_cmd");
 }
 
-export async function createProfile(name: string, playerName: string): Promise<Profile> {
-  return invokeCommand<Profile>("create_profile_cmd", { name, player_name: playerName });
+export async function createProfile(
+  name: string,
+  playerName: string,
+): Promise<Profile> {
+  return invokeCommand<Profile>("create_profile_cmd", {
+    name,
+    player_name: playerName,
+  });
 }
 
 export async function deleteProfile(id: string): Promise<void> {
@@ -871,12 +1043,23 @@ export async function switchProfile(id: string): Promise<void> {
   return invokeCommand<void>("switch_profile_cmd", { id });
 }
 
-export async function renameProfile(id: string, newName: string): Promise<void> {
+export async function renameProfile(
+  id: string,
+  newName: string,
+): Promise<void> {
   return invokeCommand<void>("rename_profile_cmd", { id, new_name: newName });
 }
 
-export async function updateProfilePlayerIdentity(profileId: string, primaryId: string, playerName: string): Promise<void> {
-  return invokeCommand<void>("update_profile_player_identity_cmd", { profileId, primaryId, playerName });
+export async function updateProfilePlayerIdentity(
+  profileId: string,
+  primaryId: string,
+  playerName: string,
+): Promise<void> {
+  return invokeCommand<void>("update_profile_player_identity_cmd", {
+    profileId,
+    primaryId,
+    playerName,
+  });
 }
 
 // ─── Friends ─────────────────────────────────────────────────────────────────

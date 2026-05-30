@@ -1,0 +1,2 @@
+-- Local Supabase seed file.
+-- Intentionally empty: production/test data must not be committed here.

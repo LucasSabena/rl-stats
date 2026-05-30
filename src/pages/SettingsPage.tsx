@@ -9,8 +9,17 @@ import { OverlayStreaming } from "@/components/settings/OverlayStreaming";
 import { TrackerSetup } from "@/components/settings/TrackerSetup";
 import { RapidApiSetup } from "@/components/settings/RapidApiSetup";
 import { ProfileManagement } from "@/components/settings/ProfileManagement";
+import { CloudSyncPanel } from "@/components/settings/CloudSyncPanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-import { Settings, Gamepad2, Database, LayoutTemplate, MonitorPlay, Users } from "lucide-react";
+import {
+  Settings,
+  Gamepad2,
+  Database,
+  LayoutTemplate,
+  MonitorPlay,
+  Users,
+  Cloud,
+} from "lucide-react";
 
 export function SettingsPage() {
   const { t } = useTranslation("settings");
@@ -23,34 +32,61 @@ export function SettingsPage() {
             <Settings size={20} className="text-accent-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-text-primary">{t("pageTitle")}</h2>
+            <h2 className="text-lg font-semibold text-text-primary">
+              {t("pageTitle")}
+            </h2>
             <p className="text-xs text-text-tertiary">{t("pageDescription")}</p>
           </div>
         </div>
 
         <Tabs defaultValue="general" className="w-full">
           <TabsList className="mb-6 w-full flex-wrap h-auto justify-start gap-1 bg-transparent border-none p-0">
-            <TabsTrigger value="general" className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4">
+            <TabsTrigger
+              value="general"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
               <Settings size={14} className="mr-2" />
               {t("pageSections.general")}
             </TabsTrigger>
-            <TabsTrigger value="game" className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4">
+            <TabsTrigger
+              value="game"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
               <Gamepad2 size={14} className="mr-2" />
               Game Config
             </TabsTrigger>
-            <TabsTrigger value="overlay" className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4">
+            <TabsTrigger
+              value="overlay"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
               <LayoutTemplate size={14} className="mr-2" />
               Overlay
             </TabsTrigger>
-            <TabsTrigger value="streaming" className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4">
+            <TabsTrigger
+              value="streaming"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
               <MonitorPlay size={14} className="mr-2" />
               Streaming
             </TabsTrigger>
-            <TabsTrigger value="profiles" className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4">
+            <TabsTrigger
+              value="profiles"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
               <Users size={14} className="mr-2" />
               {t("pageSections.profiles")}
             </TabsTrigger>
-            <TabsTrigger value="data" className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4">
+            <TabsTrigger
+              value="cloud"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
+              <Cloud size={14} className="mr-2" />
+              Cloud Sync
+            </TabsTrigger>
+            <TabsTrigger
+              value="data"
+              className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
+            >
               <Database size={14} className="mr-2" />
               {t("pageSections.data")}
             </TabsTrigger>
@@ -77,6 +113,10 @@ export function SettingsPage() {
 
           <TabsContent value="profiles" className="space-y-6">
             <ProfileManagement />
+          </TabsContent>
+
+          <TabsContent value="cloud" className="space-y-6">
+            <CloudSyncPanel />
           </TabsContent>
 
           <TabsContent value="data" className="space-y-6">

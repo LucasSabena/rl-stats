@@ -1,4 +1,6 @@
+pub mod app_sync;
 pub mod autostart;
+pub mod cloud;
 pub mod ingestor;
 pub mod metrics;
 pub mod mmr;

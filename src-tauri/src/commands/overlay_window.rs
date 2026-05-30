@@ -37,7 +37,8 @@ pub async fn create_overlay_window(
 
     let url = WebviewUrl::App("index.html".into());
 
-    let win = WebviewWindowBuilder::new(&app, OVERLAY_LABEL, url)
+    #[cfg(target_os = "windows")]
+    let builder = WebviewWindowBuilder::new(&app, OVERLAY_LABEL, url)
         .title("RL Overlay")
         .inner_size(
             app_settings.overlay_width as f64,
@@ -55,7 +56,29 @@ pub async fn create_overlay_window(
         .minimizable(false)
         .maximizable(false)
         .shadow(false)
-        .visible_on_all_workspaces(true)
+        .visible_on_all_workspaces(true);
+
+    #[cfg(not(target_os = "windows"))]
+    let builder = WebviewWindowBuilder::new(&app, OVERLAY_LABEL, url)
+        .title("RL Overlay")
+        .inner_size(
+            app_settings.overlay_width as f64,
+            app_settings.overlay_height as f64,
+        )
+        .position(
+            app_settings.overlay_position_x as f64,
+            app_settings.overlay_position_y as f64,
+        )
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .minimizable(false)
+        .maximizable(false)
+        .shadow(false)
+        .visible_on_all_workspaces(true);
+
+    let win = builder
         .build()
         .map_err(|e| format!("Failed to create overlay window: {}", e))?;
 

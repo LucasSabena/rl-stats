@@ -29,7 +29,7 @@
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data:",
-        "connect-src": "'self' https://github.com https://api.github.com https://raw.githubusercontent.com",
+        "connect-src": "'self' https://github.com https://api.github.com https://raw.githubusercontent.com https://*.supabase.co",
         "font-src": "'self'",
         "frame-ancestors": "'none'",
         "base-uri": "'self'",

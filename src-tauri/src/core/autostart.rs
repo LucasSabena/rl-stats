@@ -3,7 +3,9 @@ use tracing::{info, warn};
 #[cfg(target_os = "windows")]
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
+#[cfg(target_os = "windows")]
 const AUTOSTART_REG_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+#[cfg(target_os = "windows")]
 const APP_NAME: &str = "RLStats";
 
 #[cfg(target_os = "windows")]

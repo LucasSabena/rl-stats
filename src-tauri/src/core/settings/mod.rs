@@ -50,6 +50,9 @@ pub struct AppSettings {
     pub overlay_show_mmr: bool,
     pub overlay_show_speed: bool,
     pub game_running: bool,
+    pub warn_on_profile_mismatch: bool,
+    pub auto_switch_profile_on_exact_match: bool,
+    pub auto_sync_on_match_end: bool,
 }
 
 impl Default for AppSettings {
@@ -93,6 +96,9 @@ impl Default for AppSettings {
             overlay_show_mmr: false,
             overlay_show_speed: false,
             game_running: false,
+            warn_on_profile_mismatch: true,
+            auto_switch_profile_on_exact_match: false,
+            auto_sync_on_match_end: true,
         }
     }
 }
@@ -174,6 +180,18 @@ impl AppSettings {
             ("overlay_show_mmr", self.overlay_show_mmr.to_string()),
             ("overlay_show_speed", self.overlay_show_speed.to_string()),
             ("game_running", self.game_running.to_string()),
+            (
+                "warn_on_profile_mismatch",
+                self.warn_on_profile_mismatch.to_string(),
+            ),
+            (
+                "auto_switch_profile_on_exact_match",
+                self.auto_switch_profile_on_exact_match.to_string(),
+            ),
+            (
+                "auto_sync_on_match_end",
+                self.auto_sync_on_match_end.to_string(),
+            ),
         ]
     }
 }
@@ -261,6 +279,15 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
             "overlay_show_mmr" => settings.overlay_show_mmr = value.parse().unwrap_or(false),
             "overlay_show_speed" => settings.overlay_show_speed = value.parse().unwrap_or(false),
             "game_running" => settings.game_running = value.parse().unwrap_or(false),
+            "warn_on_profile_mismatch" => {
+                settings.warn_on_profile_mismatch = value.parse().unwrap_or(true)
+            }
+            "auto_switch_profile_on_exact_match" => {
+                settings.auto_switch_profile_on_exact_match = value.parse().unwrap_or(false)
+            }
+            "auto_sync_on_match_end" => {
+                settings.auto_sync_on_match_end = value.parse().unwrap_or(true)
+            }
             _ => {}
         }
     }
@@ -282,6 +309,14 @@ pub fn set_settings(pool: &DbPool, settings: &AppSettings) -> AppResult<()> {
         )
         .map_err(|e| AppError::StorageError(e.to_string()))?;
     }
+
+    crate::core::storage::sync::enqueue_upsert_conn(
+        &conn,
+        "app_settings",
+        "all",
+        serde_json::to_value(settings)
+            .map_err(|e| AppError::ParseError(format!("Failed to serialize settings: {e}")))?,
+    )?;
 
     info!("Settings saved");
     Ok(())

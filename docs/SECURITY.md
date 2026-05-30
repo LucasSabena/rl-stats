@@ -22,7 +22,7 @@ This app is designed with a "local-first, privacy-by-default" architecture. No m
 ### Sensitive (Opt-in only)
 - Crash reports and diagnostics
 - Anonymous usage analytics
-- Cloud sync data (if implemented in future)
+- Cloud sync data (only after explicit login + active cloud sync plan)
 
 ### Non-Sensitive (Required for functionality)
 - App version (for update checks)
@@ -119,6 +119,8 @@ The app operates entirely on your local machine. Your match data, statistics, an
 ### Optional Features (with consent)
 **Crash Reports**: If you opt-in, anonymous crash data may be sent to help us fix bugs. This includes stack traces and app version, but NO match data or personal information.
 
+**Cloud Sync**: If you create an account and activate a cloud sync plan, the app may upload profile metadata, settings, match history, player rows, match events, sessions, caches, friends, and presets needed to reproduce the same local experience on another device. Cloud sync remains off unless the user explicitly enables it.
+
 **Update Checks**: The app checks our GitHub releases page for updates. This sends your app version and OS platform so we can serve the correct update file.
 
 ### Your Data Rights
@@ -136,7 +138,8 @@ Logs: %APPDATA%\rl-stats\logs\
 
 ### Third-Party Services
 - **GitHub**: Used for hosting releases and update manifests
-- **None others** in V1
+- **Supabase**: Planned optional cloud sync backend for authenticated users only
+- **Stripe**: Planned optional subscription billing provider
 
 ---
 

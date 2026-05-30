@@ -7,6 +7,8 @@ export interface MismatchInfo {
   currentProfileName: string;
   matchedProfileId: string | null;
   matchedProfileName: string | null;
+  matchedProfileIsExactPrimaryId: boolean;
+  autoSwitchEnabled: boolean;
 }
 
 interface AccountMismatchState {

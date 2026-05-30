@@ -21,8 +21,8 @@ use crate::core::obs_text;
 use crate::core::overlay::OverlayServer;
 use crate::core::process_watcher::ProcessWatcher;
 use crate::core::profiles::{
-    find_matching_profile, get_active_profile, get_db_path_for_profile, init_profiles,
-    update_profile_player_identity,
+    find_matching_profile, find_profile_by_primary_id, get_active_profile, get_db_path_for_profile,
+    init_profiles, update_profile_player_identity,
 };
 use crate::core::rlstats_api::RlstatsClient;
 use crate::core::session::{
@@ -131,6 +131,14 @@ pub fn run() {
             commands::friends::remove_friend_cmd,
             commands::friends::get_friends_cmd,
             commands::friends::is_friend_cmd,
+            commands::cloud::get_cloud_config_cmd,
+            commands::cloud::set_cloud_config_cmd,
+            commands::cloud::get_cloud_sync_status_cmd,
+            commands::cloud::get_profile_sync_status_cmd,
+            commands::cloud::prepare_cloud_push_batch_cmd,
+            commands::cloud::mark_cloud_push_succeeded_cmd,
+            commands::cloud::mark_cloud_push_failed_cmd,
+            commands::cloud::enqueue_existing_profile_history_for_sync_cmd,
         ])
         .setup(move |app| {
             #[cfg(all(desktop, not(debug_assertions)))]
@@ -165,6 +173,9 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to get app data directory");
             std::fs::create_dir_all(&app_dir).expect("Failed to create app data directory");
+
+            crate::core::app_sync::init_app_sync(&app_dir)
+                .expect("Failed to initialize app sync storage");
 
             let active_profile_id = init_profiles(&app_dir)
                 .expect("Failed to initialize profiles");
@@ -457,7 +468,7 @@ async fn process_events(
                     None => true,
                 };
 
-                if is_mismatch && !mismatch_state.alerted {
+                if is_mismatch && settings.warn_on_profile_mismatch && !mismatch_state.alerted {
                     let detected_player_name = session
                         .players()
                         .iter()
@@ -465,15 +476,22 @@ async fn process_events(
                         .map(|(_, lp)| lp.name.clone())
                         .unwrap_or_default();
 
+                    let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
+                    let active_profile = get_active_profile(&app_dir).ok();
                     let mut payload = serde_json::json!({
                         "detected_primary_id": detected_pid,
                         "detected_player_name": detected_player_name,
-                        "current_profile_id": settings.local_primary_id.clone().unwrap_or_default(),
-                        "current_profile_name": settings.player_name.clone(),
+                        "current_profile_id": active_profile.as_ref().map(|p| p.id.clone()).unwrap_or_default(),
+                        "current_profile_name": active_profile.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| settings.player_name.clone()),
+                        "auto_switch_enabled": settings.auto_switch_profile_on_exact_match,
+                        "matched_profile_is_exact_primary_id": false,
                     });
 
-                    let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
-                    if let Ok(Some(profile)) =
+                    if let Ok(Some(profile)) = find_profile_by_primary_id(&app_dir, detected_pid) {
+                        payload["matched_profile_id"] = serde_json::json!(profile.id);
+                        payload["matched_profile_name"] = serde_json::json!(profile.name);
+                        payload["matched_profile_is_exact_primary_id"] = serde_json::json!(true);
+                    } else if let Ok(Some(profile)) =
                         find_matching_profile(&app_dir, detected_pid, &detected_player_name)
                     {
                         payload["matched_profile_id"] = serde_json::json!(profile.id);
@@ -543,19 +561,30 @@ async fn process_events(
                         let final_state = session.live_state();
                         let _ = app_handle.emit("live-update", final_state);
 
-                        // Sync detected identity to profile manifest
+                        // Sync detected identity to the active profile only when it does not
+                        // clearly belong to another configured profile. This prevents a match
+                        // played on the wrong app profile from silently reassigning identities.
                         if let (Some(pid), Some(pname)) =
                             (detected_primary_id, detected_player_name)
                         {
                             if !pid.is_empty() {
                                 let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
-                                if let Ok(manifest) = get_active_profile(&app_dir) {
-                                    let _ = update_profile_player_identity(
-                                        &app_dir,
-                                        &manifest.id,
-                                        &pid,
-                                        &pname,
-                                    );
+                                if let Ok(active_profile) = get_active_profile(&app_dir) {
+                                    let belongs_to_other_profile =
+                                        find_profile_by_primary_id(&app_dir, &pid)
+                                            .ok()
+                                            .flatten()
+                                            .map(|profile| profile.id != active_profile.id)
+                                            .unwrap_or(false);
+
+                                    if !belongs_to_other_profile {
+                                        let _ = update_profile_player_identity(
+                                            &app_dir,
+                                            &active_profile.id,
+                                            &pid,
+                                            &pname,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -781,7 +810,8 @@ async fn create_overlay_window_inner(
 ) -> Result<(), String> {
     let url = WebviewUrl::App("index.html".into());
 
-    let win = WebviewWindowBuilder::new(app, "overlay", url)
+    #[cfg(target_os = "windows")]
+    let builder = WebviewWindowBuilder::new(app, "overlay", url)
         .title("RL Overlay")
         .inner_size(
             settings.overlay_width as f64,
@@ -799,7 +829,29 @@ async fn create_overlay_window_inner(
         .minimizable(false)
         .maximizable(false)
         .shadow(false)
-        .visible_on_all_workspaces(true)
+        .visible_on_all_workspaces(true);
+
+    #[cfg(not(target_os = "windows"))]
+    let builder = WebviewWindowBuilder::new(app, "overlay", url)
+        .title("RL Overlay")
+        .inner_size(
+            settings.overlay_width as f64,
+            settings.overlay_height as f64,
+        )
+        .position(
+            settings.overlay_position_x as f64,
+            settings.overlay_position_y as f64,
+        )
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .minimizable(false)
+        .maximizable(false)
+        .shadow(false)
+        .visible_on_all_workspaces(true);
+
+    let win = builder
         .build()
         .map_err(|e| format!("Failed to create overlay window: {}", e))?;
 

@@ -208,6 +208,57 @@ pub static MIGRATIONS: &[Migration] = &[
         name: "create_user_presets_table",
         sql: "CREATE TABLE IF NOT EXISTS user_presets (\n            id INTEGER PRIMARY KEY AUTOINCREMENT,\n            name TEXT NOT NULL,\n            description TEXT,\n            camera_json TEXT,\n            controls_json TEXT,\n            deadzone_json TEXT,\n            hardware_json TEXT,\n            created_at TEXT NOT NULL,\n            updated_at TEXT NOT NULL\n        );\n        CREATE INDEX IF NOT EXISTS idx_user_presets_name ON user_presets(name);",
     },
+    Migration {
+        version: 20,
+        name: "create_local_sync_metadata",
+        sql: "CREATE TABLE IF NOT EXISTS sync_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_entity_state (
+            entity_type TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            cloud_id TEXT,
+            payload_hash TEXT,
+            server_revision INTEGER NOT NULL DEFAULT 0,
+            dirty INTEGER NOT NULL DEFAULT 0,
+            last_pushed_at TEXT,
+            last_pulled_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (entity_type, entity_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            operation TEXT NOT NULL CHECK(operation IN ('upsert', 'delete')),
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            idempotency_key TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            available_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            locked_at TEXT,
+            synced_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS sync_tombstones (
+            entity_type TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            deleted_at TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            source_outbox_id INTEGER,
+            PRIMARY KEY (entity_type, entity_key)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sync_entity_state_dirty ON sync_entity_state(dirty, updated_at);
+        CREATE INDEX IF NOT EXISTS idx_sync_outbox_pending ON sync_outbox(synced_at, available_at, id);
+        CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON sync_outbox(entity_type, entity_key);
+        CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at);",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

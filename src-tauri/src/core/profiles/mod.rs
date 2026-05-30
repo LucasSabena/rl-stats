@@ -127,6 +127,11 @@ fn write_manifest(path: &Path, manifest: &ProfilesManifest) -> AppResult<()> {
     let tmp_path = path.with_extension("tmp");
     fs::write(&tmp_path, json)?;
     fs::rename(&tmp_path, path)?;
+
+    if let Some(app_dir) = path.parent() {
+        crate::core::app_sync::enqueue_profiles_manifest_snapshot_best_effort(app_dir, manifest);
+    }
+
     Ok(())
 }
 
@@ -141,6 +146,7 @@ pub fn init_profiles(app_dir: &Path) -> AppResult<String> {
     if manifest_path.exists() {
         let manifest = read_manifest(&manifest_path)?;
         let active_id = manifest.active_profile_id.clone();
+        crate::core::app_sync::enqueue_profiles_manifest_snapshot_best_effort(app_dir, &manifest);
 
         if manifest.profiles.iter().any(|p| p.id == active_id) {
             debug!(active_profile = %active_id, "Profiles manifest loaded");
@@ -356,6 +362,19 @@ pub fn get_all_profile_settings(
     }
 
     Ok(result)
+}
+
+/// Finds a profile whose `local_primary_id` exactly matches the given identity.
+pub fn find_profile_by_primary_id(app_dir: &Path, primary_id: &str) -> AppResult<Option<Profile>> {
+    let all = get_all_profile_settings(app_dir)?;
+
+    for (profile, settings) in &all {
+        if settings.local_primary_id.as_deref() == Some(primary_id) {
+            return Ok(Some(profile.clone()));
+        }
+    }
+
+    Ok(None)
 }
 
 /// Finds a profile whose `local_primary_id` or `player_name` matches the given identity.

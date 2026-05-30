@@ -13,6 +13,7 @@ use std::path::Path;
 use tracing::{debug, info};
 
 pub mod migrations;
+pub mod sync;
 
 pub type DbPool = Pool<SqliteConnectionManager>;
 
@@ -112,6 +113,7 @@ pub fn init_storage<P: AsRef<Path>>(db_path: P) -> AppResult<DbPool> {
 
     // Run versioned migrations instead of ad-hoc CREATE TABLE IF NOT EXISTS.
     migrations::run_migrations(&conn)?;
+    sync::ensure_local_sync_identity_conn(&conn)?;
     info!("Storage initialized successfully");
     Ok(pool)
 }
@@ -133,6 +135,77 @@ fn weighted_avg_score_sql() -> &'static str {
     "avg_score = ((daily_rollups.avg_score * daily_rollups.matches_played) + (excluded.avg_score * excluded.matches_played)) / (daily_rollups.matches_played + excluded.matches_played)"
 }
 
+fn match_guid_for_id_conn(conn: &rusqlite::Connection, match_id: i64) -> AppResult<Option<String>> {
+    conn.query_row(
+        "SELECT guid FROM matches WHERE id = ?1",
+        params![match_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| AppError::StorageError(e.to_string()))
+}
+
+fn player_primary_id_for_id_conn(
+    conn: &rusqlite::Connection,
+    player_id: i64,
+) -> AppResult<Option<String>> {
+    conn.query_row(
+        "SELECT primary_id FROM players WHERE id = ?1",
+        params![player_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| AppError::StorageError(e.to_string()))
+}
+
+fn enqueue_match_upsert_conn(conn: &rusqlite::Connection, match_id: i64) -> AppResult<()> {
+    if let Some(guid) = match_guid_for_id_conn(conn, match_id)? {
+        sync::enqueue_upsert_conn(
+            conn,
+            "match",
+            &guid,
+            serde_json::json!({ "local_id": match_id, "guid": guid }),
+        )?;
+    }
+    Ok(())
+}
+
+fn enqueue_player_upsert_conn(conn: &rusqlite::Connection, player_id: i64) -> AppResult<()> {
+    if let Some(primary_id) = player_primary_id_for_id_conn(conn, player_id)? {
+        sync::enqueue_upsert_conn(
+            conn,
+            "player",
+            &primary_id,
+            serde_json::json!({ "local_id": player_id, "primary_id": primary_id }),
+        )?;
+    }
+    Ok(())
+}
+
+fn enqueue_match_player_upsert_conn(
+    conn: &rusqlite::Connection,
+    match_id: i64,
+    player_id: i64,
+) -> AppResult<()> {
+    let match_guid = match_guid_for_id_conn(conn, match_id)?;
+    let player_primary_id = player_primary_id_for_id_conn(conn, player_id)?;
+    if let (Some(match_guid), Some(player_primary_id)) = (match_guid, player_primary_id) {
+        let entity_key = format!("{}:{}", match_guid, player_primary_id);
+        sync::enqueue_upsert_conn(
+            conn,
+            "match_player",
+            &entity_key,
+            serde_json::json!({
+                "match_id": match_id,
+                "player_id": player_id,
+                "match_guid": match_guid,
+                "player_primary_id": player_primary_id,
+            }),
+        )?;
+    }
+    Ok(())
+}
+
 pub(crate) fn insert_match_conn(
     conn: &rusqlite::Connection,
     guid: &str,
@@ -150,6 +223,12 @@ pub(crate) fn insert_match_conn(
     .map_err(|e| AppError::StorageError(e.to_string()))?;
 
     let id = conn.last_insert_rowid();
+    sync::enqueue_upsert_conn(
+        conn,
+        "match",
+        guid,
+        serde_json::json!({ "local_id": id, "guid": guid }),
+    )?;
     debug!(match_id = id, "Inserted match");
     Ok(id)
 }
@@ -172,6 +251,7 @@ pub(crate) fn finish_match_conn(
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    enqueue_match_upsert_conn(conn, match_id)?;
     Ok(())
 }
 
@@ -200,6 +280,7 @@ pub(crate) fn get_or_create_player_conn(
     .map_err(|e| AppError::StorageError(e.to_string()))?;
 
     let id = conn.last_insert_rowid();
+    enqueue_player_upsert_conn(conn, id)?;
     debug!(player_id = id, "Inserted player");
     Ok(id)
 }
@@ -209,6 +290,7 @@ pub(crate) fn insert_match_player_conn(
     match_id: i64,
     player: MatchPlayerRow,
 ) -> AppResult<()> {
+    let player_id = player.player_id;
     conn.execute(
         "INSERT INTO match_players (match_id, player_id, team_num, score, goals, shots, assists, saves, touches, car_touches, demos, speed, boost, mmr, head_to_head_json, kickoff_goals)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
@@ -228,7 +310,7 @@ pub(crate) fn insert_match_player_conn(
          kickoff_goals = excluded.kickoff_goals",
         params![
             match_id,
-            player.player_id,
+            player_id,
             player.team_num,
             player.stats.score,
             player.stats.goals,
@@ -246,6 +328,7 @@ pub(crate) fn insert_match_player_conn(
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    enqueue_match_player_upsert_conn(conn, match_id, player_id)?;
     Ok(())
 }
 
@@ -261,6 +344,20 @@ pub(crate) fn insert_match_event_conn(
         params![match_id, event_type, event_data, occurred_at.to_rfc3339()],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    let id = conn.last_insert_rowid();
+    sync::enqueue_upsert_conn(
+        conn,
+        "match_event",
+        &id.to_string(),
+        serde_json::json!({
+            "local_id": id,
+            "match_id": match_id,
+            "match_guid": match_guid_for_id_conn(conn, match_id)?,
+            "event_type": event_type,
+            "occurred_at": occurred_at.to_rfc3339(),
+        }),
+    )?;
     Ok(())
 }
 
@@ -271,11 +368,25 @@ pub(crate) fn insert_session_conn(
 ) -> AppResult<()> {
     let summary_json =
         serde_json::to_string(summary).map_err(|e| AppError::ParseError(e.to_string()))?;
+    let created_at = Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO sessions (match_id, summary_json, created_at) VALUES (?1, ?2, ?3)",
-        params![match_id, summary_json, Utc::now().to_rfc3339()],
+        params![match_id, summary_json, created_at],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    let id = conn.last_insert_rowid();
+    sync::enqueue_upsert_conn(
+        conn,
+        "session",
+        &id.to_string(),
+        serde_json::json!({
+            "local_id": id,
+            "match_id": match_id,
+            "match_guid": match_guid_for_id_conn(conn, match_id)?,
+            "created_at": created_at,
+        }),
+    )?;
     Ok(())
 }
 
@@ -609,12 +720,21 @@ pub fn update_match(
         params![match_type, playlist, match_id],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    enqueue_match_upsert_conn(&conn, match_id)?;
     Ok(())
 }
 
 /// Delete a match and all related data (cascade), then rebuild daily rollups.
 pub fn delete_match(pool: &DbPool, match_id: i64) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    if let Some(guid) = match_guid_for_id_conn(&conn, match_id)? {
+        sync::enqueue_delete_conn(
+            &conn,
+            "match",
+            &guid,
+            serde_json::json!({ "local_id": match_id, "guid": guid }),
+        )?;
+    }
     conn.execute("DELETE FROM matches WHERE id = ?1", params![match_id])
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
@@ -1229,6 +1349,106 @@ pub fn get_match_count(pool: &DbPool) -> AppResult<i64> {
     Ok(count)
 }
 
+/// Enqueue all existing local rows for a one-time cloud sync backfill.
+pub fn enqueue_existing_history_for_sync(pool: &DbPool) -> AppResult<i64> {
+    let conn = get_conn(pool)?;
+    let mut enqueued = 0;
+
+    let match_ids = collect_i64(&conn, "SELECT id FROM matches ORDER BY id ASC")?;
+    for match_id in match_ids {
+        enqueue_match_upsert_conn(&conn, match_id)?;
+        enqueued += 1;
+    }
+
+    let player_ids = collect_i64(&conn, "SELECT id FROM players ORDER BY id ASC")?;
+    for player_id in player_ids {
+        enqueue_player_upsert_conn(&conn, player_id)?;
+        enqueued += 1;
+    }
+
+    let match_players = collect_i64_pairs(
+        &conn,
+        "SELECT match_id, player_id FROM match_players ORDER BY match_id ASC, player_id ASC",
+    )?;
+    for (match_id, player_id) in match_players {
+        enqueue_match_player_upsert_conn(&conn, match_id, player_id)?;
+        enqueued += 1;
+    }
+
+    for event_id in collect_i64(&conn, "SELECT id FROM match_events ORDER BY id ASC")? {
+        sync::enqueue_upsert_conn(
+            &conn,
+            "match_event",
+            &event_id.to_string(),
+            serde_json::json!({ "local_id": event_id }),
+        )?;
+        enqueued += 1;
+    }
+
+    for session_id in collect_i64(&conn, "SELECT id FROM sessions ORDER BY id ASC")? {
+        sync::enqueue_upsert_conn(
+            &conn,
+            "session",
+            &session_id.to_string(),
+            serde_json::json!({ "local_id": session_id }),
+        )?;
+        enqueued += 1;
+    }
+
+    for friend_player_id in collect_i64(
+        &conn,
+        "SELECT player_id FROM friends ORDER BY player_id ASC",
+    )? {
+        sync::enqueue_upsert_conn(
+            &conn,
+            "friend",
+            &friend_player_id.to_string(),
+            serde_json::json!({ "player_id": friend_player_id }),
+        )?;
+        enqueued += 1;
+    }
+
+    for preset_id in collect_i64(&conn, "SELECT id FROM user_presets ORDER BY id ASC")? {
+        sync::enqueue_upsert_conn(
+            &conn,
+            "user_preset",
+            &preset_id.to_string(),
+            serde_json::json!({ "local_id": preset_id }),
+        )?;
+        enqueued += 1;
+    }
+
+    Ok(enqueued)
+}
+
+fn collect_i64(conn: &rusqlite::Connection, sql: &str) -> AppResult<Vec<i64>> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, i64>(0))
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let mut values = Vec::new();
+    for row in rows {
+        values.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    }
+    Ok(values)
+}
+
+fn collect_i64_pairs(conn: &rusqlite::Connection, sql: &str) -> AppResult<Vec<(i64, i64)>> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let mut values = Vec::new();
+    for row in rows {
+        values.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    }
+    Ok(values)
+}
+
 /// Get storage stats.
 pub fn get_storage_stats(pool: &DbPool) -> AppResult<serde_json::Value> {
     let conn = get_conn(pool)?;
@@ -1278,6 +1498,12 @@ pub fn get_storage_stats(pool: &DbPool) -> AppResult<serde_json::Value> {
 /// Clear all data (destructive).
 pub fn clear_all_data(pool: &DbPool) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    sync::enqueue_delete_conn(
+        &conn,
+        "profile_data",
+        "*",
+        serde_json::json!({ "scope": "all_local_profile_data" }),
+    )?;
     conn.execute_batch(
         "DELETE FROM match_events;
          DELETE FROM match_players;
@@ -1484,6 +1710,12 @@ pub fn upsert_match_by_guid(
             |row| row.get(0),
         )
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+    sync::enqueue_upsert_conn(
+        conn,
+        "match",
+        record.guid,
+        serde_json::json!({ "local_id": id, "guid": record.guid }),
+    )?;
     Ok(id)
 }
 
@@ -1507,6 +1739,7 @@ pub fn upsert_player_by_primary_id(
             |row| row.get(0),
         )
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+    enqueue_player_upsert_conn(conn, id)?;
     Ok(id)
 }
 
@@ -1516,6 +1749,7 @@ pub fn upsert_match_player_row(
     match_id: i64,
     player: MatchPlayerRow,
 ) -> AppResult<()> {
+    let player_id = player.player_id;
     conn.execute(
         "INSERT INTO match_players (match_id, player_id, team_num, score, goals, shots, assists, saves, touches, car_touches, demos, speed, boost, kickoff_goals)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
@@ -1534,7 +1768,7 @@ pub fn upsert_match_player_row(
             kickoff_goals = excluded.kickoff_goals",
         params![
             match_id,
-            player.player_id,
+            player_id,
             player.team_num,
             player.stats.score,
             player.stats.goals,
@@ -1550,6 +1784,7 @@ pub fn upsert_match_player_row(
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    enqueue_match_player_upsert_conn(conn, match_id, player_id)?;
     Ok(())
 }
 
@@ -1576,6 +1811,19 @@ pub fn insert_match_event_if_not_exists(
             params![match_id, event_type, event_data, occurred_at],
         )
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+        let id = conn.last_insert_rowid();
+        sync::enqueue_upsert_conn(
+            conn,
+            "match_event",
+            &id.to_string(),
+            serde_json::json!({
+                "local_id": id,
+                "match_id": match_id,
+                "match_guid": match_guid_for_id_conn(conn, match_id)?,
+                "event_type": event_type,
+                "occurred_at": occurred_at,
+            }),
+        )?;
     }
     Ok(())
 }
@@ -1601,6 +1849,18 @@ pub fn insert_session_if_not_exists(
             params![match_id, summary_json, created_at],
         )
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+        let id = conn.last_insert_rowid();
+        sync::enqueue_upsert_conn(
+            conn,
+            "session",
+            &id.to_string(),
+            serde_json::json!({
+                "local_id": id,
+                "match_id": match_id,
+                "match_guid": match_guid_for_id_conn(conn, match_id)?,
+                "created_at": created_at,
+            }),
+        )?;
     }
     Ok(())
 }
@@ -1845,6 +2105,12 @@ pub fn upsert_tracker_cache(
         params![platform, username, profile_json],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    sync::enqueue_upsert_conn(
+        &conn,
+        "tracker_cache",
+        &format!("{}:{}", platform, username),
+        serde_json::json!({ "platform": platform, "username": username }),
+    )?;
     debug!(platform, username, "Tracker cache updated");
     Ok(())
 }
@@ -1882,6 +2148,12 @@ pub fn upsert_rlstats_cache(
         params![platform, username, profile_json],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    sync::enqueue_upsert_conn(
+        &conn,
+        "rlstats_cache",
+        &format!("{}:{}", platform, username),
+        serde_json::json!({ "platform": platform, "username": username }),
+    )?;
     debug!(platform, username, "RLStats cache updated");
     Ok(())
 }
@@ -1921,6 +2193,12 @@ pub fn upsert_mmr_cache(
         params![provider, platform, identifier, payload_json, fetched_at],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    sync::enqueue_upsert_conn(
+        &conn,
+        "mmr_cache",
+        &format!("{}:{}:{}", provider, platform, identifier),
+        serde_json::json!({ "provider": provider, "platform": platform, "identifier": identifier }),
+    )?;
     debug!(provider, platform, identifier, "MMR cache updated");
     Ok(())
 }
@@ -1951,6 +2229,13 @@ pub fn delete_mmr_cache(
     identifier: &str,
 ) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    let entity_key = format!("{}:{}:{}", provider, platform, identifier);
+    sync::enqueue_delete_conn(
+        &conn,
+        "mmr_cache",
+        &entity_key,
+        serde_json::json!({ "provider": provider, "platform": platform, "identifier": identifier }),
+    )?;
     conn.execute(
         "DELETE FROM mmr_cache WHERE provider = ?1 AND platform = ?2 AND identifier = ?3",
         params![provider, platform, identifier],
@@ -2001,11 +2286,29 @@ pub fn add_friend(pool: &DbPool, player_id: i64, tag: Option<&str>) -> AppResult
         params![player_id, tag],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    sync::enqueue_upsert_conn(
+        &conn,
+        "friend",
+        &player_id.to_string(),
+        serde_json::json!({
+            "player_id": player_id,
+            "player_primary_id": player_primary_id_for_id_conn(&conn, player_id)?,
+        }),
+    )?;
     Ok(())
 }
 
 pub fn remove_friend(pool: &DbPool, player_id: i64) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    sync::enqueue_delete_conn(
+        &conn,
+        "friend",
+        &player_id.to_string(),
+        serde_json::json!({
+            "player_id": player_id,
+            "player_primary_id": player_primary_id_for_id_conn(&conn, player_id)?,
+        }),
+    )?;
     conn.execute(
         "DELETE FROM friends WHERE player_id = ?1",
         params![player_id],
@@ -3040,6 +3343,12 @@ pub fn insert_user_preset(
     .map_err(|e| AppError::StorageError(e.to_string()))?;
 
     let id = conn.last_insert_rowid();
+    sync::enqueue_upsert_conn(
+        &conn,
+        "user_preset",
+        &id.to_string(),
+        serde_json::json!({ "local_id": id, "name": name }),
+    )?;
     info!(preset_id = id, name, "Inserted user preset");
     Ok(id)
 }
@@ -3067,12 +3376,24 @@ pub fn update_user_preset(
         params![name, description, camera_json, controls_json, deadzone_json, hardware_json, now, id],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    sync::enqueue_upsert_conn(
+        &conn,
+        "user_preset",
+        &id.to_string(),
+        serde_json::json!({ "local_id": id, "name": name }),
+    )?;
     info!(preset_id = id, name, "Updated user preset");
     Ok(())
 }
 
 pub fn delete_user_preset(pool: &DbPool, id: i64) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    sync::enqueue_delete_conn(
+        &conn,
+        "user_preset",
+        &id.to_string(),
+        serde_json::json!({ "local_id": id }),
+    )?;
     conn.execute("DELETE FROM user_presets WHERE id = ?1", params![id])
         .map_err(|e| AppError::StorageError(e.to_string()))?;
     info!(preset_id = id, "Deleted user preset");

@@ -1,5 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+} from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "@/components/layout/AppShell";
@@ -7,19 +13,64 @@ import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAutoUpdateCheck } from "@/hooks/useAutoUpdateCheck";
 import { useAccountMismatch } from "@/hooks/useAccountMismatch";
+import { useCloudAutoSync } from "@/hooks/useCloudAutoSync";
 
-const OverlayView = lazy(() => import("@/components/overlay/OverlayView").then((module) => ({ default: module.OverlayView })));
-const LivePage = lazy(() => import("@/pages/LivePage").then((module) => ({ default: module.LivePage })));
-const HistoryPage = lazy(() => import("@/pages/HistoryPage").then((module) => ({ default: module.HistoryPage })));
-const MatchDetailPage = lazy(() => import("@/pages/MatchDetailPage").then((module) => ({ default: module.MatchDetailPage })));
-const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage").then((module) => ({ default: module.AnalyticsPage })));
-const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
-const ProfilePage = lazy(() => import("@/pages/ProfilePage").then((module) => ({ default: module.ProfilePage })));
-const ProConfigsPage = lazy(() => import("@/pages/ProConfigsPage").then((module) => ({ default: module.ProConfigsPage })));
-const PlayerDirectoryPage = lazy(() => import("@/pages/PlayerDirectoryPage").then((module) => ({ default: module.PlayerDirectoryPage })));
-const PlayerDetailPage = lazy(() => import("@/pages/PlayerDetailPage").then((module) => ({ default: module.PlayerDetailPage })));
-const TrainingPacksPage = lazy(() => import("@/pages/TrainingPacksPage").then((module) => ({ default: module.TrainingPacksPage })));
-const OnboardingOverlay = lazy(() => import("@/components/onboarding/OnboardingOverlay"));
+const OverlayView = lazy(() =>
+  import("@/components/overlay/OverlayView").then((module) => ({
+    default: module.OverlayView,
+  })),
+);
+const LivePage = lazy(() =>
+  import("@/pages/LivePage").then((module) => ({ default: module.LivePage })),
+);
+const HistoryPage = lazy(() =>
+  import("@/pages/HistoryPage").then((module) => ({
+    default: module.HistoryPage,
+  })),
+);
+const MatchDetailPage = lazy(() =>
+  import("@/pages/MatchDetailPage").then((module) => ({
+    default: module.MatchDetailPage,
+  })),
+);
+const AnalyticsPage = lazy(() =>
+  import("@/pages/AnalyticsPage").then((module) => ({
+    default: module.AnalyticsPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("@/pages/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+const ProfilePage = lazy(() =>
+  import("@/pages/ProfilePage").then((module) => ({
+    default: module.ProfilePage,
+  })),
+);
+const ProConfigsPage = lazy(() =>
+  import("@/pages/ProConfigsPage").then((module) => ({
+    default: module.ProConfigsPage,
+  })),
+);
+const PlayerDirectoryPage = lazy(() =>
+  import("@/pages/PlayerDirectoryPage").then((module) => ({
+    default: module.PlayerDirectoryPage,
+  })),
+);
+const PlayerDetailPage = lazy(() =>
+  import("@/pages/PlayerDetailPage").then((module) => ({
+    default: module.PlayerDetailPage,
+  })),
+);
+const TrainingPacksPage = lazy(() =>
+  import("@/pages/TrainingPacksPage").then((module) => ({
+    default: module.TrainingPacksPage,
+  })),
+);
+const OnboardingOverlay = lazy(
+  () => import("@/components/onboarding/OnboardingOverlay"),
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,17 +83,24 @@ const queryClient = new QueryClient({
 });
 
 function AppFallback({ transparent = false }: { transparent?: boolean }) {
-  return <div className={`min-h-screen ${transparent ? "bg-transparent" : "bg-bg-base"}`} />;
+  return (
+    <div
+      className={`min-h-screen ${transparent ? "bg-transparent" : "bg-bg-base"}`}
+    />
+  );
 }
 
 function AppContent() {
-  const hasCompletedOnboarding = useSettingsStore((s) => s.hasCompletedOnboarding);
+  const hasCompletedOnboarding = useSettingsStore(
+    (s) => s.hasCompletedOnboarding,
+  );
   const completeOnboarding = useSettingsStore((s) => s.completeOnboarding);
   const [isOverlayWindow, setIsOverlayWindow] = useState(false);
   const [detecting, setDetecting] = useState(true);
 
   useAutoUpdateCheck();
   useAccountMismatch();
+  useCloudAutoSync();
 
   useEffect(() => {
     try {
@@ -76,7 +134,13 @@ function AppContent() {
       <Suspense fallback={<AppFallback />}>
         <BrowserRouter>
           <Routes>
-            <Route element={<AppShell><Outlet /></AppShell>}>
+            <Route
+              element={
+                <AppShell>
+                  <Outlet />
+                </AppShell>
+              }
+            >
               <Route path="/" element={<LivePage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/history/:matchId" element={<MatchDetailPage />} />
