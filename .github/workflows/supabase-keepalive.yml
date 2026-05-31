@@ -1,0 +1,55 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # Supabase free projects can pause after inactivity. This lightweight read
+    # keeps the project active without writing user data.
+    - cron: "17 */12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping Supabase REST API
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
+    steps:
+      - name: Validate configuration
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "SUPABASE_URL secret/variable is not configured" >&2
+            exit 1
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "SUPABASE_ANON_KEY secret/variable is not configured" >&2
+            exit 1
+          fi
+
+      - name: Query active billing plans
+        run: |
+          curl --fail --show-error --silent --retry 3 --retry-delay 5 \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/billing_plans?select=code&active=eq.true&limit=1" \
+            | tee /tmp/supabase-keepalive-response.json
+
+      - name: Verify response is JSON array
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/supabase-keepalive-response.json').read_text())
+          if not isinstance(payload, list):
+              raise SystemExit('Expected Supabase response to be a JSON array')
+          print(f'Supabase keepalive OK ({len(payload)} row(s) returned)')
+          PY
