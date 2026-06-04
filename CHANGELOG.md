@@ -1,5 +1,106 @@
 # Changelog
 
+## v2.0.0 — Cloud Sync, Stripe Billing & Multi-Profile Intelligence
+
+### Features
+
+**Cloud Sync with Supabase**
+- Sistema completo de sincronización en la nube basado en Supabase.
+- Cada perfil puede vincularse a un `cloud_owner_id` único generado localmente.
+- **Sync bidireccional** (push + pull) de datos:
+  - Partidas (`matches`, `match_players`, `match_events`).
+  - Jugadores (`players`, `head_to_head`).
+  - Configuraciones (`settings`, `presets`, `friends`).
+  - Estadísticas diarias (`daily_rollups`).
+- **Conflict resolution**: estrategia "server wins" con base en `updated_at`.
+- **RPC optimizado**: `sync_push_entities` para bulk upsert en una sola llamada.
+- **RLS policies**: cada usuario solo ve y modifica sus propios datos.
+- Frontend:
+  - `CloudSyncPanel`: UI completa de configuración de sync con toggle, estado, logs.
+  - `useCloudAutoSync`: hook que ejecuta sync automático cada 5 minutos y al iniciar app.
+  - `cloudClient.ts`: cliente HTTP para Supabase con autenticación anónima.
+  - `cloudSync.ts`: lógica de diff, merge, push y pull.
+
+**Stripe Billing & Subscription Plans**
+- Integración completa con Stripe para suscripciones.
+- **Planes**: Free (1 perfil, 100 partidas), Premium (5 perfiles, 1.000 partidas), Pro (ilimitado).
+- **Edge Functions** (Supabase):
+  - `create-checkout-session`: inicia checkout de Stripe.
+  - `create-portal-session`: redirige al portal de administración de suscripciones.
+  - `stripe-webhook`: procesa eventos `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`.
+- Migraciones SQL:
+  - `0004_billing_plans.sql`: tabla de planes con límites.
+  - `0005_owner_entitlements.sql`: tabla de suscripciones activas por `cloud_owner_id`.
+- Frontend: panel de billing integrado en `CloudSyncPanel` con botón de upgrade y gestión de suscripción.
+
+**Smart Profile Handling v2**
+- Detección automática de perfil al inicio de la app basada en `local_primary_id` guardado.
+- Sugerencia inteligente de switch de perfil cuando se detecta una cuenta de Rocket League diferente.
+- `AccountMismatchDialog` mejorado con opción de vincular perfil actual a la cuenta detectada.
+- Auto-guardado de identidad detectada al finalizar partida.
+
+**Onboarding v2 — Cloud Sync Step**
+- Paso 4 del onboarding: configuración de cloud sync y billing.
+- Guía paso a paso para vincular perfil a la nube.
+
+### Backend (Rust)
+- **`core/cloud/mod.rs`**: cliente Supabase, autenticación anónima, helpers de sync.
+- **`core/storage/sync.rs`**: lógica de diff entre datos locales y remotos, merge, y conflict resolution.
+- **`core/app_sync.rs`**: orquestador de sync completo (push + pull) con manejo de errores.
+- **`commands/cloud.rs`**: 9 comandos Tauri nuevos:
+  - `get_cloud_sync_status`, `get_cloud_owner_id`, `set_cloud_owner_id`.
+  - `sync_push`, `sync_pull`, `sync_now`, `reset_cloud_sync`.
+  - `get_subscription_status`, `create_billing_portal`.
+- **`core/storage/migrations.rs`**: migraciones v19-v22 para tablas de sync (`sync_state`, `sync_anchors`).
+- **`core/settings/mod.rs`**: agregados `cloud_owner_id`, `cloud_sync_enabled`, `cloud_sync_auto`.
+- **`core/profiles/mod.rs`**: mejoras en `get_all_profile_settings` para iterar perfiles con settings.
+- **`lib.rs`**: integra auto-sync en el startup loop y eventos de partida.
+
+### Frontend (React/TypeScript)
+- **`CloudSyncPanel.tsx`**: panel de ~660 líneas con configuración, estado, logs, billing, y acciones de sync.
+- **`SettingsPanel.tsx`**: reorganizado para incluir Cloud Sync y Billing.
+- **`Step4_CloudSync.tsx`**: nuevo paso del onboarding.
+- **`cloudClient.ts`**: cliente HTTP tipado para Supabase con JWT anónimo.
+- **`cloudSync.ts`**: lógica de sincronización con manejo de conflictos y límites de plan.
+- **`useCloudAutoSync.ts`**: hook de auto-sync con intervalo configurable.
+- **`api.ts`**: agregados 9 comandos de cloud sync y tipos de subscription.
+- **`types.ts`**: extendido con tipos de cloud sync, billing, subscription status.
+- **`schemas.ts`**: validaciones Zod para configuraciones de sync.
+- **`App.tsx`**: integra `CloudSyncPanel`, `AccountMismatchDialog`, y providers de sync.
+
+### Infrastructure
+- **Supabase project**: configurado con PostgreSQL, Edge Functions, Auth, y Storage.
+- **Migrations SQL** (5 archivos):
+  - `0001_cloud_sync_schema.sql`: esquema base de entidades (matches, players, rollups, etc.).
+  - `0002_sync_push_rpc.sql`: función RPC `sync_push_entities` para bulk upsert.
+  - `0003_rpc_permissions.sql`: permisos de ejecución de RPC para usuarios anónimos.
+  - `0004_billing_plans.sql`: planes y límites de suscripción.
+  - `0005_owner_entitlements.sql`: suscripciones activas con Stripe.
+- **Edge Functions** (3 archivos en Deno/TypeScript):
+  - `create-checkout-session/index.ts`
+  - `create-portal-session/index.ts`
+  - `stripe-webhook/index.ts`
+- **GitHub Actions**:
+  - `.github/workflows/supabase-keepalive.yml`: workflow diario que ejecuta `select 1` para evitar pausa del proyecto Supabase (gratis).
+
+### Documentation
+- `docs/CLOUD_SYNC_PLAN.md`: arquitectura, flujo de datos, decisiones técnicas.
+- `docs/CLOUD_BILLING_SETUP.md`: guía de configuración de Stripe + Supabase.
+- `docs/SECURITY.md`: actualizado con políticas de datos en la nube.
+- `.env.example`: variables de entorno para Supabase y Stripe.
+- `supabase/README.md` y `supabase/functions/README.md`: documentación interna.
+
+### Improvements
+- `.gitignore`: agregado `supabase/.temp` y `.env.local`.
+- `pnpm-workspace.yaml`: configurado para monorepo con Supabase functions.
+- `skills-lock.json`: skills de agente para Stripe (`stripe-best-practices`, `stripe-projects`, `upgrade-stripe`).
+
+### TODO / Future
+- Implementar sync incremental basado en `last_sync_at` en vez de full diff.
+- Agregar cifrado end-to-end de datos sensibles antes de enviar a Supabase.
+- WebSocket para sync en tiempo real entre dispositivos.
+- Compartir replays y highlights desde la nube.
+
 ## v1.8.0 — Account Mismatch Detection & Profile Identity Binding
 
 ### Features
