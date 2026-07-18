@@ -64,6 +64,17 @@ jobs:
         with:
           script: |
             const tagName = process.env.GITHUB_REF_NAME || context.ref?.replace('refs/tags/', '') || '';
+            try {
+              const { data: existing } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tagName,
+              });
+              core.info(`Reusing existing release ${existing.id} for ${tagName}`);
+              return existing.id;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
