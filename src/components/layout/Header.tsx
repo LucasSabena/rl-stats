@@ -108,7 +108,7 @@ export function Header() {
 
         <div className="flex items-center gap-2">
           {/* Profile selector */}
-          <div className="flex items-center gap-2 mr-2">
+          <div className="flex items-center gap-2 mr-2" data-tour="profiles">
             <User size={14} className="text-text-secondary shrink-0" />
             <Select
               options={profileOptions}
@@ -128,7 +128,7 @@ export function Header() {
           </div>
 
           {/* Connection status indicator dot */}
-          <div className="flex items-center gap-2 mr-4 bg-bg-panel/50 px-3 py-1.5 rounded-full border border-border-subtle shadow-[var(--shadow-card-inner)]">
+          <div className="flex items-center gap-2 mr-4 bg-bg-panel/50 px-3 py-1.5 rounded-full border border-border-subtle shadow-[var(--shadow-card-inner)]" data-tour="connection">
             <div className={cn(
               "h-2 w-2 rounded-full",
               connectionStatus === "connected" ? "bg-accent-success shadow-[0_0_8px_rgba(16,185,129,0.6)]" :

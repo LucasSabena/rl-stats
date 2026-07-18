@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useFriends } from "@/hooks/useFriends";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { AlertTriangle, Info } from "lucide-react";
 
 interface PlayerCardProps {
   player: Player;
@@ -18,7 +19,7 @@ interface PlayerCardProps {
 export const PlayerCard = memo(function PlayerCard({ player, isCurrentUser, mmr, headToHead, mmrLoading }: PlayerCardProps) {
   const { t } = useTranslation(["live", "common", "players"]);
   const { data: friends } = useFriends();
-  const [errorModalOpen, setErrorModalOpen] = useState(false);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const isBlue = player.team === 0;
   const hasMmr = mmr?.mmr !== null && mmr?.mmr !== undefined;
   const mmrLabel = hasMmr ? `MMR ${mmr?.estimated ? "≈" : ""}${mmr?.mmr}` : null;
@@ -34,7 +35,13 @@ export const PlayerCard = memo(function PlayerCard({ player, isCurrentUser, mmr,
           ? "RapidAPI"
         : mmr?.source === "local-estimate"
           ? "Local"
+          : mmr?.source === "history"
+            ? "Histórico"
+            : mmr?.source === "lobby-estimate"
+              ? "Lobby"
           : null;
+  const details = mmr?.warning ?? mmr?.error ?? null;
+  const isUnavailable = !hasMmr && Boolean(mmr?.error);
   const headToHeadLabel = headToHead
     ? `Comp ${headToHead.wins_together}-${headToHead.losses_together} · Rival ${headToHead.wins_against}-${headToHead.losses_against}`
     : null;
@@ -48,7 +55,7 @@ export const PlayerCard = memo(function PlayerCard({ player, isCurrentUser, mmr,
         className={cn(
           "rounded-lg border p-2.5 transition-all duration-200",
           isCurrentUser
-            ? "border-accent-primary/30 bg-accent-primary-muted glow-blue"
+            ? "border-accent-primary/30 bg-accent-primary-muted shadow-glow-blue"
             : "border-border-subtle bg-bg-surface hover:border-border-default"
         )}
       >
@@ -80,6 +87,7 @@ export const PlayerCard = memo(function PlayerCard({ player, isCurrentUser, mmr,
               </div>
               <div className="flex flex-wrap items-center gap-1 text-[9px] text-text-tertiary">
                 {mmrLoading && !hasMmr ? <span>{t("live:mmr.searching")}</span> : null}
+                {!mmrLoading && !hasMmr ? <span className="font-mono text-text-muted">MMR —</span> : null}
                 {mmrLabel ? <span className="font-mono font-semibold text-text-secondary">{mmrLabel}</span> : null}
                 {rankLabel ? <span>{rankLabel}</span> : null}
                 {sourceLabel ? <span>{sourceLabel}</span> : null}
@@ -90,13 +98,20 @@ export const PlayerCard = memo(function PlayerCard({ player, isCurrentUser, mmr,
                 ) : null}
                 {mmr?.cached ? <span className="uppercase tracking-wide">cache</span> : null}
                 {updatedLabel ? <span>act. {updatedLabel}</span> : null}
-                {mmr?.error ? (
+                {details ? (
                   <button
                     type="button"
-                    onClick={() => setErrorModalOpen(true)}
-                    className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-accent-warning/15 text-accent-warning border border-accent-warning/20 hover:bg-accent-warning/25 transition-colors cursor-pointer"
+                    onClick={() => setDetailsModalOpen(true)}
+                    className={cn(
+                      "inline-flex min-h-6 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors",
+                      isUnavailable
+                        ? "border border-accent-danger/20 bg-accent-danger/10 text-accent-danger hover:bg-accent-danger/20"
+                        : "border border-accent-info/20 bg-accent-info/10 text-accent-info hover:bg-accent-info/20"
+                    )}
+                    aria-label={isUnavailable ? t("live:mmr.unavailableDetails") : t("live:mmr.estimateDetails")}
                   >
-                    {t("live:mmr.errorLabel")}
+                    {isUnavailable ? <AlertTriangle size={10} /> : <Info size={10} />}
+                    {isUnavailable ? t("live:mmr.unavailable") : t("live:mmr.infoLabel")}
                   </button>
                 ) : null}
                 {headToHeadLabel ? <span className="text-text-secondary">{headToHeadLabel}</span> : null}
@@ -152,15 +167,15 @@ export const PlayerCard = memo(function PlayerCard({ player, isCurrentUser, mmr,
         </div>
       </div>
 
-      {mmr?.error && (
+      {details && (
         <Modal
-          isOpen={errorModalOpen}
-          onClose={() => setErrorModalOpen(false)}
-          title={t("live:mmr.errorTitle")}
+          isOpen={detailsModalOpen}
+          onClose={() => setDetailsModalOpen(false)}
+          title={isUnavailable ? t("live:mmr.unavailableTitle") : t("live:mmr.estimateTitle")}
           size="sm"
-          footer={<Button variant="secondary" onClick={() => setErrorModalOpen(false)}>{t("common:actions.close", { defaultValue: "Cerrar" })}</Button>}
+          footer={<Button variant="secondary" onClick={() => setDetailsModalOpen(false)}>{t("common:actions.close", { defaultValue: "Cerrar" })}</Button>}
         >
-          <p className="text-sm text-text-secondary">{mmr.error}</p>
+          <p className="text-sm leading-relaxed text-text-secondary">{details}</p>
         </Modal>
       )}
     </>

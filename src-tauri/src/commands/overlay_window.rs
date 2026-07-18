@@ -89,11 +89,14 @@ pub async fn create_overlay_window(
     Ok(build_state(&app_settings, true))
 }
 
-/// Destroy the overlay window.
+/// Hide the overlay window without destroying its WebView.
+///
+/// Keeping one transparent WebView alive avoids native teardown races when the
+/// overlay is toggled while Rocket League is rendering.
 #[tauri::command]
 pub async fn destroy_overlay_window(app: tauri::AppHandle) -> Result<OverlayWindowState, String> {
     if let Some(win) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = win.close();
+        win.hide().map_err(|e| e.to_string())?;
     }
     Ok(OverlayWindowState {
         visible: false,
@@ -117,7 +120,7 @@ pub async fn get_overlay_window_state(
         crate::core::settings::get_settings(pool).unwrap_or_default()
     };
 
-    let visible = app.get_webview_window(OVERLAY_LABEL).is_some();
+    let visible = overlay_is_visible(&app);
     Ok(build_state(&app_settings, visible))
 }
 
@@ -145,7 +148,7 @@ pub async fn update_overlay_position(
     let pool = settings.db_pool.clone();
     crate::core::settings::set_settings(&pool, &app_settings).map_err(|e| e.to_string())?;
 
-    let visible = app.get_webview_window(OVERLAY_LABEL).is_some();
+    let visible = overlay_is_visible(&app);
     Ok(build_state(&app_settings, visible))
 }
 
@@ -174,7 +177,7 @@ pub async fn update_overlay_size(
     let pool = settings.db_pool.clone();
     crate::core::settings::set_settings(&pool, &app_settings).map_err(|e| e.to_string())?;
 
-    let visible = app.get_webview_window(OVERLAY_LABEL).is_some();
+    let visible = overlay_is_visible(&app);
     Ok(build_state(&app_settings, visible))
 }
 
@@ -200,7 +203,7 @@ pub async fn update_overlay_opacity(
     let pool = settings.db_pool.clone();
     crate::core::settings::set_settings(&pool, &app_settings).map_err(|e| e.to_string())?;
 
-    let visible = app.get_webview_window(OVERLAY_LABEL).is_some();
+    let visible = overlay_is_visible(&app);
     Ok(build_state(&app_settings, visible))
 }
 
@@ -227,7 +230,7 @@ pub async fn set_overlay_clickthrough(
     let pool = settings.db_pool.clone();
     crate::core::settings::set_settings(&pool, &app_settings).map_err(|e| e.to_string())?;
 
-    let visible = app.get_webview_window(OVERLAY_LABEL).is_some();
+    let visible = overlay_is_visible(&app);
     Ok(build_state(&app_settings, visible))
 }
 
@@ -302,8 +305,10 @@ pub async fn set_overlay_interactive(
         let win_clone = win.clone();
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_secs(duration_secs)).await;
-            let _ = win_clone.set_ignore_cursor_events(true);
-            let _ = win_clone.emit("overlay-interactive-mode", false);
+            if win_clone.is_visible().unwrap_or(false) {
+                let _ = win_clone.set_ignore_cursor_events(true);
+                let _ = win_clone.emit("overlay-interactive-mode", false);
+            }
         });
     }
 
@@ -311,6 +316,12 @@ pub async fn set_overlay_interactive(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+fn overlay_is_visible(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window(OVERLAY_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false)
+}
 
 fn apply_overlay_settings(
     win: &tauri::WebviewWindow,

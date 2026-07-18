@@ -6,6 +6,16 @@
     "copyClipboard": "Copiar",
     "copied": "Copiado!",
     "download": "Baixar PNG",
-    "generating": "Gerando imagem..."
+    "generating": "Gerando imagem...",
+    "previewAlt": "Prévia do cartão para compartilhar",
+    "exportOptions": "Opções de exportação",
+    "storyReady": "Pronto para stories",
+    "format": "Formato",
+    "dimensions": "Resolução",
+    "ratio": "Proporção",
+    "tip": "Copie a imagem para colar diretamente ou baixe em qualidade máxima.",
+    "regenerate": "Gerar prévia novamente",
+    "generationError": "Não foi possível gerar a imagem.",
+    "clipboardError": "Não foi possível copiar a imagem. Tente baixar como PNG."
   }
 }

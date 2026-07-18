@@ -241,6 +241,10 @@ pub struct SessionSummary {
     pub score_blue: i32,
     pub score_orange: i32,
     pub winner: Option<i32>,
+    #[serde(default)]
+    pub local_primary_id: Option<String>,
+    #[serde(default)]
+    pub local_team_num: Option<i32>,
     pub players: Vec<Player>,
     pub match_type: Option<String>,
     pub kickoff_goals_scored: i32,

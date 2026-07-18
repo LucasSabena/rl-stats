@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.1.0 — Live reliability, guided setup and clearer insights
+
+### Stability and performance
+
+- Reduced the live UI and overlay publication rate from 60 to 20 updates per second while retaining every packet in the match session.
+- Removed repeated database/profile lookups from the hot live-update path.
+- Limited process detection to process names and slowed its polling interval, avoiding unnecessary CPU, memory and disk sampling.
+- Added bounded TCP buffering, safer resynchronization for malformed streams and non-blocking SQLite pool settings.
+- Added persistent Rust/frontend diagnostics and a recoverable React error boundary.
+- The overlay WebView is now hidden and reused instead of destroyed and recreated while the game is running.
+
+### Detection and onboarding
+
+- Rocket League detection now reads Steam manifests/libraries, Steam registry paths, Epic manifests and legacy paths.
+- Manual paths are validated against the real executable before configuration.
+- Existing `DefaultStatsAPI.ini` content is preserved; only the required Stats API values are merged.
+- Local Steam accounts and the active account are detected before a match, with live PrimaryId detection retained as fallback.
+- Replaced the card-based onboarding with a guided setup and an interactive spotlight tour through the real app.
+
+### Live MMR, sharing and analytics
+
+- Fixed live MMR refresh timing, playlist resolution and provider fallback behavior.
+- Added transparent exact/historical/estimated MMR status per player.
+- Rebuilt match sharing for cleaner previews and reliable copy/export behavior.
+- Reorganized analytics hierarchy, filters, chart readability and responsive layouts.
+
 ## v2.0.0 — Cloud Sync, Stripe Billing & Multi-Profile Intelligence
 
 ### Features

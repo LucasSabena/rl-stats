@@ -26,6 +26,7 @@ import {
   type TrackerProfile,
   type LiveMmrSnapshot,
   type RlInstallation,
+  type DetectedAccount,
   type PlayerDirectoryEntry,
   type PlayerDetailRecord,
   type Profile,
@@ -269,7 +270,7 @@ function mapPlayer(player: RawLivePlayer): Player {
   return {
     id: player.id,
     name: player.name,
-    team: player.team === 1 ? 1 : 0,
+    team: player.team === 0 ? 0 : player.team === 1 ? 1 : -1,
     score: player.score,
     goals: player.goals,
     shots: player.shots,
@@ -820,6 +821,27 @@ export async function detectRlPath(
   return invokeCommand<RlInstallation[]>("detect_rl_path", { platform });
 }
 
+export async function inspectRlPath(
+  path: string,
+  platform?: "steam" | "epic" | null,
+): Promise<RlInstallation> {
+  return invokeCommand<RlInstallation>("inspect_rl_path", { path, platform });
+}
+
+export async function detectLocalAccounts(): Promise<DetectedAccount[]> {
+  return invokeCommand<DetectedAccount[]>("detect_local_accounts_cmd");
+}
+
+export async function reportFrontendError(
+  message: string,
+  stack?: string,
+): Promise<void> {
+  return invokeCommand<void>("report_frontend_error", {
+    message,
+    stack: stack ?? null,
+  });
+}
+
 // Data management
 export async function exportData(path: string): Promise<void> {
   return invokeCommand<void>("export_data", { path });
@@ -1057,6 +1079,16 @@ export async function updateProfilePlayerIdentity(
 ): Promise<void> {
   return invokeCommand<void>("update_profile_player_identity_cmd", {
     profileId,
+    primaryId,
+    playerName,
+  });
+}
+
+export async function findMatchingProfile(
+  primaryId: string,
+  playerName: string,
+): Promise<Profile | null> {
+  return invokeCommand<Profile | null>("find_matching_profile_cmd", {
     primaryId,
     playerName,
   });

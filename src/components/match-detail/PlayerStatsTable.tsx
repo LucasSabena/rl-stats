@@ -12,7 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { PlayerStats } from "@/lib/types";
+import type { PlayerStats, Team } from "@/lib/types";
 
 interface PlayerStatsTableProps {
   players: PlayerStats[];
@@ -267,6 +267,8 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
   );
 });
 
-function getTeamBarColor(team: 0 | 1): string {
-  return team === 0 ? "var(--color-team-blue)" : "var(--color-team-orange)";
+function getTeamBarColor(team: Team): string {
+  if (team === 0) return "var(--color-team-blue)";
+  if (team === 1) return "var(--color-team-orange)";
+  return "var(--color-text-muted)";
 }

@@ -12,22 +12,30 @@ Mostrar MMR del lobby sin tocar memoria, sin inyeccion y sin depender de APIs in
 
 ## Providers
 
+### RapidAPI Rocket League
+
+- Fuente primaria opcional cuando el usuario habilita una suscripcion valida.
+- Ventaja: devuelve rank, division y MMR estructurados.
+- Riesgo: el plan gratuito permite muy pocas consultas para un lobby en vivo.
+
 ### Tracker Network
 
-- Fuente primaria cuando existe `TRN-Api-Key` valida.
-- Ventaja: devuelve rank, division y MMR estructurados.
-- Riesgo: requiere aprobacion de app o puede rechazar la clave.
+- Integracion de compatibilidad para credenciales previamente autorizadas.
+- Tracker Network no ofrece acceso API de Rocket League para integraciones nuevas.
+- No debe presentarse como el camino recomendado de configuracion.
 
 ### RLStats
 
-- Fallback publico de solo lectura.
+- Fallback publico de solo lectura y mejor esfuerzo.
 - Ventaja: acepta `EpicID`, `SteamID64` y otros IDs de plataforma visibles en `PrimaryId`.
-- Riesgo: no expone una API formal; el parser depende de HTML server-rendered.
+- Riesgo: no expone una API formal y Cloudflare puede bloquear clientes automatizados.
 
 ## Current implementation
 
 - Command Tauri: `fetch_live_mmr_snapshot`
 - Cache local SQLite: `mmr_cache`
+- Fallback al ultimo MMR exacto guardado por jugador y playlist.
+- Estimacion de lobby, claramente marcada, a partir del MMR local cuando no hay dato rival.
 - TTL:
   - `tracker`: 15 min
   - `rlstats`: 30 min
@@ -38,12 +46,13 @@ Mostrar MMR del lobby sin tocar memoria, sin inyeccion y sin depender de APIs in
 
 ## Known limitations
 
-1. La `Stats API` no expone playlist confiable.
+1. La `Stats API` local no expone MMR ni una playlist confiable.
 2. Modos extra, privadas y playlists especiales pueden quedar sin inferencia exacta.
-3. `RLStats` hoy se usa como fallback tactico, no como contrato estable a largo plazo.
+3. RLStats puede exigir un challenge de navegador que `reqwest` no puede completar.
+4. Sin proveedor autorizado no es posible prometer MMR exacto para todos los jugadores; la UI debe distinguir exacto, historico, estimado y no disponible.
 
 ## Next step if we want more reliability
 
-1. Conseguir acceso formal a `Tracker Network` para Rocket League.
-2. Mantener `RLStats` como fallback de contingencia.
-3. Si no conseguimos proveedor estable para terceros, degradar la UI y mostrar solo stats live sin MMR rival.
+1. Evaluar un proveedor estable con licencia y cuota compatible con consultas de lobby.
+2. Mantener cache e historial para minimizar costo, latencia y rate limits.
+3. No ocultar la calidad del dato: exacto, historico y estimado deben verse diferentes.

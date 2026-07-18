@@ -43,6 +43,7 @@ export function useLiveMmr() {
 
   const lastRequestedSignatureRef = useRef<string | null>(null);
   const stableFetchTimerRef = useRef<number | null>(null);
+  const forceNextFetchRef = useRef(false);
 
   const clearStableFetchTimer = useCallback(() => {
     if (stableFetchTimerRef.current !== null) {
@@ -53,22 +54,30 @@ export function useLiveMmr() {
 
   const query = useQuery<LiveMmrSnapshot, Error>({
     queryKey: ["live-mmr", matchGuid, rosterSignature],
-    queryFn: () => fetchLiveMmrSnapshot(false),
+    queryFn: async () => {
+      const forceRefresh = forceNextFetchRef.current;
+      forceNextFetchRef.current = false;
+      return fetchLiveMmrSnapshot(forceRefresh);
+    },
     enabled: false,
     staleTime: 5 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,
   });
 
+  const { data, refetch } = query;
+
   useEffect(() => {
-    if (query.data) {
+    if (data) {
       const mmrMap: Record<string, number | null> = {};
-      for (const player of query.data.players) {
-        mmrMap[player.primaryId] = player.mmr;
+      for (const player of data.players) {
+        if (!player.estimated) {
+          mmrMap[player.primaryId] = player.mmr;
+        }
       }
       void setSessionMmrSnapshot(mmrMap).catch(() => {});
     }
-  }, [query.data]);
+  }, [data]);
 
   const prevMatchGuidRef = useRef(matchGuid);
 
@@ -93,11 +102,11 @@ export function useLiveMmr() {
 
     stableFetchTimerRef.current = window.setTimeout(() => {
       lastRequestedSignatureRef.current = rosterSignature;
-      void query.refetch({ cancelRefetch: true });
+      void refetch({ cancelRefetch: true });
     }, 1500);
 
     return clearStableFetchTimer;
-  }, [canAutoFetch, clearStableFetchTimer, query, rosterSignature]);
+  }, [canAutoFetch, clearStableFetchTimer, refetch, rosterSignature]);
 
   useEffect(() => {
     let disposed = false;
@@ -109,7 +118,7 @@ export function useLiveMmr() {
         if (event.payload.type === "CountdownBegin" && rosterSignature) {
           clearStableFetchTimer();
           lastRequestedSignatureRef.current = rosterSignature;
-          void query.refetch({ cancelRefetch: true });
+          void refetch({ cancelRefetch: true });
         }
       });
 
@@ -126,7 +135,7 @@ export function useLiveMmr() {
       disposed = true;
       void unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [clearStableFetchTimer, query, rosterSignature]);
+  }, [clearStableFetchTimer, refetch, rosterSignature]);
 
   useEffect(() => {
     return clearStableFetchTimer;
@@ -136,8 +145,9 @@ export function useLiveMmr() {
     if (rosterSignature) {
       lastRequestedSignatureRef.current = rosterSignature;
     }
-    void query.refetch({ cancelRefetch: true });
-  }, [query, rosterSignature]);
+    forceNextFetchRef.current = true;
+    void refetch({ cancelRefetch: true });
+  }, [refetch, rosterSignature]);
 
   return { ...query, forceRefresh };
 }

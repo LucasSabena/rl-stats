@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSettings, useUpdateSettings } from "@/hooks/useSettings";
 import { useFetchTrackerProfile } from "@/hooks/useTrackerProfile";
 import { Button } from "@/components/ui/Button";
@@ -178,20 +179,14 @@ export function TrackerSetup() {
               {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
-          <div className="rounded-lg border border-accent-info/20 bg-accent-info/5 px-4 py-3">
+          <div className="rounded-lg border border-accent-warning/25 bg-accent-warning/5 px-4 py-3">
             <div className="flex items-start gap-2.5">
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-accent-info/10 mt-0.5">
-                <Info size={11} className="text-accent-info" />
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-accent-warning/10">
+                <Info size={11} className="text-accent-warning" />
               </div>
               <div className="text-[11px] leading-relaxed text-text-tertiary">
-                <p className="font-semibold text-text-secondary mb-1">{t("tracker:setup.howToGetKeyTitle")}</p>
-                <ol className="list-decimal pl-4 space-y-0.5">
-                  <li>{t("tracker:setup.step1", { link: <a key="dev" href="https://tracker.gg/developers" target="_blank" rel="noopener noreferrer" className="text-accent-primary hover:underline transition-colors">tracker.gg/developers</a> })}</li>
-                  <li>{t("tracker:setup.step2", { strong: <strong key="s2" className="text-text-secondary">{t("tracker:setup.step2Strong")}</strong> })}</li>
-                  <li>{t("tracker:setup.step3")}</li>
-                  <li>{t("tracker:setup.step4")}</li>
-                  <li>{t("tracker:setup.step5", { strong: <strong key="s5" className="text-text-secondary">{t("tracker:setup.step5Strong")}</strong> })}</li>
-                </ol>
+                <p className="mb-1 font-semibold text-text-secondary">{t("tracker:setup.availabilityTitle")}</p>
+                <p>{t("tracker:setup.availabilityDescription")}</p>
               </div>
             </div>
           </div>
@@ -253,9 +248,7 @@ export function TrackerSetup() {
             {t("tracker:setup.save")}
           </Button>
           {profileLink && (
-            <Button variant="ghost" size="sm" onClick={() => {
-              import("@tauri-apps/plugin-opener").then(({ openUrl }) => openUrl(profileLink));
-            }}>
+            <Button variant="ghost" size="sm" onClick={() => void openUrl(profileLink)}>
               <ExternalLink size={14} className="mr-1" />
               {t("tracker:setup.openInBrowser")}
             </Button>

@@ -42,6 +42,8 @@
   },
   "chart": {
     "evolution": "Evolução",
+    "teamEvolution": "Evolução do time",
+    "metricSelector": "Métrica do gráfico",
     "combo": "Combo",
     "noData": "Sem dados para este período",
     "ariaLabel": "Gráfico de evolução de {{metric}}",
@@ -118,6 +120,10 @@
     }
   },
   "filters": {
+    "scope": {
+      "me": "Só eu",
+      "team": "Meu time"
+    },
     "playlistAriaLabel": "Filtrar por playlist",
     "matchTypeAriaLabel": "Filtrar por tipo de partida",
     "playlists": {

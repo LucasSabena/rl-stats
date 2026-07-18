@@ -1,64 +1,28 @@
 {
+  "actions": { "skip": "Pular por enquanto", "close": "Fechar guia", "back": "Voltar", "next": "Próximo" },
   "welcome": {
-    "title": "Bem-vindo ao RL Stats",
-    "description": "Seu terminal de desempenho pessoal para Rocket League. Analise suas partidas em tempo real e descubra padrões no seu jogo.",
-    "cta": "Começar"
+    "eyebrow": "Seu centro de desempenho", "title": "Bem-vindo a uma forma mais clara de entender suas partidas",
+    "description": "Primeiro verificamos o Rocket League e sua conta. Depois guiamos você pelo app real e destacamos cada ferramenta importante.",
+    "local": "Dados privados e locais", "automatic": "Detecção automática", "guided": "Tour dentro do app", "cta": "Preparar meu app"
   },
-  "connection": {
-    "title": "Conexão Local",
-    "description": "O app se conecta diretamente ao stream de dados do Rocket League no seu PC através de uma conexão TCP local na porta <port>49123</port>.",
-    "howItWorks": "Como funciona",
-    "bullet1": "O Rocket League envia eventos em tempo real pela porta 49123.",
-    "bullet2": "O app escuta esses eventos e os processa localmente.",
-    "bullet3": "Todos os dados são armazenados apenas no seu PC — nada vai para a internet.",
-    "back": "Voltar",
-    "understood": "Entendi"
+  "setup": {
+    "eyebrow": "Configuração inteligente", "title": "Vamos conectar o jogo e a conta correta", "description": "Buscamos instalações reais da Steam e Epic e lemos as contas locais da Steam. Você sempre pode revisar a seleção.",
+    "gameTitle": "Instalação do Rocket League", "accountTitle": "Conta local", "detected": "Detectado", "pending": "Pendente",
+    "searchingGame": "Buscando na Steam, Epic e locais conhecidos…", "searchingAccount": "Lendo contas locais da Steam…", "alreadyConfigured": "API já configurada",
+    "noGame": "Nenhuma instalação válida foi encontrada. Cole a pasta do Rocket League para validar ou configure depois.",
+    "noAccount": "Nenhuma conta local foi encontrada. Você pode continuar: o app identificará seu PrimaryId exato ao entrar em uma partida.",
+    "pathPlaceholder": "Pasta do Rocket League…", "validatePath": "Validar pasta", "active": "Ativa", "detectAgain": "Detectar novamente",
+    "detectError": "Não foi possível concluir a detecção automática.", "invalidPath": "Essa pasta não contém uma instalação válida do Rocket League.", "saveError": "Não foi possível salvar a configuração.",
+    "later": "Configurar depois", "configure": "Configurar e explorar"
   },
-  "identity": {
-    "title": "Quem é você no jogo?",
-    "description": "Precisamos do seu nome exato no Rocket League para identificá-lo uma vez e depois definir seu PrimaryId automaticamente.",
-    "playerNameLabel": "Nome no jogo",
-    "playerNamePlaceholder": "Ex.: Si Locura",
-    "hint": "Se você mudar de nick depois, poderá atualizá-lo nas Configurações.",
-    "error": "Insira seu nome exato no Rocket League.",
-    "saving": "Salvando...",
-    "next": "Próximo",
-    "back": "Voltar"
-  },
-  "findGame": {
-    "title": "Encontrar Rocket League",
-    "description": "Buscamos sua instalação do Rocket League para configurar automaticamente a API de estatísticas.",
-    "autoDetect": "Detecção automática",
-    "recommended": "Recomendado",
-    "manual": "Manual",
-    "steam": "Steam",
-    "epic": "Epic Games",
-    "autoDetectError": "Instalação não detectada automaticamente. Tente buscar manualmente.",
-    "manualHint": "Para configurar manualmente, certifique-se de que o Rocket League está instalado e execute o app como administrador.",
-    "searching": "Buscando instalação...",
-    "next": "Próximo",
-    "back": "Voltar"
-  },
-  "features": {
-    "title": "O que o RL Stats oferece?",
-    "liveDashboard": {
-      "title": "Painel ao Vivo",
-      "desc": "Monitore cada partida em tempo real."
-    },
-    "matchHistory": {
-      "title": "Histórico de Partidas",
-      "desc": "Acesse seus resultados e estatísticas passadas."
-    },
-    "analytics": {
-      "title": "Análises de Desempenho",
-      "desc": "Visualize tendências e padrões no seu jogo."
-    },
-    "back": "Voltar",
-    "next": "Próximo"
-  },
-  "complete": {
-    "title": "Tudo pronto!",
-    "description": "Agora abra o Rocket League e o app começará a detectar suas partidas automaticamente.",
-    "cta": "Começar a explorar"
+  "tour": {
+    "progress": "Passo {{current}} de {{total}}", "finish": "Concluir",
+    "live": { "title": "A partida, enquanto acontece", "description": "Ao Vivo reúne placar, jogadores, eventos e MMR. Ele começa a ouvir automaticamente quando o Rocket League abre." },
+    "connection": { "title": "Um sinal fácil de entender", "description": "Este indicador mostra se o stream local está conectado, esperando o jogo ou precisa de atenção." },
+    "history": { "title": "Cada partida fica salva", "description": "Volte a resultados anteriores, filtre partidas e abra todos os detalhes sem depender de serviços externos." },
+    "analytics": { "title": "Tendências, não uma parede de números", "description": "As análises organizam sessões, evolução e pontos fortes para encontrar padrões reais." },
+    "players": { "title": "Reconheça quem volta", "description": "O diretório conecta adversários e companheiros ao histórico que compartilharam com você." },
+    "profiles": { "title": "Cada conta mantém seus dados", "description": "Use perfis separados para não misturar estatísticas. A detecção inteligente avisa quando outra conta está ativa." },
+    "settings": { "title": "Tudo pode ser revisado", "description": "Nos Ajustes você pode alterar identidade, instalação, overlay e privacidade, ou reiniciar este guia." }
   }
 }

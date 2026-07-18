@@ -18,6 +18,8 @@ const TRACKER_PROVIDER: &str = "tracker";
 const RLSTATS_PROVIDER: &str = "rlstats";
 const RAPIDAPI_PROVIDER: &str = "rapidapi";
 const LOCAL_ESTIMATE_PROVIDER: &str = "local-estimate";
+const HISTORY_PROVIDER: &str = "history";
+const LOBBY_ESTIMATE_PROVIDER: &str = "lobby-estimate";
 const LOCAL_ESTIMATE_PLATFORM: &str = "local";
 const RAPIDAPI_HOST: &str = "rocket-league1.p.rapidapi.com";
 const RAPIDAPI_BASE: &str = "https://rocket-league1.p.rapidapi.com";
@@ -36,6 +38,10 @@ pub struct LiveMmrSnapshot {
     pub playlist_confidence: String,
     pub fetched_at: String,
     pub players: Vec<LivePlayerMmr>,
+    pub exact_count: usize,
+    pub historical_count: usize,
+    pub estimated_count: usize,
+    pub unavailable_count: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -56,6 +62,7 @@ pub struct LivePlayerMmr {
     pub stale: bool,
     pub estimate_matches_since_refresh: Option<u32>,
     pub updated_at: Option<String>,
+    pub warning: Option<String>,
     pub error: Option<String>,
 }
 
@@ -125,6 +132,7 @@ pub async fn resolve_lobby_mmr(
 ) -> AppResult<LiveMmrSnapshot> {
     let inference = infer_playlist(players.iter());
     let fetched_at = Utc::now().to_rfc3339();
+    let local_identity = local_primary_id.clone();
 
     let mut join_set = JoinSet::new();
     for player in players {
@@ -159,19 +167,82 @@ pub async fn resolve_lobby_mmr(
         }
     }
 
+    apply_lobby_estimates(
+        &mut resolved,
+        local_identity.as_deref(),
+        inference.primary.as_deref(),
+    );
+
     resolved.sort_by(|left, right| {
         left.platform
             .cmp(&right.platform)
             .then_with(|| left.player_name.cmp(&right.player_name))
     });
 
+    let exact_count = resolved
+        .iter()
+        .filter(|player| player.mmr.is_some() && !player.estimated && !player.stale)
+        .count();
+    let historical_count = resolved
+        .iter()
+        .filter(|player| player.mmr.is_some() && !player.estimated && player.stale)
+        .count();
+    let estimated_count = resolved
+        .iter()
+        .filter(|player| player.mmr.is_some() && player.estimated)
+        .count();
+    let unavailable_count = resolved
+        .iter()
+        .filter(|player| player.mmr.is_none())
+        .count();
     Ok(LiveMmrSnapshot {
         playlist: inference.primary,
         playlist_candidates: inference.candidates,
         playlist_confidence: inference.confidence.into(),
         fetched_at,
         players: resolved,
+        exact_count,
+        historical_count,
+        estimated_count,
+        unavailable_count,
     })
+}
+
+fn apply_lobby_estimates(
+    players: &mut [LivePlayerMmr],
+    local_primary_id: Option<&str>,
+    playlist: Option<&str>,
+) {
+    let Some(local_primary_id) = local_primary_id else {
+        return;
+    };
+    let Some(baseline) = players
+        .iter()
+        .find(|player| player.primary_id == local_primary_id)
+        .and_then(|player| player.mmr)
+    else {
+        return;
+    };
+
+    for player in players.iter_mut() {
+        if player.primary_id == local_primary_id || player.mmr.is_some() {
+            continue;
+        }
+
+        player.mmr = Some(baseline);
+        player.playlist = playlist
+            .map(str::to_string)
+            .or_else(|| player.playlist.clone());
+        player.source = Some(LOBBY_ESTIMATE_PROVIDER.into());
+        player.cached = false;
+        player.estimated = true;
+        player.stale = false;
+        player.warning = Some(
+            "Estimacion de lobby: usa tu MMR conocido como referencia de matchmaking; no es el valor exacto de este jugador."
+                .into(),
+        );
+        player.error = None;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -204,6 +275,7 @@ async fn resolve_player_mmr(
                 stale: false,
                 estimate_matches_since_refresh: None,
                 updated_at: None,
+                warning: None,
                 error: Some(error.to_string()),
             };
         }
@@ -236,7 +308,7 @@ async fn resolve_player_mmr(
                     } else {
                         Some(local_estimate.updated_at.clone())
                     },
-                    error: if local_estimate.estimated {
+                    warning: if local_estimate.estimated {
                         Some(if local_estimate.stale {
                             "MMR local estimado. Ya acumulo varias partidas sin refrescarse online."
                                 .into()
@@ -246,6 +318,7 @@ async fn resolve_player_mmr(
                     } else {
                         None
                     },
+                    error: None,
                 };
             }
         }
@@ -253,82 +326,142 @@ async fn resolve_player_mmr(
 
     if let Some(ref resolved_playlist) = inference.primary {
         let mut attempted_errors = Vec::new();
+        let mut rapidapi_failed = false;
+        let mut tracker_failed = false;
+        let mut rlstats_failed = false;
 
         for playlist_key in &inference.candidates {
-            match resolve_with_rapidapi(
-                &db_pool,
-                rapidapi_key.clone(),
-                rapidapi_enabled,
-                &identity,
-                playlist_key,
-            )
-            .await
-            {
-                Ok(entry) => {
-                    if is_local_player {
-                        let _ = sync_local_trusted_mmr(
-                            &db_pool,
-                            &identity.source_primary_id,
-                            playlist_key,
-                            entry.mmr,
-                        );
-                    }
-                    return build_player_result(
-                        identity,
-                        Some(playlist_key.clone()),
-                        entry,
-                        maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
-                    );
-                }
-                Err(error) => {
-                    attempted_errors.push(format!("RapidAPI [{}]: {}", playlist_key, error))
-                }
-            }
-
-            match resolve_with_tracker(&db_pool, tracker_api_key.clone(), &identity, playlist_key)
+            if rapidapi_enabled && rapidapi_key.is_some() && !rapidapi_failed {
+                match resolve_with_rapidapi(
+                    &db_pool,
+                    rapidapi_key.clone(),
+                    rapidapi_enabled,
+                    &identity,
+                    playlist_key,
+                )
                 .await
-            {
-                Ok(entry) => {
-                    if is_local_player {
-                        let _ = sync_local_trusted_mmr(
-                            &db_pool,
-                            &identity.source_primary_id,
-                            playlist_key,
-                            entry.mmr,
+                {
+                    Ok(entry) if entry.mmr.is_some() => {
+                        if is_local_player {
+                            let _ = sync_local_trusted_mmr(
+                                &db_pool,
+                                &identity.source_primary_id,
+                                playlist_key,
+                                entry.mmr,
+                            );
+                        }
+                        return build_player_result(
+                            identity,
+                            Some(playlist_key.clone()),
+                            entry,
+                            maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
                         );
                     }
-                    return build_player_result(
-                        identity,
-                        Some(playlist_key.clone()),
-                        entry,
-                        maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
-                    );
-                }
-                Err(error) => {
-                    attempted_errors.push(format!("Tracker [{}]: {}", playlist_key, error))
+                    Ok(_) => attempted_errors.push(format!(
+                        "RapidAPI [{}]: el perfil no tiene MMR para esta playlist",
+                        playlist_key
+                    )),
+                    Err(error) => {
+                        attempted_errors.push(format!("RapidAPI [{}]: {}", playlist_key, error));
+                        rapidapi_failed = true;
+                    }
                 }
             }
 
-            match resolve_with_rlstats(&db_pool, &identity, playlist_key).await {
-                Ok(entry) => {
-                    if is_local_player {
-                        let _ = sync_local_trusted_mmr(
-                            &db_pool,
-                            &identity.source_primary_id,
-                            playlist_key,
-                            entry.mmr,
+            if tracker_api_key.is_some() && !tracker_failed {
+                match resolve_with_tracker(
+                    &db_pool,
+                    tracker_api_key.clone(),
+                    &identity,
+                    playlist_key,
+                )
+                .await
+                {
+                    Ok(entry) if entry.mmr.is_some() => {
+                        if is_local_player {
+                            let _ = sync_local_trusted_mmr(
+                                &db_pool,
+                                &identity.source_primary_id,
+                                playlist_key,
+                                entry.mmr,
+                            );
+                        }
+                        return build_player_result(
+                            identity,
+                            Some(playlist_key.clone()),
+                            entry,
+                            maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
                         );
                     }
-                    return build_player_result(
-                        identity,
-                        Some(playlist_key.clone()),
-                        entry,
-                        maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
-                    );
+                    Ok(_) => attempted_errors.push(format!(
+                        "Tracker [{}]: el perfil no tiene MMR para esta playlist",
+                        playlist_key
+                    )),
+                    Err(error) => {
+                        attempted_errors.push(format!("Tracker [{}]: {}", playlist_key, error));
+                        tracker_failed = true;
+                    }
                 }
-                Err(error) => {
-                    attempted_errors.push(format!("RLStats [{}]: {}", playlist_key, error))
+            }
+
+            if !rlstats_failed {
+                match resolve_with_rlstats(&db_pool, &identity, playlist_key).await {
+                    Ok(entry) if entry.mmr.is_some() => {
+                        if is_local_player {
+                            let _ = sync_local_trusted_mmr(
+                                &db_pool,
+                                &identity.source_primary_id,
+                                playlist_key,
+                                entry.mmr,
+                            );
+                        }
+                        return build_player_result(
+                            identity,
+                            Some(playlist_key.clone()),
+                            entry,
+                            maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
+                        );
+                    }
+                    Ok(_) => attempted_errors.push(format!(
+                        "RLStats [{}]: el perfil no tiene MMR para esta playlist",
+                        playlist_key
+                    )),
+                    Err(error) => {
+                        attempted_errors.push(format!("RLStats [{}]: {}", playlist_key, error));
+                        rlstats_failed = true;
+                    }
                 }
+            }
+        }
+
+        for playlist_key in &inference.candidates {
+            if let Ok(Some(mmr)) = get_latest_player_mmr_for_playlist(
+                &db_pool,
+                &identity.source_primary_id,
+                playlist_key,
+            ) {
+                return LivePlayerMmr {
+                    primary_id: identity.source_primary_id,
+                    player_name: identity.player_name,
+                    platform: identity.tracker_platform,
+                    identifier: identity.identifier,
+                    playlist: Some(playlist_key.clone()),
+                    mmr: Some(mmr),
+                    rank_name: None,
+                    division: None,
+                    matches_played: None,
+                    source: Some(HISTORY_PROVIDER.into()),
+                    cached: true,
+                    estimated: false,
+                    stale: true,
+                    estimate_matches_since_refresh: None,
+                    updated_at: None,
+                    warning: Some(
+                        "Ultimo MMR exacto guardado para este jugador; puede haber cambiado desde esa partida."
+                            .into(),
+                    ),
+                    error: None,
+                };
             }
         }
 
@@ -354,6 +487,7 @@ async fn resolve_player_mmr(
             stale: false,
             estimate_matches_since_refresh: None,
             updated_at: None,
+            warning: None,
             error: Some(if let Some(detailed_error) = detailed_error {
                 if inference.confidence == "low" {
                     format!(
@@ -395,6 +529,7 @@ async fn resolve_player_mmr(
         stale: false,
         estimate_matches_since_refresh: None,
         updated_at: None,
+        warning: None,
         error: Some(
             "No pudimos inferir la playlist actual con suficiente confianza desde la Stats API."
                 .into(),
@@ -406,7 +541,7 @@ fn build_player_result(
     identity: ProviderIdentity,
     playlist: Option<String>,
     entry: ResolvedMmrEntry,
-    error: Option<String>,
+    warning: Option<String>,
 ) -> LivePlayerMmr {
     LivePlayerMmr {
         primary_id: identity.source_primary_id,
@@ -424,7 +559,8 @@ fn build_player_result(
         stale: false,
         estimate_matches_since_refresh: None,
         updated_at: None,
-        error,
+        warning,
+        error: None,
     }
 }
 
@@ -597,6 +733,17 @@ async fn resolve_with_rlstats(
     let response = client.get(url).send().await?;
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
+
+    if body.contains("Just a moment...")
+        || body.contains("cf-browser-verification")
+        || body.contains("cf-chl-")
+        || body.contains("Enable JavaScript and cookies to continue")
+    {
+        return Err(AppError::ConnectionError(
+            "RLStats bloqueo la consulta automatica con Cloudflare; el perfil solo esta disponible desde un navegador."
+                .into(),
+        ));
+    }
 
     if !status.is_success() {
         return Err(AppError::ConnectionError(format!(
@@ -1502,10 +1649,51 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_last_quoted_literal, extract_rlstats_columns, infer_playlist, parse_primary_id,
-        parse_rapidapi_profile, parse_rlstats_profile,
+        apply_lobby_estimates, extract_last_quoted_literal, extract_rlstats_columns,
+        infer_playlist, parse_primary_id, parse_rapidapi_profile, parse_rlstats_profile,
+        LivePlayerMmr,
     };
     use crate::core::models::LivePlayer;
+
+    fn mmr_player(primary_id: &str, mmr: Option<i32>) -> LivePlayerMmr {
+        LivePlayerMmr {
+            primary_id: primary_id.into(),
+            player_name: primary_id.into(),
+            platform: "epic".into(),
+            identifier: primary_id.into(),
+            playlist: Some("doubles".into()),
+            mmr,
+            rank_name: None,
+            division: None,
+            matches_played: None,
+            source: mmr.map(|_| "rapidapi".into()),
+            cached: false,
+            estimated: false,
+            stale: false,
+            estimate_matches_since_refresh: None,
+            updated_at: None,
+            warning: None,
+            error: mmr.is_none().then(|| "unavailable".into()),
+        }
+    }
+
+    #[test]
+    fn lobby_estimate_fills_only_unresolved_players() {
+        let mut players = vec![
+            mmr_player("local", Some(1_250)),
+            mmr_player("unknown", None),
+            mmr_player("exact", Some(1_310)),
+        ];
+
+        apply_lobby_estimates(&mut players, Some("local"), Some("doubles"));
+
+        assert_eq!(players[1].mmr, Some(1_250));
+        assert!(players[1].estimated);
+        assert_eq!(players[1].source.as_deref(), Some("lobby-estimate"));
+        assert!(players[1].error.is_none());
+        assert_eq!(players[2].mmr, Some(1_310));
+        assert!(!players[2].estimated);
+    }
 
     #[test]
     fn parse_primary_id_maps_platforms() {

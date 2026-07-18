@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { BarChart3 } from "lucide-react";
 import type { DailyRollup, DataScope } from "@/lib/types";
+import { useTranslation } from "react-i18next";
 
 type ChartMetric = "winRate" | "matchesPlayed" | "avgScore" | "goals" | "assists" | "saves" | "demos";
 
@@ -24,14 +25,14 @@ interface PerformanceChartProps {
   scope?: DataScope;
 }
 
-const METRICS: { key: ChartMetric; label: string; color: string; type: "rate" | "volume" }[] = [
-  { key: "winRate", label: "WR", color: "var(--color-accent-primary)", type: "rate" },
-  { key: "matchesPlayed", label: "Part.", color: "var(--color-accent-purple)", type: "volume" },
-  { key: "avgScore", label: "Punt.", color: "var(--color-accent-success)", type: "volume" },
-  { key: "goals", label: "Goles", color: "var(--color-accent-secondary)", type: "volume" },
-  { key: "assists", label: "Asist.", color: "var(--color-accent-purple)", type: "volume" },
-  { key: "saves", label: "Paradas", color: "var(--color-accent-primary)", type: "volume" },
-  { key: "demos", label: "Demos", color: "var(--color-accent-danger)", type: "volume" },
+const METRICS: { key: ChartMetric; labelKey: string; color: string; type: "rate" | "volume" }[] = [
+  { key: "winRate", labelKey: "chart.metrics.wr", color: "var(--color-accent-primary)", type: "rate" },
+  { key: "matchesPlayed", labelKey: "chart.metrics.matches", color: "var(--color-accent-purple)", type: "volume" },
+  { key: "avgScore", labelKey: "chart.metrics.score", color: "var(--color-accent-success)", type: "volume" },
+  { key: "goals", labelKey: "chart.metrics.goals", color: "var(--color-accent-secondary)", type: "volume" },
+  { key: "assists", labelKey: "chart.metrics.assists", color: "var(--color-accent-purple)", type: "volume" },
+  { key: "saves", labelKey: "chart.metrics.saves", color: "var(--color-accent-primary)", type: "volume" },
+  { key: "demos", labelKey: "chart.metrics.demos", color: "var(--color-accent-danger)", type: "volume" },
 ];
 
 export const PerformanceChart = memo(function PerformanceChart({
@@ -39,6 +40,7 @@ export const PerformanceChart = memo(function PerformanceChart({
   defaultMetric = "winRate",
   scope,
 }: PerformanceChartProps) {
+  const { t } = useTranslation("analytics");
   const [metric, setMetric] = useState<ChartMetric>(defaultMetric);
   const [combo, setCombo] = useState(true);
 
@@ -72,7 +74,7 @@ export const PerformanceChart = memo(function PerformanceChart({
   if (chartData.length === 0) {
     return (
       <Card className="flex h-64 items-center justify-center">
-        <p className="text-sm text-text-secondary">No hay datos para este periodo</p>
+        <p className="text-sm text-text-secondary">{t("chart.noData")}</p>
       </Card>
     );
   }
@@ -81,15 +83,17 @@ export const PerformanceChart = memo(function PerformanceChart({
     <Card>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="font-display text-sm font-semibold text-text-primary">
-          {scope === "team" ? "Evolución del equipo" : "Evolución"}
+          {scope === "team" ? t("chart.teamEvolution") : t("chart.evolution")}
         </h3>
 
         <div className="flex items-center gap-2">
-          <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-border-subtle bg-bg-panel p-0.5">
+          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-border-subtle bg-bg-panel p-0.5 scrollbar-hide" aria-label={t("chart.metricSelector")}>
             {METRICS.map((m) => (
               <button
                 key={m.key}
+                type="button"
                 onClick={() => { setMetric(m.key); setCombo(false); }}
+                aria-pressed={metric === m.key && !combo}
                 className={cn(
                   "rounded-md px-2.5 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
                   metric === m.key && !combo
@@ -97,13 +101,15 @@ export const PerformanceChart = memo(function PerformanceChart({
                     : "text-text-secondary hover:text-text-primary"
                 )}
               >
-                {m.label}
+                {t(m.labelKey)}
               </button>
             ))}
           </div>
 
           <button
             onClick={() => setCombo(!combo)}
+            type="button"
+            aria-pressed={combo}
             className={cn(
               "flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
               combo
@@ -112,12 +118,12 @@ export const PerformanceChart = memo(function PerformanceChart({
             )}
           >
             <BarChart3 size={14} />
-            Combo
+            {t("chart.combo")}
           </button>
         </div>
       </div>
 
-      <div role="img" aria-label={`Gráfico de evolución de ${currentMetricDef.label}`} className="h-80 max-sm:h-64">
+      <div role="img" aria-label={t("chart.ariaLabel", { metric: t(currentMetricDef.labelKey) })} className="h-80 max-sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
           {combo ? (
             <ComposedChart data={chartData}>
@@ -171,7 +177,7 @@ export const PerformanceChart = memo(function PerformanceChart({
               <Bar
                 yAxisId="right"
                 dataKey={volumeMetricKey}
-                name={volumeMetricDef.label}
+                name={t(volumeMetricDef.labelKey)}
                 fill={volumeMetricDef.color}
                 fillOpacity={0.6}
                 radius={[4, 4, 0, 0]}
@@ -210,7 +216,7 @@ export const PerformanceChart = memo(function PerformanceChart({
               <Area
                 type="monotone"
                 dataKey={metric}
-                name={currentMetricDef.label}
+                name={t(currentMetricDef.labelKey)}
                 stroke={currentMetricDef.color}
                 strokeWidth={2}
                 fill={`url(#gradient-${metric})`}

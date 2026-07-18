@@ -6,7 +6,7 @@ export type ConnectionStatus =
   | "connecting"
   | "game_not_running";
 
-export type Team = 0 | 1;
+export type Team = 0 | 1 | -1;
 
 export interface Player {
   id: string;
@@ -64,6 +64,8 @@ export interface SessionSummary {
   score_blue: number;
   score_orange: number;
   winner: number | null;
+  local_primary_id: string | null;
+  local_team_num: number | null;
   players: {
     id: number;
     primary_id: string;
@@ -572,6 +574,7 @@ export interface LiveMmrPlayer {
   stale: boolean;
   estimateMatchesSinceRefresh: number | null;
   updatedAt: string | null;
+  warning: string | null;
   error: string | null;
 }
 
@@ -581,12 +584,27 @@ export interface LiveMmrSnapshot {
   playlistConfidence: string;
   fetchedAt: string;
   players: LiveMmrPlayer[];
+  exactCount: number;
+  historicalCount: number;
+  estimatedCount: number;
+  unavailableCount: number;
 }
 
 export interface RlInstallation {
   path: string;
   platform: "steam" | "epic";
   valid: boolean;
+  source: string;
+  configured: boolean;
+}
+
+export interface DetectedAccount {
+  primary_id: string;
+  platform: "steam" | "epic";
+  display_name: string;
+  account_name: string;
+  active: boolean;
+  source: string;
 }
 
 // ─── Player Directory ────────────────────────────────────────────────────────
@@ -659,6 +677,9 @@ export interface Profile {
   id: string;
   name: string;
   createdAt: string;
+  created_at?: string;
+  player_name?: string | null;
+  local_primary_id?: string | null;
 }
 
 // ─── Friends ─────────────────────────────────────────────────────────────────
@@ -749,30 +770,6 @@ export interface ShareContext {
   win?: boolean;
   dateLabel: string;
   matchPlayers?: SharePlayer[];
-}
-
-export interface ShareStat {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}
-
-export interface SharePlayer {
-  name: string;
-  score: number;
-  goals: number;
-  assists: number;
-  saves: number;
-  isLocal: boolean;
-}
-
-export interface SharePlayer {
-  name: string;
-  score: number;
-  goals: number;
-  assists: number;
-  saves: number;
-  isLocal: boolean;
 }
 
 export interface ShareStat {

@@ -42,6 +42,8 @@
   },
   "chart": {
     "evolution": "Evolution",
+    "teamEvolution": "Team evolution",
+    "metricSelector": "Chart metric",
     "combo": "Combo",
     "noData": "No data for this period",
     "ariaLabel": "Evolution chart for {{metric}}",
@@ -118,6 +120,10 @@
     }
   },
   "filters": {
+    "scope": {
+      "me": "Just me",
+      "team": "My team"
+    },
     "playlistAriaLabel": "Filter by playlist",
     "matchTypeAriaLabel": "Filter by match type",
     "playlists": {

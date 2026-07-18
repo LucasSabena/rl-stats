@@ -21,7 +21,8 @@
   "result": {
     "draw": "Empate {{scoreBlue}} - {{scoreOrange}}",
     "win": "Victoria! {{scoreBlue}} - {{scoreOrange}}",
-    "loss": "Derrota {{scoreBlue}} - {{scoreOrange}}"
+    "loss": "Derrota {{scoreBlue}} - {{scoreOrange}}",
+    "final": "Final {{scoreBlue}} - {{scoreOrange}}"
   },
   "matchEnd": {
     "summary": "Duracion: {{duration}} | {{count}} jugadores",
@@ -48,8 +49,18 @@
   "mmr": {
     "average": "MMR promedio",
     "searching": "Buscando...",
-    "errorLabel": "Error",
-    "errorTitle": "Error de MMR"
+    "unavailable": "Sin dato",
+    "infoLabel": "Info",
+    "unavailableTitle": "MMR no disponible",
+    "estimateTitle": "Cómo se calculó este MMR",
+    "unavailableDetails": "Ver por qué no está disponible el MMR",
+    "estimateDetails": "Ver detalles de la estimación",
+    "coverage": "Cobertura MMR",
+    "exact": "{{count}} exactos",
+    "historical": "{{count}} históricos",
+    "estimated": "{{count}} estimados",
+    "unavailableCount": "{{count}} sin dato",
+    "coverageHint": "Los datos históricos y estimados se identifican por separado; nunca se presentan como el MMR actual exacto."
   },
   "players": {
     "bots": "Bots",

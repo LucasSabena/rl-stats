@@ -2,7 +2,14 @@ import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useAccountMismatchStore } from "@/stores/accountMismatchStore";
 import { useProfileStore } from "@/stores/profileStore";
-import { restartApp, updateProfilePlayerIdentity } from "@/lib/api";
+import {
+  detectLocalAccounts,
+  findMatchingProfile,
+  getActiveProfile,
+  getSettings,
+  restartApp,
+  updateProfilePlayerIdentity,
+} from "@/lib/api";
 
 interface RawMismatchPayload {
   detected_primary_id: string;
@@ -49,6 +56,44 @@ export function useAccountMismatch() {
           }
         },
       );
+
+      // Steam exposes the currently active local account before the first
+      // match packet arrives, so profile mismatches can be resolved up front.
+      try {
+        const [settings, activeProfile, accounts] = await Promise.all([
+          getSettings(),
+          getActiveProfile(),
+          detectLocalAccounts(),
+        ]);
+        const activeAccount = accounts.find((account) => account.active);
+        if (
+          activeAccount &&
+          settings.warnOnProfileMismatch !== false &&
+          settings.localPrimaryId !== activeAccount.primary_id
+        ) {
+          const match = await findMatchingProfile(
+            activeAccount.primary_id,
+            activeAccount.display_name,
+          );
+          setMismatch({
+            detectedPrimaryId: activeAccount.primary_id,
+            detectedPlayerName: activeAccount.display_name,
+            currentProfileId: activeProfile.id,
+            currentProfileName: activeProfile.name,
+            matchedProfileId:
+              match && match.id !== activeProfile.id ? match.id : null,
+            matchedProfileName:
+              match && match.id !== activeProfile.id ? match.name : null,
+            matchedProfileIsExactPrimaryId:
+              Boolean(match?.local_primary_id) &&
+              match?.local_primary_id === activeAccount.primary_id,
+            autoSwitchEnabled: settings.autoSwitchProfileOnExactMatch ?? false,
+          });
+        }
+      } catch {
+        // Steam may not be installed or Tauri may still be starting. Live
+        // packet identity detection remains the authoritative fallback.
+      }
     }
 
     setup();

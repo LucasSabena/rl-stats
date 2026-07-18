@@ -11,9 +11,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "@/components/layout/AppShell";
 import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { CURRENT_ONBOARDING_VERSION } from "@/stores/settingsStore";
 import { useAutoUpdateCheck } from "@/hooks/useAutoUpdateCheck";
 import { useAccountMismatch } from "@/hooks/useAccountMismatch";
 import { useCloudAutoSync } from "@/hooks/useCloudAutoSync";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { reportFrontendError } from "@/lib/api";
 
 const OverlayView = lazy(() =>
   import("@/components/overlay/OverlayView").then((module) => ({
@@ -92,7 +95,9 @@ function AppFallback({ transparent = false }: { transparent?: boolean }) {
 
 function AppContent() {
   const hasCompletedOnboarding = useSettingsStore(
-    (s) => s.hasCompletedOnboarding,
+    (s) =>
+      s.hasCompletedOnboarding &&
+      s.onboardingVersion >= CURRENT_ONBOARDING_VERSION,
   );
   const completeOnboarding = useSettingsStore((s) => s.completeOnboarding);
   const [isOverlayWindow, setIsOverlayWindow] = useState(false);
@@ -117,6 +122,28 @@ function AppContent() {
     setDetecting(false);
   }, []);
 
+  useEffect(() => {
+    const reportWindowError = (event: ErrorEvent) => {
+      void reportFrontendError(
+        event.message || "Unhandled browser error",
+        event.error instanceof Error ? event.error.stack : undefined,
+      ).catch(() => undefined);
+    };
+    const reportRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      void reportFrontendError(
+        reason instanceof Error ? reason.message : String(reason),
+        reason instanceof Error ? reason.stack : undefined,
+      ).catch(() => undefined);
+    };
+    window.addEventListener("error", reportWindowError);
+    window.addEventListener("unhandledrejection", reportRejection);
+    return () => {
+      window.removeEventListener("error", reportWindowError);
+      window.removeEventListener("unhandledrejection", reportRejection);
+    };
+  }, []);
+
   // Show nothing while detecting window type to avoid flash
   if (detecting) return null;
 
@@ -130,9 +157,9 @@ function AppContent() {
   }
 
   return (
-    <>
-      <Suspense fallback={<AppFallback />}>
-        <BrowserRouter>
+    <BrowserRouter>
+      <>
+        <Suspense fallback={<AppFallback />}>
           <Routes>
             <Route
               element={
@@ -154,24 +181,26 @@ function AppContent() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
-        </BrowserRouter>
-      </Suspense>
-
-      {!hasCompletedOnboarding && (
-        <Suspense fallback={null}>
-          <OnboardingOverlay onComplete={completeOnboarding} />
         </Suspense>
-      )}
 
-      <AccountMismatchDialog />
-    </>
+        {!hasCompletedOnboarding && (
+          <Suspense fallback={null}>
+            <OnboardingOverlay onComplete={completeOnboarding} />
+          </Suspense>
+        )}
+
+        <AccountMismatchDialog />
+      </>
+    </BrowserRouter>
   );
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppContent />
+      <AppErrorBoundary>
+        <AppContent />
+      </AppErrorBoundary>
     </QueryClientProvider>
   );
 }

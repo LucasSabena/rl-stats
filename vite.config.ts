@@ -27,6 +27,21 @@ export default defineConfig(async () => ({
       ],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          if (id.includes("@tauri-apps")) return "tauri";
+          if (id.includes("@tanstack")) return "query";
+          if (id.includes("i18next")) return "i18n";
+          if (id.includes("react") || id.includes("scheduler")) return "react";
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

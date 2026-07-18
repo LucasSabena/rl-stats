@@ -26,7 +26,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border p-4 transition-all duration-300 cubic-bezier(0.16, 1, 0.3, 1) relative overflow-hidden",
+        "relative overflow-hidden rounded-xl border p-4 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
         variants[variant],
         hoverable && "cursor-pointer group hover:-translate-y-1 hover:shadow-level-3 hover:border-border-highlight",
         className
@@ -41,4 +41,3 @@ export function Card({
     </div>
   );
 }
-

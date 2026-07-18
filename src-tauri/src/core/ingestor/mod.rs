@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 /// Default Rocket League Stats API TCP port.
 pub const DEFAULT_RL_PORT: u16 = 49123;
 pub const DEFAULT_RL_HOST: &str = "127.0.0.1";
+const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
 
 /// Ingestor handle returned to the application layer.
 pub struct IngestorHandle {
@@ -36,7 +37,13 @@ pub fn start_ingestor(port: u16, game_running: Arc<AtomicBool>) -> IngestorHandl
     let status_clone = Arc::clone(&status);
     let game_running_clone = Arc::clone(&game_running);
     thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                error!(%error, "Failed to create the ingestor runtime");
+                return;
+            }
+        };
         rt.block_on(async move {
             if let Err(e) = ingestor_loop(status_clone, event_tx, port, game_running_clone).await {
                 error!(error = %e, "Ingestor loop terminated unexpectedly");
@@ -143,6 +150,18 @@ async fn read_events(
         debug!(bytes_read, "Received stats API chunk");
         pending.push_str(&chunk);
 
+        if pending.len() > MAX_PENDING_BYTES {
+            warn!(
+                pending_bytes = pending.len(),
+                "Discarding oversized incomplete Stats API payload"
+            );
+            if let Some(last_object) = pending.rfind('{') {
+                pending.drain(..last_object);
+            } else {
+                pending.clear();
+            }
+        }
+
         let messages = extract_json_messages(&mut pending);
         for message in messages {
             match parse_event(&message) {
@@ -155,7 +174,7 @@ async fn read_events(
                     }
                 }
                 Err(e) => {
-                    warn!(error = %e, line = %message, "Failed to parse event");
+                    warn!(error = %e, payload_bytes = message.len(), "Failed to parse event");
                 }
             }
         }

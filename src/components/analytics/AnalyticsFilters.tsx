@@ -62,8 +62,8 @@ export function AnalyticsFilters({
           value={scope}
           onChange={(val) => onScopeChange(val as DataScope)}
           options={[
-            { value: "me", label: "Solo yo" },
-            { value: "team", label: "Mi equipo" }
+            { value: "me", label: t("analytics:filters.scope.me") },
+            { value: "team", label: t("analytics:filters.scope.team") }
           ]}
           icon={scope === "me" ? <User size={14} /> : <Users size={14} />}
           disabled={isLoading}

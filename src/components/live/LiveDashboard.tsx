@@ -13,7 +13,7 @@ import { useLiveMmr } from "@/hooks/useLiveMmr";
 import { useSettings } from "@/hooks/useSettings";
 import { useLiveHeadToHead } from "@/hooks/useLiveHeadToHead";
 import { cn } from "@/lib/utils";
-import { Radio, X, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Gauge, Radio, X, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 function getMatchSizeLabel(t: (key: string, options?: Record<string, unknown>) => string, playerCount: number | undefined, blueCount: number, orangeCount: number, isOnline: boolean | undefined): string {
@@ -70,7 +70,7 @@ function MatchEndBanner() {
 
   if (!visible || !lastMatchSummary) return null;
 
-  const { score_blue, score_orange, winner, duration_seconds, players } = lastMatchSummary;
+  const { score_blue, score_orange, winner, local_team_num, duration_seconds, players } = lastMatchSummary;
 
   let label = "";
   let bgClass = "";
@@ -78,12 +78,15 @@ function MatchEndBanner() {
   if (winner === null) {
     label = t("live:result.draw", { scoreBlue: score_blue, scoreOrange: score_orange });
     bgClass = "border-border-subtle bg-bg-surface";
-  } else if (winner === 0) {
+  } else if (local_team_num !== null && winner === local_team_num) {
     label = t("live:result.win", { scoreBlue: score_blue, scoreOrange: score_orange });
     bgClass = "border-accent-success/30 bg-accent-success-subtle";
-  } else {
+  } else if (local_team_num !== null) {
     label = t("live:result.loss", { scoreBlue: score_blue, scoreOrange: score_orange });
     bgClass = "border-accent-danger/30 bg-accent-danger-subtle";
+  } else {
+    label = t("live:result.final", { scoreBlue: score_blue, scoreOrange: score_orange });
+    bgClass = "border-border-subtle bg-bg-surface";
   }
 
   const mins = Math.floor(duration_seconds / 60);
@@ -183,23 +186,39 @@ export function LiveDashboard() {
       <RankWidget />
 
       {liveMmr && (
-        <div className="rounded-lg border border-border-subtle bg-bg-secondary/70 px-3 py-2 text-[10px] text-text-tertiary">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-            <span>
+        <div className="rounded-xl border border-border-subtle bg-bg-elevated/70 px-3 py-2.5 shadow-[var(--shadow-card-inner)]" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-1 flex items-center gap-1.5 text-xs font-semibold text-text-primary">
+              <Gauge size={14} className="text-accent-primary" />
+              {t("live:mmr.coverage")}
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent-success/10 px-2 py-1 text-[10px] font-semibold text-accent-success">
+              <CheckCircle2 size={11} /> {t("live:mmr.exact", { count: liveMmr.exactCount })}
+            </span>
+            {liveMmr.historicalCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-1 text-[10px] font-semibold text-text-secondary">
+                <Gauge size={11} /> {t("live:mmr.historical", { count: liveMmr.historicalCount })}
+              </span>
+            ) : null}
+            {liveMmr.estimatedCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-info/10 px-2 py-1 text-[10px] font-semibold text-accent-info">
+                <Gauge size={11} /> {t("live:mmr.estimated", { count: liveMmr.estimatedCount })}
+              </span>
+            ) : null}
+            {liveMmr.unavailableCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-warning/10 px-2 py-1 text-[10px] font-semibold text-accent-warning">
+                <AlertTriangle size={11} /> {t("live:mmr.unavailableCount", { count: liveMmr.unavailableCount })}
+              </span>
+            ) : null}
+            <span className="text-[10px] text-text-tertiary">
               {t("live:playlist.label")} {liveMmr.playlistConfidence === "high" ? t("live:playlist.detected") : liveMmr.playlistConfidence === "low" ? t("live:playlist.estimated") : t("live:playlist.unknown")}:
               <span className="ml-1 font-semibold text-text-secondary">{liveMmr.playlist ?? t("live:playlist.unresolved")}</span>
             </span>
-            {liveMmr.playlistCandidates.length > 1 && (
-              <span>
-                {t("live:playlist.candidates")} <span className="text-text-secondary">{liveMmr.playlistCandidates.join(", ")}</span>
-              </span>
-            )}
-            <span>{t("live:playlist.updated")} {new Date(liveMmr.fetchedAt).toLocaleTimeString("es-AR")}</span>
             {currentMatch?.matchType === "online" && (
               <button
                 onClick={forceRefresh}
                 disabled={isFetchingMmr}
-                className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+                className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-surface px-2.5 py-1 text-[10px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
                 aria-label={t("live:playlist.refreshAriaLabel")}
                 type="button"
               >
@@ -208,6 +227,11 @@ export function LiveDashboard() {
               </button>
             )}
           </div>
+          <p className="mt-2 border-t border-border-subtle pt-2 text-[10px] leading-relaxed text-text-tertiary">
+            {liveMmr.historicalCount + liveMmr.estimatedCount + liveMmr.unavailableCount > 0
+              ? t("live:mmr.coverageHint")
+              : `${t("live:playlist.updated")} ${new Date(liveMmr.fetchedAt).toLocaleTimeString()}`}
+          </p>
         </div>
       )}
 

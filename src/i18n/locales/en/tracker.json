@@ -12,6 +12,8 @@
     "apiKeyLabel": "API Key",
     "apiKeyRequired": "required",
     "apiKeyPlaceholder": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "availabilityTitle": "Limited Rocket League access",
+    "availabilityDescription": "Tracker Network does not offer Rocket League API access to new integrations. This option only works with previously authorized credentials; use RapidAPI for exact live MMR.",
     "hideKey": "Hide",
     "showKey": "Show",
     "howToGetKeyTitle": "How to get the API Key:",

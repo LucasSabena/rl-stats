@@ -21,7 +21,8 @@
   "result": {
     "draw": "Draw {{scoreBlue}} - {{scoreOrange}}",
     "win": "Victory! {{scoreBlue}} - {{scoreOrange}}",
-    "loss": "Defeat {{scoreBlue}} - {{scoreOrange}}"
+    "loss": "Defeat {{scoreBlue}} - {{scoreOrange}}",
+    "final": "Final {{scoreBlue}} - {{scoreOrange}}"
   },
   "matchEnd": {
     "summary": "Duration: {{duration}} | {{count}} players",
@@ -48,8 +49,18 @@
   "mmr": {
     "average": "Avg MMR",
     "searching": "Searching...",
-    "errorLabel": "Error",
-    "errorTitle": "MMR Error"
+    "unavailable": "No data",
+    "infoLabel": "Info",
+    "unavailableTitle": "MMR unavailable",
+    "estimateTitle": "How this MMR was calculated",
+    "unavailableDetails": "See why MMR is unavailable",
+    "estimateDetails": "See estimate details",
+    "coverage": "MMR coverage",
+    "exact": "{{count}} exact",
+    "historical": "{{count}} historical",
+    "estimated": "{{count}} estimated",
+    "unavailableCount": "{{count}} unavailable",
+    "coverageHint": "Historical and estimated values are labeled separately; they are never shown as the exact current MMR."
   },
   "players": {
     "bots": "Bots",

@@ -6,6 +6,16 @@
     "copyClipboard": "Copy",
     "copied": "Copied!",
     "download": "Download PNG",
-    "generating": "Generating image..."
+    "generating": "Generating image...",
+    "previewAlt": "Share card preview",
+    "exportOptions": "Export options",
+    "storyReady": "Story ready",
+    "format": "Format",
+    "dimensions": "Resolution",
+    "ratio": "Aspect ratio",
+    "tip": "Copy the image to paste it directly, or download it at full quality.",
+    "regenerate": "Regenerate preview",
+    "generationError": "The image could not be generated.",
+    "clipboardError": "The image could not be copied. Try downloading it as a PNG."
   }
 }

@@ -38,6 +38,8 @@ interface RawSessionSummary {
   score_blue: number;
   score_orange: number;
   winner: number | null;
+  local_primary_id?: string | null;
+  local_team_num?: number | null;
   players: {
     id: number;
     primary_id: string;
@@ -58,7 +60,7 @@ function mapPlayer(raw: RawPlayer): Player {
   return {
     id: raw.id ?? "unknown",
     name: raw.name ?? "Unknown",
-    team: raw.team === 1 ? (1 as const) : (0 as const),
+    team: raw.team === 0 ? (0 as const) : raw.team === 1 ? (1 as const) : (-1 as const),
     score: raw.score,
     goals: raw.goals,
     shots: raw.shots,
@@ -99,7 +101,11 @@ function mapLiveUpdate(raw: RawLiveUpdate): LiveMatchState {
 }
 
 function mapSessionSummary(raw: RawSessionSummary): SessionSummary {
-  return raw;
+  return {
+    ...raw,
+    local_primary_id: raw.local_primary_id ?? null,
+    local_team_num: raw.local_team_num ?? null,
+  };
 }
 
 export function useLiveMatch() {

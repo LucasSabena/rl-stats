@@ -132,7 +132,7 @@ export function buildMatchShareContext(
     { label: demoLabel(d, heroType === "demos"), value: String(d), highlight: heroType === "demos" },
   ];
 
-  const matchPlayers = match.players
+  const matchPlayers = [...match.players]
     .sort((a, b) => b.score - a.score)
     .map((p) => ({
       name: p.name,

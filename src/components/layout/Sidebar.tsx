@@ -85,6 +85,7 @@ export function Sidebar() {
             <NavLink
               key={item.path}
               to={item.path}
+              data-tour={`nav-${item.path === "/" ? "live" : item.path.slice(1)}`}
               className={({ isActive }) =>
                 cn(
                   "group relative flex items-center gap-3 rounded-xl px-3 py-3 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",

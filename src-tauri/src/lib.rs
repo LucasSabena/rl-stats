@@ -1,4 +1,6 @@
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration as StdDuration, Instant};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -7,7 +9,7 @@ use tauri::{
 #[cfg(not(debug_assertions))]
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{error, info};
 
 mod commands;
 pub mod core;
@@ -41,19 +43,66 @@ pub struct AppState {
     pub overlay_handle: Arc<std::sync::Mutex<Option<tauri::WebviewWindow>>>,
 }
 
+pub(crate) fn diagnostics_log_directory() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("com.lukit.rl-stats")
+        .join("logs")
+}
+
+fn init_diagnostics() -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    let log_directory = diagnostics_log_directory();
+    if let Err(error) = std::fs::create_dir_all(&log_directory) {
+        eprintln!("Could not create diagnostics directory: {error}");
+        return None;
+    }
+
+    let file_appender = tracing_appender::rolling::daily(log_directory, "rl-stats.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_ansi(false)
+        .with_writer(non_blocking);
+
+    if subscriber.try_init().is_err() {
+        return None;
+    }
+
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let payload = panic_info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| {
+                panic_info
+                    .payload()
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+            })
+            .unwrap_or("non-string panic payload");
+        let location = panic_info
+            .location()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "unknown location".to_string());
+        error!(payload, location, "Unhandled Rust panic");
+        previous_hook(panic_info);
+    }));
+
+    Some(guard)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Check if launched with --minimized (autostart)
     let start_minimized = std::env::args().any(|arg| arg == "--minimized");
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    let _diagnostics_guard = init_diagnostics();
 
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -96,6 +145,10 @@ pub fn run() {
             commands::presets::export_preset_json_cmd,
             commands::presets::import_preset_json_cmd,
             commands::detect::detect_rl_path,
+            commands::detect::inspect_rl_path,
+            commands::detect::detect_local_accounts_cmd,
+            commands::diagnostics::report_frontend_error,
+            commands::diagnostics::get_diagnostics_info,
             commands::window::toggle_overlay_mode,
             commands::window::is_overlay_mode,
             commands::tracker::fetch_tracker_profile,
@@ -168,17 +221,12 @@ pub fn run() {
                 });
             }
 
-            let app_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data directory");
-            std::fs::create_dir_all(&app_dir).expect("Failed to create app data directory");
+            let app_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&app_dir)?;
 
-            crate::core::app_sync::init_app_sync(&app_dir)
-                .expect("Failed to initialize app sync storage");
+            crate::core::app_sync::init_app_sync(&app_dir)?;
 
-            let active_profile_id = init_profiles(&app_dir)
-                .expect("Failed to initialize profiles");
+            let active_profile_id = init_profiles(&app_dir)?;
 
             // Attempt recovery from a legacy app-data directory even if profiles.json
             // already exists. This handles Tauri identifier changes.
@@ -189,13 +237,7 @@ pub fn run() {
             let db_path = get_db_path_for_profile(&app_dir, &active_profile_id);
 
             info!(profile_id = %active_profile_id, db_path = %db_path.display(), "Initializing storage");
-            let db_pool = match init_storage(&db_path) {
-                Ok(pool) => Arc::new(pool),
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to initialize storage");
-                    panic!("Storage initialization failed: {}", e);
-                }
-            };
+            let db_pool = Arc::new(init_storage(&db_path)?);
 
             let settings = get_settings(&db_pool).unwrap_or_default();
             let port = settings.port;
@@ -211,8 +253,14 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            let tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+            let tray_builder = TrayIconBuilder::new();
+            let tray_builder = if let Some(icon) = app.default_window_icon() {
+                tray_builder.icon(icon.clone())
+            } else {
+                tracing::warn!("No default tray icon is available");
+                tray_builder
+            };
+            let tray = tray_builder
                 .tooltip("RL Stats")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -374,8 +422,11 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(error) = result {
+        error!(error = %error, "Tauri application exited with an error");
+    }
 }
 
 /// Wrapper to keep the tray icon alive for the app lifetime.
@@ -407,6 +458,8 @@ async fn process_events(
         alerted: false,
         last_detected_id: None,
     };
+    let mut last_live_publish = Instant::now() - StdDuration::from_secs(1);
+    let mut last_identity_check = Instant::now() - StdDuration::from_secs(5);
 
     while let Some(event) = ingestor.event_rx.recv().await {
         let mut session = session_manager.write().await;
@@ -420,6 +473,8 @@ async fn process_events(
                 last_was_win = None;
                 mismatch_state.alerted = false;
                 mismatch_state.last_detected_id = None;
+                last_live_publish = Instant::now() - StdDuration::from_secs(1);
+                last_identity_check = Instant::now() - StdDuration::from_secs(5);
                 obs_text::update_obs_files(0, 0, "");
 
                 let _ = app_handle.emit(
@@ -446,59 +501,74 @@ async fn process_events(
         // Only emit live-update for UpdateState events to avoid flickering
         // from high-frequency non-state events (goals, statfeed, etc.)
         if matches!(&event, RlEvent::UpdateState { .. }) {
-            let live_data = session.live_state();
-            let _ = app_handle.emit("live-update", &live_data);
+            // Rocket League can publish up to 120 snapshots per second. The session still
+            // processes every packet, but UI/IPC work is capped at 20 FPS to avoid saturating
+            // WebView2 and the main thread while the game is under load.
+            if last_live_publish.elapsed() >= StdDuration::from_millis(50) {
+                last_live_publish = Instant::now();
+                let live_data = session.live_state();
+                let _ = app_handle.emit("live-update", &live_data);
 
-            let overlay = app_handle.state::<AppState>().overlay_server.clone();
-            if let Ok(guard) = overlay.try_lock() {
-                if let Some(ref server) = *guard {
-                    server.broadcast_state(&live_data);
-                }
-            };
+                let overlay = app_handle.state::<AppState>().overlay_server.clone();
+                if let Ok(guard) = overlay.try_lock() {
+                    if let Some(ref server) = *guard {
+                        server.broadcast_state(&live_data);
+                    }
+                };
+            }
 
             // Account mismatch detection
-            let settings = get_settings(&db_pool).unwrap_or_default();
-            let local_identity =
-                resolve_local_player_identity(session.players().values(), &settings);
+            if !mismatch_state.alerted && last_identity_check.elapsed() >= StdDuration::from_secs(2)
+            {
+                last_identity_check = Instant::now();
+                let settings = get_settings(&db_pool).unwrap_or_default();
+                let local_identity =
+                    resolve_local_player_identity(session.players().values(), &settings);
 
-            if let Some((detected_pid, _detected_team)) = &local_identity {
-                let current_profile_pid = settings.local_primary_id.as_deref();
-                let is_mismatch = match current_profile_pid {
-                    Some(current_pid) => current_pid != detected_pid.as_str(),
-                    None => true,
-                };
+                if let Some((detected_pid, _detected_team)) = &local_identity {
+                    let current_profile_pid = settings.local_primary_id.as_deref();
+                    let is_mismatch = match current_profile_pid {
+                        Some(current_pid) => current_pid != detected_pid.as_str(),
+                        None => true,
+                    };
 
-                if is_mismatch && settings.warn_on_profile_mismatch && !mismatch_state.alerted {
-                    let detected_player_name = session
-                        .players()
-                        .iter()
-                        .find(|(id, _)| *id == detected_pid)
-                        .map(|(_, lp)| lp.name.clone())
-                        .unwrap_or_default();
+                    if is_mismatch && settings.warn_on_profile_mismatch {
+                        let detected_player_name = session
+                            .players()
+                            .iter()
+                            .find(|(id, _)| *id == detected_pid)
+                            .map(|(_, player)| player.name.clone())
+                            .unwrap_or_default();
 
-                    let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
-                    let active_profile = get_active_profile(&app_dir).ok();
-                    let mut payload = serde_json::json!({
-                        "detected_primary_id": detected_pid,
-                        "detected_player_name": detected_player_name,
-                        "current_profile_id": active_profile.as_ref().map(|p| p.id.clone()).unwrap_or_default(),
-                        "current_profile_name": active_profile.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| settings.player_name.clone()),
-                        "auto_switch_enabled": settings.auto_switch_profile_on_exact_match,
-                        "matched_profile_is_exact_primary_id": false,
-                    });
+                        let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
+                        let active_profile = get_active_profile(&app_dir).ok();
+                        let mut payload = serde_json::json!({
+                            "detected_primary_id": detected_pid,
+                            "detected_player_name": detected_player_name,
+                            "current_profile_id": active_profile.as_ref().map(|p| p.id.clone()).unwrap_or_default(),
+                            "current_profile_name": active_profile.as_ref().map(|p| p.name.clone()).unwrap_or_else(|| settings.player_name.clone()),
+                            "auto_switch_enabled": settings.auto_switch_profile_on_exact_match,
+                            "matched_profile_is_exact_primary_id": false,
+                        });
 
-                    if let Ok(Some(profile)) = find_profile_by_primary_id(&app_dir, detected_pid) {
-                        payload["matched_profile_id"] = serde_json::json!(profile.id);
-                        payload["matched_profile_name"] = serde_json::json!(profile.name);
-                        payload["matched_profile_is_exact_primary_id"] = serde_json::json!(true);
-                    } else if let Ok(Some(profile)) =
-                        find_matching_profile(&app_dir, detected_pid, &detected_player_name)
-                    {
-                        payload["matched_profile_id"] = serde_json::json!(profile.id);
-                        payload["matched_profile_name"] = serde_json::json!(profile.name);
+                        if let Ok(Some(profile)) =
+                            find_profile_by_primary_id(&app_dir, detected_pid)
+                        {
+                            payload["matched_profile_id"] = serde_json::json!(profile.id);
+                            payload["matched_profile_name"] = serde_json::json!(profile.name);
+                            payload["matched_profile_is_exact_primary_id"] =
+                                serde_json::json!(true);
+                        } else if let Ok(Some(profile)) =
+                            find_matching_profile(&app_dir, detected_pid, &detected_player_name)
+                        {
+                            payload["matched_profile_id"] = serde_json::json!(profile.id);
+                            payload["matched_profile_name"] = serde_json::json!(profile.name);
+                        }
+
+                        let _ = app_handle.emit("account-mismatch", payload);
                     }
-
-                    let _ = app_handle.emit("account-mismatch", payload);
+                    // Once the local identity is known, there is no reason to query SQLite and
+                    // profiles again for every subsequent snapshot in this match.
                     mismatch_state.alerted = true;
                     mismatch_state.last_detected_id = Some(detected_pid.clone());
                 }

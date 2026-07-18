@@ -1,64 +1,32 @@
 {
+  "actions": { "skip": "Skip for now", "close": "Close guide", "back": "Back", "next": "Next" },
   "welcome": {
-    "title": "Welcome to RL Stats",
-    "description": "Your personal performance terminal for Rocket League. Analyze your matches in real time and discover patterns in your gameplay.",
-    "cta": "Get Started"
+    "eyebrow": "Your performance hub",
+    "title": "Welcome to a clearer way to understand your matches",
+    "description": "First we verify Rocket League and your account. Then we guide you through the actual app and point out every important tool.",
+    "local": "Private local data",
+    "automatic": "Automatic detection",
+    "guided": "In-app walkthrough",
+    "cta": "Set up my app"
   },
-  "connection": {
-    "title": "Local Connection",
-    "description": "The app connects directly to the Rocket League data stream on your PC via a local TCP connection on port <port>49123</port>.",
-    "howItWorks": "How it works",
-    "bullet1": "Rocket League sends real-time events through port 49123.",
-    "bullet2": "The app listens for these events and processes them locally.",
-    "bullet3": "All data is stored only on your PC — nothing goes to the internet.",
-    "back": "Back",
-    "understood": "Got It"
+  "setup": {
+    "eyebrow": "Smart setup", "title": "Let's connect the game and the right account", "description": "We search real Steam and Epic installations and read local Steam accounts. You can always review the selection.",
+    "gameTitle": "Rocket League installation", "accountTitle": "Local account", "detected": "Detected", "pending": "Pending",
+    "searchingGame": "Searching Steam, Epic and known locations…", "searchingAccount": "Reading local Steam accounts…", "alreadyConfigured": "API already configured",
+    "noGame": "No valid installation was found. Paste the Rocket League folder to validate it, or continue and configure it later.",
+    "noAccount": "No local account was found. You can continue: the app will identify your exact PrimaryId when you join a match.",
+    "pathPlaceholder": "Rocket League folder…", "validatePath": "Validate folder", "active": "Active", "detectAgain": "Detect again",
+    "detectError": "Automatic detection could not be completed.", "invalidPath": "That folder is not a valid Rocket League installation.", "saveError": "The configuration could not be saved.",
+    "later": "Configure later", "configure": "Configure and tour"
   },
-  "identity": {
-    "title": "Who are you in-game?",
-    "description": "We need your exact Rocket League name to identify you once and then set your PrimaryId automatically.",
-    "playerNameLabel": "In-game name",
-    "playerNamePlaceholder": "e.g. Si Locura",
-    "hint": "If you change your nickname later, you can update it from Settings.",
-    "error": "Enter your exact in-game Rocket League name.",
-    "saving": "Saving...",
-    "next": "Next",
-    "back": "Back"
-  },
-  "findGame": {
-    "title": "Find Rocket League",
-    "description": "We look for your Rocket League installation to automatically configure the stats API.",
-    "autoDetect": "Auto-detect",
-    "recommended": "Recommended",
-    "manual": "Manual",
-    "steam": "Steam",
-    "epic": "Epic Games",
-    "autoDetectError": "Installation not detected automatically. Try searching manually.",
-    "manualHint": "To configure manually, make sure Rocket League is installed and run the app as administrator.",
-    "searching": "Searching for installation...",
-    "next": "Next",
-    "back": "Back"
-  },
-  "features": {
-    "title": "What does RL Stats offer?",
-    "liveDashboard": {
-      "title": "Live Dashboard",
-      "desc": "Monitor every match in real time."
-    },
-    "matchHistory": {
-      "title": "Match History",
-      "desc": "Access your past results and stats."
-    },
-    "analytics": {
-      "title": "Performance Analytics",
-      "desc": "Visualize trends and patterns in your gameplay."
-    },
-    "back": "Back",
-    "next": "Next"
-  },
-  "complete": {
-    "title": "All set!",
-    "description": "Now open Rocket League and the app will start detecting your matches automatically.",
-    "cta": "Start Exploring"
+  "tour": {
+    "progress": "Step {{current}} of {{total}}", "finish": "Finish",
+    "live": { "title": "The match, as it happens", "description": "Live brings together the scoreboard, players, events and MMR. It starts listening automatically when Rocket League opens." },
+    "connection": { "title": "A signal you can understand", "description": "This indicator shows whether the local stream is connected, waiting for the game, or needs attention." },
+    "history": { "title": "Every match stays saved", "description": "Return to previous results, filter matches and open the full detail without relying on external services." },
+    "analytics": { "title": "Trends, not a wall of numbers", "description": "Analytics organizes sessions, progress and strengths so you can find real patterns." },
+    "players": { "title": "Recognize returning players", "description": "The directory connects opponents and teammates with the history they share with you." },
+    "profiles": { "title": "Each account keeps its own data", "description": "Use separate profiles to avoid mixing stats. Smart detection warns you when another account is active." },
+    "settings": { "title": "Everything can be reviewed", "description": "Settings lets you change identity, installation, overlay and privacy, or restart this guide." }
   }
 }

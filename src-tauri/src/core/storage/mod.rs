@@ -88,7 +88,14 @@ pub struct MatchUpsert<'a> {
 
 /// Initialize the SQLite database pool and run versioned migrations.
 pub fn init_storage<P: AsRef<Path>>(db_path: P) -> AppResult<DbPool> {
-    let manager = SqliteConnectionManager::file(db_path);
+    let manager = SqliteConnectionManager::file(db_path).with_init(|connection| {
+        connection.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA busy_timeout = 5000;
+             PRAGMA synchronous = NORMAL;
+             PRAGMA wal_autocheckpoint = 1000;",
+        )
+    });
     let pool = Pool::builder()
         .max_size(5)
         .build(manager)
@@ -99,16 +106,11 @@ pub fn init_storage<P: AsRef<Path>>(db_path: P) -> AppResult<DbPool> {
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
     // Enable WAL mode for better concurrency.
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA foreign_keys = ON;
-        ",
-    )
-    .map_err(|e| AppError::StorageError(e.to_string()))?;
+    conn.execute_batch("PRAGMA journal_mode = WAL;")
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    // Force checkpoint so all WAL data is committed to the main DB file.
-    // This prevents data from being stranded in .db-wal files.
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+    // A passive checkpoint never blocks active readers/writers during startup.
+    conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);")
         .map_err(|e| AppError::StorageError(format!("WAL checkpoint failed: {e}")))?;
 
     // Run versioned migrations instead of ad-hoc CREATE TABLE IF NOT EXISTS.

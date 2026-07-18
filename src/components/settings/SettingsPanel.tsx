@@ -9,8 +9,9 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Select } from "@/components/ui/Select";
 import { useUIStore } from "@/stores/uiStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, FolderSearch, MonitorUp } from "lucide-react";
+import { AlertTriangle, FolderSearch, MonitorUp, Sparkles } from "lucide-react";
 import { LanguageSelector } from "./LanguageSelector";
 import {
   settingsSchema,
@@ -68,6 +69,7 @@ export function SettingsPanel() {
   const { t } = useTranslation(["settings", "common"]);
   const { data: settings, isLoading, isError, refetch } = useSettings();
   const updateSettings = useUpdateSettings();
+  const restartOnboarding = useSettingsStore((state) => state.restartOnboarding);
   const addToast = useUIStore((state) => state.addToast);
   const [isDetecting, setIsDetecting] = useState(false);
 
@@ -483,6 +485,21 @@ export function SettingsPanel() {
           </div>
 
           <LanguageSelector />
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-accent-primary/20 bg-accent-primary-subtle px-4 py-3">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                <Sparkles size={15} className="text-accent-primary" />
+                Recorrido interactivo
+              </p>
+              <p className="mt-1 text-xs text-text-muted">
+                Volvé a recorrer las áreas principales y revisá la detección del juego y tu cuenta.
+              </p>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={restartOnboarding}>
+              Iniciar guía
+            </Button>
+          </div>
         </div>
       </section>
 

@@ -16,12 +16,21 @@ function buildPlaceholderMatchContext(lastMatch: {
   score_blue: number;
   score_orange: number;
   winner: number | null;
-  players: { name: string; team_num: number; stats: Record<string, unknown> }[];
+  local_primary_id: string | null;
+  local_team_num: number | null;
+  players: { primary_id: string; name: string; team_num: number; stats: Record<string, unknown> }[];
 }, friends: string[]): ShareContext | null {
   if (!lastMatch) return null;
-  const isWin = lastMatch.winner === 0; // Assume local team is 0 for approximation
-  const title = isWin ? "Victoria" : "Derrota";
-  const myPlayer = lastMatch.players.find((p) => p.team_num === 0) || lastMatch.players[0];
+  const localTeam = lastMatch.local_team_num;
+  const isWin = localTeam !== null && lastMatch.winner === localTeam;
+  const title = lastMatch.winner === null
+    ? "Empate"
+    : localTeam === null
+      ? "Partida finalizada"
+      : isWin ? "Victoria" : "Derrota";
+  const myPlayer = lastMatch.players.find((p) => p.primary_id === lastMatch.local_primary_id)
+    ?? lastMatch.players.find((p) => p.team_num === localTeam)
+    ?? lastMatch.players[0];
   const goals = (myPlayer?.stats?.goals as number) ?? 0;
   const assists = (myPlayer?.stats?.assists as number) ?? 0;
   const saves = (myPlayer?.stats?.saves as number) ?? 0;
@@ -41,15 +50,26 @@ function buildPlaceholderMatchContext(lastMatch: {
       { label: "Demos", value: String(demos) },
     ],
     friendsPresent: friends,
-    teamScore: lastMatch.score_blue,
-    opponentScore: lastMatch.score_orange,
-    win: isWin,
+    username: myPlayer?.name,
+    teamScore: localTeam === 1 ? lastMatch.score_orange : lastMatch.score_blue,
+    opponentScore: localTeam === 1 ? lastMatch.score_blue : lastMatch.score_orange,
+    win: localTeam === null || lastMatch.winner === null ? undefined : isWin,
     dateLabel: new Date().toLocaleDateString("es-AR", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
     }),
+    matchPlayers: [...lastMatch.players]
+      .sort((a, b) => Number(b.stats.score ?? 0) - Number(a.stats.score ?? 0))
+      .map((player) => ({
+        name: player.name,
+        score: Number(player.stats.score ?? 0),
+        goals: Number(player.stats.goals ?? 0),
+        assists: Number(player.stats.assists ?? 0),
+        saves: Number(player.stats.saves ?? 0),
+        isLocal: player.primary_id === lastMatch.local_primary_id,
+      })),
   };
 }
 
@@ -61,7 +81,11 @@ export function LivePage() {
   const { data: friends, isLoading: friendsLoading } = useFriends();
   const lastMatchSummary = useLiveStore((s) => s.lastMatchSummary);
 
-  const friendsPresent = useMemo(() => friends?.map((f) => f.name) ?? [], [friends]);
+  const friendsPresent = useMemo(() => {
+    if (!lastMatchSummary || !friends) return [];
+    const playerIds = new Set(lastMatchSummary.players.map((player) => player.primary_id));
+    return friends.filter((friend) => playerIds.has(friend.primary_id)).map((friend) => friend.name);
+  }, [friends, lastMatchSummary]);
 
   const shareContext = useMemo(() => {
     if (!lastMatchSummary) return null;

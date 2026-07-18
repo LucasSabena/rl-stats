@@ -62,9 +62,9 @@ export function StatCard({ label, value, icon: Icon, trend, trendValue, classNam
           </div>
         )}
       </div>
-      {trend && (
-        <div className={cn("mt-2.5 flex items-center gap-1 text-xs font-medium", trendColors[trend])}>
-          <span>{trend === "up" ? "↑" : trend === "down" ? "↓" : "—"}</span>
+      {trendValue && (
+        <div className={cn("mt-2.5 flex items-center gap-1 text-xs font-medium", trend ? trendColors[trend] : "text-text-secondary")}>
+          {trend ? <span aria-hidden="true">{trend === "up" ? "↑" : trend === "down" ? "↓" : "—"}</span> : null}
           <span>{trendValue}</span>
         </div>
       )}

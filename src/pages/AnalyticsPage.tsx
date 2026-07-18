@@ -492,8 +492,9 @@ export function AnalyticsPage() {
 
   return (
     <PageContainer>
-      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+      <div className="mb-6 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-text-primary">{t("analytics:title")}</h2>
             <Button
@@ -514,18 +515,21 @@ export function AnalyticsPage() {
               {hasActiveFilters && t("analytics:activeFilters")}
             </p>
           )}
+          </div>
         </div>
-        <AnalyticsFilters
-          period={period}
-          onPeriodChange={setPeriod}
-          playlist={playlist}
-          onPlaylistChange={setPlaylist}
-          matchType={matchType}
-          onMatchTypeChange={setMatchType}
-          scope={scope}
-          onScopeChange={setScope}
-          isLoading={isLoading}
-        />
+        <div className="rounded-xl border border-border-subtle bg-bg-surface/70 p-3 shadow-[var(--shadow-card-inner)]">
+          <AnalyticsFilters
+            period={period}
+            onPeriodChange={setPeriod}
+            playlist={playlist}
+            onPlaylistChange={setPlaylist}
+            matchType={matchType}
+            onMatchTypeChange={setMatchType}
+            scope={scope}
+            onScopeChange={setScope}
+            isLoading={isLoading}
+          />
+        </div>
       </div>
 
       {isLoading && (

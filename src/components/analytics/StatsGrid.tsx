@@ -141,7 +141,7 @@ export const SecondaryStatsRow = memo(function SecondaryStatsRow({ data, scope, 
   );
 
   return (
-    <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
       {items.map((item) => (
         <StatCard
           key={item.label}
@@ -162,15 +162,22 @@ function StreakCompactCard({ best, current }: { best: number; current: number })
   const { t } = useTranslation(["analytics", "common"]);
 
   return (
-    <Card className="flex items-center gap-3 border-l-[3px] border-l-accent-success p-3">
+    <Card className="flex items-center gap-4 border-l-[3px] border-l-accent-success p-4 sm:col-span-3 xl:col-span-2">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-success-subtle text-accent-success">
         <Flame size={18} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">{t("analytics:streaks.label")}</p>
-        <div className="mt-0.5 flex items-baseline gap-1.5">
-          <span className="font-mono text-xl font-bold tracking-tight text-text-primary">{current}</span>
-          <span className="text-[10px] text-text-tertiary">/ {best} {t("analytics:streaks.bestSuffix")}</span>
+        <div className="mt-1 flex items-center gap-4">
+          <div>
+            <span className="font-mono text-xl font-bold tracking-tight text-text-primary">{current}</span>
+            <span className="ml-1.5 text-[10px] text-text-tertiary">{t("analytics:streaks.current")}</span>
+          </div>
+          <div className="h-7 w-px bg-border-subtle" />
+          <div>
+            <span className="font-mono text-xl font-bold tracking-tight text-accent-success">{best}</span>
+            <span className="ml-1.5 text-[10px] text-text-tertiary">{t("analytics:streaks.best")}</span>
+          </div>
         </div>
       </div>
     </Card>

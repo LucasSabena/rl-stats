@@ -470,6 +470,10 @@ impl SessionManager {
             score_blue: self.score_blue,
             score_orange: self.score_orange,
             winner,
+            local_primary_id: local_identity
+                .as_ref()
+                .map(|(primary_id, _)| primary_id.clone()),
+            local_team_num: my_team,
             players: players_vec,
             match_type: self.match_type.clone(),
             kickoff_goals_scored: my_kickoff_goals,
