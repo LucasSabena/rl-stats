@@ -94,7 +94,7 @@ impl TrackerClient {
                     3. Envia para aprobacion (es gratuito para proyectos hobby/open-source)\n\
                     4. Una vez aprobada, volve a probar\n\n\
                     Respuesta: {}",
-                    &body.chars().take(200).collect::<String>()
+                    body.chars().take(200).collect::<String>()
                 )
             };
             return Err(AppError::ConfigError(msg));
@@ -117,7 +117,7 @@ impl TrackerClient {
             return Err(AppError::ConnectionError(format!(
                 "HTTP {}: {}",
                 status.as_u16(),
-                &body.chars().take(300).collect::<String>()
+                body.chars().take(300).collect::<String>()
             )));
         }
 
