@@ -29,46 +29,45 @@ export const TeamPanel = memo(function TeamPanel({ team, players, mmrByPlayerId,
   return (
     <div
       className={cn(
-        "rounded-xl border p-3 transition-all duration-200",
+        "rounded-lg border p-2 transition-all duration-200",
         isBlue
-          ? "border-team-blue/20 bg-team-blue-bg"
-          : "border-team-orange/20 bg-team-orange-bg"
+          ? "border-team-blue/15 bg-team-blue-bg"
+          : "border-team-orange/15 bg-team-orange-bg"
       )}
     >
-      <div className="flex items-center gap-2">
+      <div className="mb-1.5 flex items-center gap-1.5">
         <div
           className={cn(
-            "h-2.5 w-2.5 rounded-full",
+            "h-2 w-2 shrink-0 rounded-full",
             isBlue
-              ? "bg-team-blue shadow-[0_0_8px_var(--color-team-blue-glow)]"
-              : "bg-team-orange shadow-[0_0_8px_var(--color-team-orange-glow)]"
+              ? "bg-team-blue shadow-[0_0_6px_var(--color-team-blue-glow)]"
+              : "bg-team-orange shadow-[0_0_6px_var(--color-team-orange-glow)]"
           )}
         />
         <h3
           className={cn(
-            "font-display text-xs font-bold uppercase tracking-wide",
+            "font-display text-[10px] font-bold uppercase tracking-wide",
             isBlue ? "text-team-blue" : "text-team-orange"
           )}
         >
           {isBlue ? t("live:teams.blue") : t("live:teams.orange")}
         </h3>
-        <span className="ml-auto font-mono text-base font-bold text-text-primary">
+        {averageMmr !== null && (
+          <span className="text-[9px] text-text-tertiary">
+            {t("live:mmr.average")} <span className="font-mono font-semibold text-text-secondary">{averageMmr}</span>
+          </span>
+        )}
+        {mmrLoading && averageMmr === null && (
+          <span className="text-[9px] text-text-tertiary">{t("live:mmr.searching")}</span>
+        )}
+        <span className="ml-auto font-mono text-sm font-bold text-text-primary">
           {players.reduce((sum, p) => sum + p.score, 0)}
         </span>
       </div>
 
-      {(averageMmr !== null || mmrLoading) && (
-        <div className="mt-2 flex items-center justify-between rounded-md border border-border-subtle/60 bg-bg-surface/50 px-2.5 py-1.5 text-[10px] text-text-tertiary">
-          <span>{t("live:mmr.average")}</span>
-          <span className="font-mono font-semibold text-text-secondary">
-            {averageMmr !== null ? averageMmr : t("live:mmr.searching")}
-          </span>
-        </div>
-      )}
-
-      <div className="mt-2 space-y-1.5">
+      <div className="space-y-1">
         {players.length === 0 ? (
-          <p className="py-3 text-center text-[10px] text-text-muted">
+          <p className="py-2 text-center text-[10px] text-text-muted">
             {isLocalMatch ? t("live:players.bots") : t("live:players.none")}
           </p>
         ) : (

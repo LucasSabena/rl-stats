@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useTrackerProfile } from "@/hooks/useTrackerProfile";
 import { RankBadge } from "./RankBadge";
-import { cn } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
 
 export function RankWidget() {
@@ -13,33 +12,30 @@ export function RankWidget() {
   const ranked = profile.stats.ranked;
 
   return (
-    <div className={cn(
-      "rounded-xl border border-border-subtle bg-bg-surface/80 p-2.5",
-      "backdrop-blur-sm"
-    )}>
-      <div className="flex items-center gap-1.5 mb-2">
-        <TrendingUp size={12} className="text-accent-primary" />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+    <div className="flex items-center gap-3 px-1 py-0.5">
+      <div className="flex shrink-0 items-center gap-1">
+        <TrendingUp size={10} className="text-accent-primary" />
+        <span className="text-[9px] font-semibold uppercase tracking-wider text-text-tertiary">
           {t("ranks.title")}
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {ranked.standard && (
-          <div className="min-w-0">
-            <p className="mb-0.5 text-[10px] font-medium text-text-tertiary">{t("playlist.standard")}</p>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-text-tertiary">{t("playlist.standard")}</span>
             <RankBadge rank={ranked.standard.rank} mmr={ranked.standard.mmr} size="sm" />
           </div>
         )}
         {ranked.double && (
-          <div className="min-w-0">
-            <p className="mb-0.5 text-[10px] font-medium text-text-tertiary">{t("playlist.double")}</p>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-text-tertiary">{t("playlist.double")}</span>
             <RankBadge rank={ranked.double.rank} mmr={ranked.double.mmr} size="sm" />
           </div>
         )}
         {ranked.duel && (
-          <div className="min-w-0">
-            <p className="mb-0.5 text-[10px] font-medium text-text-tertiary">{t("playlist.duel")}</p>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-text-tertiary">{t("playlist.duel")}</span>
             <RankBadge rank={ranked.duel.rank} mmr={ranked.duel.mmr} size="sm" />
           </div>
         )}

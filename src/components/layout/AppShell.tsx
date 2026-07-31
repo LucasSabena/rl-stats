@@ -24,7 +24,7 @@ export function AppShell({ children }: AppShellProps) {
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden relative z-10">
         <Header />
-        <main className="flex-1 overflow-y-auto p-8 relative">
+        <main className="flex-1 overflow-y-auto p-6 relative">
           <div className="mx-auto max-w-[1400px] animate-fade-in">{children}</div>
         </main>
       </div>

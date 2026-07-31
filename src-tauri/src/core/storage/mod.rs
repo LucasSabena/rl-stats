@@ -2269,6 +2269,41 @@ pub fn get_latest_player_mmr_for_playlist(
     .map_err(|e| AppError::StorageError(e.to_string()))
 }
 
+/// Returns up to `limit` historical MMR values for the given player+playlist,
+/// ordered most-recent first. Used to compute an average MMR delta.
+pub fn get_player_mmr_history_for_playlist(
+    pool: &DbPool,
+    primary_id: &str,
+    playlist: &str,
+    limit: usize,
+) -> AppResult<Vec<i32>> {
+    let conn = get_conn(pool)?;
+    let limit_i64 = i64::try_from(limit.max(1)).unwrap_or(i64::MAX);
+    let mut stmt = conn
+        .prepare(
+            "SELECT mp.mmr
+             FROM match_players mp
+             JOIN players p ON p.id = mp.player_id
+             JOIN matches m ON m.id = mp.match_id
+             WHERE p.primary_id = ?1
+               AND LOWER(COALESCE(m.playlist, '')) = LOWER(?2)
+               AND mp.mmr IS NOT NULL
+             ORDER BY m.start_time DESC
+             LIMIT ?3",
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![primary_id, playlist, limit_i64], |row| {
+            row.get::<_, i32>(0)
+        })
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let mut values = Vec::new();
+    for row in rows {
+        values.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    }
+    Ok(values)
+}
+
 // ─── Friends ─────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize)]

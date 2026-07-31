@@ -1,6 +1,7 @@
 use crate::core::models::LivePlayer;
 use crate::core::storage::{
-    get_latest_player_mmr_for_playlist, get_mmr_cache, upsert_mmr_cache, DbPool,
+    get_latest_player_mmr_for_playlist, get_mmr_cache, get_player_mmr_history_for_playlist,
+    upsert_mmr_cache, DbPool,
 };
 use crate::core::tracker_api::{
     PlaylistStats as TrackerPlaylistStats, TrackerClient, TrackerProfile,
@@ -27,8 +28,15 @@ const RAPIDAPI_CACHE_TTL_MINUTES: i64 = 15;
 const TRACKER_CACHE_TTL_MINUTES: i64 = 15;
 const RLSTATS_CACHE_TTL_MINUTES: i64 = 30;
 const RLSTATS_BASE: &str = "https://rlstats.net";
+const PARSEBOT_PROVIDER: &str = "parsebot";
+const PARSEBOT_BASE: &str = "https://api.parse.bot";
+const PARSEBOT_CACHE_TTL_MINUTES: i64 = 15;
 const LOCAL_ESTIMATE_MAX_MATCHES: u32 = 3;
-const LOCAL_ESTIMATE_DELTA: i32 = 9;
+const LOCAL_ESTIMATE_FALLBACK_DELTA: i32 = 9;
+const LOCAL_ESTIMATE_HISTORY_WINDOW: usize = 20;
+const LOCAL_ESTIMATE_MIN_SAMPLES: usize = 2;
+const LOCAL_ESTIMATE_MIN_DELTA: i32 = 1;
+const LOCAL_ESTIMATE_MAX_DELTA: i32 = 30;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,11 +129,16 @@ struct LocalEstimateResolution {
     updated_at: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn resolve_lobby_mmr(
     db_pool: std::sync::Arc<DbPool>,
     rapidapi_key: Option<String>,
     rapidapi_enabled: bool,
     tracker_api_key: Option<String>,
+    parsebot_api_key: Option<String>,
+    parsebot_scraper_id: Option<String>,
+    parsebot_endpoint: Option<String>,
+    parsebot_enabled: bool,
     local_primary_id: Option<String>,
     prefer_local_estimate: bool,
     players: Vec<LivePlayer>,
@@ -139,6 +152,9 @@ pub async fn resolve_lobby_mmr(
         let db_pool = std::sync::Arc::clone(&db_pool);
         let rapidapi_key = rapidapi_key.clone();
         let tracker_api_key = tracker_api_key.clone();
+        let parsebot_api_key = parsebot_api_key.clone();
+        let parsebot_scraper_id = parsebot_scraper_id.clone();
+        let parsebot_endpoint = parsebot_endpoint.clone();
         let inference = inference.clone();
         let local_primary_id = local_primary_id.clone();
 
@@ -148,6 +164,10 @@ pub async fn resolve_lobby_mmr(
                 rapidapi_key,
                 rapidapi_enabled,
                 tracker_api_key,
+                parsebot_api_key,
+                parsebot_scraper_id,
+                parsebot_endpoint,
+                parsebot_enabled,
                 local_primary_id,
                 prefer_local_estimate,
                 player,
@@ -251,6 +271,10 @@ async fn resolve_player_mmr(
     rapidapi_key: Option<String>,
     rapidapi_enabled: bool,
     tracker_api_key: Option<String>,
+    parsebot_api_key: Option<String>,
+    parsebot_scraper_id: Option<String>,
+    parsebot_endpoint: Option<String>,
+    parsebot_enabled: bool,
     local_primary_id: Option<String>,
     prefer_local_estimate: bool,
     player: LivePlayer,
@@ -328,6 +352,7 @@ async fn resolve_player_mmr(
         let mut attempted_errors = Vec::new();
         let mut rapidapi_failed = false;
         let mut tracker_failed = false;
+        let mut parsebot_failed = false;
         let mut rlstats_failed = false;
 
         for playlist_key in &inference.candidates {
@@ -400,6 +425,49 @@ async fn resolve_player_mmr(
                     Err(error) => {
                         attempted_errors.push(format!("Tracker [{}]: {}", playlist_key, error));
                         tracker_failed = true;
+                    }
+                }
+            }
+
+            if parsebot_enabled
+                && parsebot_api_key.is_some()
+                && parsebot_scraper_id.is_some()
+                && !parsebot_failed
+            {
+                match resolve_with_parsebot(
+                    &db_pool,
+                    parsebot_api_key.clone(),
+                    parsebot_scraper_id.clone(),
+                    parsebot_endpoint.clone(),
+                    parsebot_enabled,
+                    &identity,
+                    playlist_key,
+                )
+                .await
+                {
+                    Ok(entry) if entry.mmr.is_some() => {
+                        if is_local_player {
+                            let _ = sync_local_trusted_mmr(
+                                &db_pool,
+                                &identity.source_primary_id,
+                                playlist_key,
+                                entry.mmr,
+                            );
+                        }
+                        return build_player_result(
+                            identity,
+                            Some(playlist_key.clone()),
+                            entry,
+                            maybe_confidence_warning(&inference, resolved_playlist, playlist_key),
+                        );
+                    }
+                    Ok(_) => attempted_errors.push(format!(
+                        "ParseBot [{}]: el perfil no tiene MMR para esta playlist",
+                        playlist_key
+                    )),
+                    Err(error) => {
+                        attempted_errors.push(format!("ParseBot [{}]: {}", playlist_key, error));
+                        parsebot_failed = true;
                     }
                 }
             }
@@ -584,12 +652,8 @@ pub fn update_local_mmr_estimate(
         return Ok(());
     };
 
-    let next_mmr = baseline
-        + if did_win {
-            LOCAL_ESTIMATE_DELTA
-        } else {
-            -LOCAL_ESTIMATE_DELTA
-        };
+    let delta = compute_average_mmr_delta(db_pool, local_primary_id, playlist);
+    let next_mmr = baseline + if did_win { delta } else { -delta };
     let previous_matches = state
         .playlists
         .get(playlist)
@@ -607,6 +671,42 @@ pub fn update_local_mmr_estimate(
     );
 
     write_local_mmr_state(db_pool, local_primary_id, &state)
+}
+
+/// Computes the average absolute MMR delta from the player's recent match
+/// history for the given playlist. Returns the fallback delta if there is
+/// not enough data. The result is clamped to a sensible range so an outlier
+/// match cannot produce absurd swings.
+fn compute_average_mmr_delta(db_pool: &DbPool, primary_id: &str, playlist: &str) -> i32 {
+    let history = match get_player_mmr_history_for_playlist(
+        db_pool,
+        primary_id,
+        playlist,
+        LOCAL_ESTIMATE_HISTORY_WINDOW,
+    ) {
+        Ok(values) => values,
+        Err(_) => return LOCAL_ESTIMATE_FALLBACK_DELTA,
+    };
+
+    if history.len() < LOCAL_ESTIMATE_MIN_SAMPLES {
+        return LOCAL_ESTIMATE_FALLBACK_DELTA;
+    }
+
+    // History arrives most-recent first; pair consecutive entries to get
+    // absolute deltas between adjacent matches.
+    let deltas: Vec<i32> = history
+        .windows(2)
+        .map(|pair| (pair[0] - pair[1]).abs())
+        .collect();
+
+    if deltas.is_empty() {
+        return LOCAL_ESTIMATE_FALLBACK_DELTA;
+    }
+
+    let sum: i64 = deltas.iter().map(|d| i64::from(*d)).sum();
+    let avg = (sum / i64::try_from(deltas.len()).unwrap_or(1)) as i32;
+
+    avg.clamp(LOCAL_ESTIMATE_MIN_DELTA, LOCAL_ESTIMATE_MAX_DELTA)
 }
 
 fn maybe_confidence_warning(
@@ -721,8 +821,33 @@ async fn resolve_with_rlstats(
 
     let client = reqwest::Client::builder()
         .user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
         )
+        .default_headers({
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                reqwest::header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+                    .parse()
+                    .unwrap(),
+            );
+            headers.insert(
+                reqwest::header::ACCEPT_LANGUAGE,
+                "en-US,en;q=0.9".parse().unwrap(),
+            );
+            headers.insert(
+                reqwest::header::ACCEPT_ENCODING,
+                "gzip, deflate, br".parse().unwrap(),
+            );
+            headers.insert(reqwest::header::CACHE_CONTROL, "no-cache".parse().unwrap());
+            headers.insert(reqwest::header::PRAGMA, "no-cache".parse().unwrap());
+            headers.insert(
+                reqwest::header::UPGRADE_INSECURE_REQUESTS,
+                "1".parse().unwrap(),
+            );
+            headers
+        })
         .timeout(std::time::Duration::from_secs(12))
         .build()?;
 
@@ -733,6 +858,23 @@ async fn resolve_with_rlstats(
     let response = client.get(url).send().await?;
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
+
+    if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+    {
+        let body_lower = body.to_ascii_lowercase();
+        let is_cloudflare = body_lower.contains("cloudflare")
+            || body_lower.contains("attention required")
+            || body_lower.contains("security verification");
+        return Err(AppError::ConnectionError(format!(
+            "RLStats bloqueo el acceso (HTTP {}). {}",
+            status.as_u16(),
+            if is_cloudflare {
+                "Cloudflare anti-bot activo. Intenta de nuevo mas tarde o usa otro proveedor de MMR."
+            } else {
+                "El sitio rechazo la solicitud."
+            }
+        )));
+    }
 
     if body.contains("Just a moment...")
         || body.contains("cf-browser-verification")
@@ -857,6 +999,120 @@ async fn resolve_with_rapidapi(
 
     Ok(ResolvedMmrEntry {
         source: RAPIDAPI_PROVIDER.into(),
+        cached: false,
+        mmr: entry.mmr,
+        rank_name: entry.rank_name,
+        division: entry.division,
+        matches_played: entry.matches_played,
+    })
+}
+
+/// Provider that delegates scraping to a user-configured parse.bot scraper.
+///
+/// Each user builds their own scraper on parse.bot pointing at an MMR site
+/// (RLStats, Tracker Network, etc.) and configures the `scraper_id`, endpoint
+/// name, and API key in app settings. Parse.bot handles proxy rotation and
+/// anti-bot bypass, so this works even when the target site is behind
+/// Cloudflare.
+///
+/// The scraper is expected to return JSON with playlist MMR data. We reuse
+/// the same flexible `collect_rapidapi_playlists` parser since parse.bot
+/// scrapers tend to return similar shapes (mmr/rank/division fields keyed by
+/// playlist name).
+async fn resolve_with_parsebot(
+    db_pool: &DbPool,
+    parsebot_api_key: Option<String>,
+    parsebot_scraper_id: Option<String>,
+    parsebot_endpoint: Option<String>,
+    parsebot_enabled: bool,
+    identity: &ProviderIdentity,
+    playlist_key: &str,
+) -> AppResult<ResolvedMmrEntry> {
+    if !parsebot_enabled {
+        return Err(AppError::ConfigError(
+            "Parse.bot esta deshabilitado para este dispositivo.".into(),
+        ));
+    }
+
+    if let Some(cached) = read_cached_profile(
+        db_pool,
+        PARSEBOT_PROVIDER,
+        &identity.tracker_platform,
+        &identity.identifier,
+        PARSEBOT_CACHE_TTL_MINUTES,
+    )? {
+        if let Some(entry) = cached.playlists.get(playlist_key) {
+            return Ok(ResolvedMmrEntry {
+                source: PARSEBOT_PROVIDER.into(),
+                cached: true,
+                mmr: entry.mmr,
+                rank_name: entry.rank_name.clone(),
+                division: entry.division.clone(),
+                matches_played: entry.matches_played,
+            });
+        }
+    }
+
+    let api_key = parsebot_api_key
+        .ok_or_else(|| AppError::ConfigError("Parse.bot API key no esta configurada.".into()))?;
+    let scraper_id = parsebot_scraper_id
+        .ok_or_else(|| AppError::ConfigError("Parse.bot scraper_id no esta configurado.".into()))?;
+    let endpoint = parsebot_endpoint.unwrap_or_else(|| "get_profile".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()?;
+
+    let url = format!("{}/scraper/{}/{}", PARSEBOT_BASE, scraper_id, endpoint);
+    let body_json = serde_json::json!({
+        "platform": identity.tracker_platform,
+        "identifier": identity.identifier,
+    });
+
+    let response = client
+        .post(&url)
+        .header("X-API-Key", &api_key)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .json(&body_json)
+        .send()
+        .await?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(AppError::ConnectionError(
+            "Parse.bot devolvio demasiadas solicitudes (429). Revisa tus creditos.".into(),
+        ));
+    }
+
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(AppError::ConfigError(format!(
+            "Parse.bot rechazo la API key (HTTP {}).",
+            status.as_u16()
+        )));
+    }
+
+    if !status.is_success() {
+        return Err(AppError::ConnectionError(format!(
+            "Parse.bot devolvio HTTP {}: {}",
+            status.as_u16(),
+            body.chars().take(300).collect::<String>()
+        )));
+    }
+
+    let cached_profile =
+        parse_rapidapi_profile(&body, &identity.tracker_platform, &identity.identifier)?;
+    store_cached_profile(db_pool, &cached_profile)?;
+
+    let entry = cached_profile
+        .playlists
+        .get(playlist_key)
+        .cloned()
+        .unwrap_or_default();
+
+    Ok(ResolvedMmrEntry {
+        source: PARSEBOT_PROVIDER.into(),
         cached: false,
         mmr: entry.mmr,
         rank_name: entry.rank_name,

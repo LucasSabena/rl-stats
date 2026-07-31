@@ -65,15 +65,18 @@ export const EventFeed = memo(function EventFeed() {
   const { t } = useTranslation(["live", "common"]);
 
   return (
-    <div className="rounded-xl border border-border-subtle bg-bg-surface">
-      <div className="border-b border-border-subtle px-3 py-2">
-        <h3 className="font-display text-xs font-semibold text-text-primary">{t("live:events.title")}</h3>
+    <div className="rounded-lg border border-border-subtle bg-bg-surface/60">
+      <div className="flex items-center justify-between border-b border-border-subtle/50 px-2.5 py-1">
+        <h3 className="font-display text-[10px] font-semibold text-text-secondary">{t("live:events.title")}</h3>
+        {events.length > 0 && (
+          <span className="font-mono text-[9px] text-text-muted">{events.length}</span>
+        )}
       </div>
-      <div className="h-36 overflow-y-auto p-1.5">
+      <div className="h-24 overflow-y-auto p-1">
         {events.length === 0 ? (
-          <p className="py-8 text-center text-sm text-text-tertiary">{t("live:events.empty")}</p>
+          <p className="py-4 text-center text-[10px] text-text-tertiary">{t("live:events.empty")}</p>
         ) : (
-          <div className="space-y-0.5">
+          <div className="space-y-px">
             {events.slice(0, 50).map((event) => (
               <EventItem key={event.id} event={event} />
             ))}
@@ -88,10 +91,10 @@ function EventItem({ event }: { event: RlEvent }) {
   const { t } = useTranslation(["live", "common"]);
   const Icon = eventIcons[event.type] ?? CircleDot;
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors hover:bg-surface-hover/50">
-      <Icon size={14} className={cn("shrink-0", eventColors[event.type] ?? "text-text-tertiary")} />
-      <span className="text-text-secondary">{t(eventTranslationKeys[event.type] ?? `live:events.${event.type}`) ?? event.type}</span>
-      <span className="ml-auto text-[11px] text-text-muted">{formatDateTime(event.timestamp * 1000)}</span>
+    <div className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-surface-hover/50">
+      <Icon size={11} className={cn("shrink-0", eventColors[event.type] ?? "text-text-tertiary")} />
+      <span className="truncate text-text-secondary">{t(eventTranslationKeys[event.type] ?? `live:events.${event.type}`) ?? event.type}</span>
+      <span className="ml-auto shrink-0 font-mono text-[9px] text-text-muted">{formatDateTime(event.timestamp * 1000)}</span>
     </div>
   );
 }
