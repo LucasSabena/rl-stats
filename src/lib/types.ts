@@ -369,6 +369,10 @@ export interface AppSettings {
   trackerUsername?: string | null;
   rapidApiKey?: string | null;
   rapidApiEnabled?: boolean;
+  parsebotApiKey?: string | null;
+  parsebotScraperId?: string | null;
+  parsebotEndpoint?: string | null;
+  parsebotEnabled?: boolean;
   trackerAutoRefresh?: boolean;
   trackerRefreshIntervalMin?: number;
   sessionGapMinutes?: number;

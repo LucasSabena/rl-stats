@@ -8,6 +8,7 @@ import { OverlayConfig } from "@/components/settings/OverlayConfig";
 import { OverlayStreaming } from "@/components/settings/OverlayStreaming";
 import { TrackerSetup } from "@/components/settings/TrackerSetup";
 import { RapidApiSetup } from "@/components/settings/RapidApiSetup";
+import { ParseBotSetup } from "@/components/settings/ParseBotSetup";
 import { ProfileManagement } from "@/components/settings/ProfileManagement";
 import { CloudSyncPanel } from "@/components/settings/CloudSyncPanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
@@ -101,6 +102,7 @@ export function SettingsPage() {
             <IniHelper />
             <RapidApiSetup />
             <TrackerSetup />
+            <ParseBotSetup />
           </TabsContent>
 
           <TabsContent value="overlay" className="space-y-6">
