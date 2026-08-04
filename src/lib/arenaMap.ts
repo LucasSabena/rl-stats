@@ -2,9 +2,17 @@
 // Source: RLStats.net gameinfo/maps page + Rocket League Wiki
 // https://rlstats.net/gameinfo/maps
 
+import { ARENA_IMAGE_KEYS } from "./arenaImages";
+
 export interface ArenaInfo {
   name: string;
   image?: string; // e.g. "/arenas/underwater_p.jpg" if available
+  /**
+   * Borrow another arena's image. Used for variants that are visually the
+   * same venue (e.g. the Quads layout of Mannfield at night), so they show a
+   * real photo instead of falling through to the generated tile.
+   */
+  imageFrom?: string;
 }
 
 export const ARENA_MAP: Record<string, ArenaInfo> = {
@@ -169,8 +177,11 @@ export const ARENA_MAP: Record<string, ArenaInfo> = {
   // Loophole
   labs_holyfield_p: { name: "Loophole" },
 
-  // Mannfield (Quads)
-  labs_4v4_arena15_eurostadium_night_p: { name: "Mannfield (Quads)" },
+  // Mannfield (Quads) — same venue as Mannfield at night, no dedicated shot.
+  labs_4v4_arena15_eurostadium_night_p: {
+    name: "Mannfield (Quads)",
+    imageFrom: "eurostadium_night_p",
+  },
 
   // Midnight Metro (Quads)
   labs_4v4_arena15_blackout_p: { name: "Midnight Metro (Quads)" },
@@ -258,14 +269,58 @@ export function getArenaInfo(arena: string | null | undefined): ArenaInfo | null
 }
 
 /**
+ * Arena keys that actually have a file in public/arenas/.
+ *
+ * Regenerate with `pnpm assets:arenas`. Without this the resolver happily
+ * returned a path for every mapped arena, including ones with no file, so
+ * those rendered as broken images that each cost a failed request.
+ */
+export const ARENAS_WITH_IMAGE: ReadonlySet<string> = new Set(
+  ARENA_IMAGE_KEYS,
+);
+
+/**
  * Resolve the image path for an arena.
- * Returns null if no image is available.
- * Images are placed in public/arenas/{internalName}.webp
+ * Returns null when no image ships for it — callers should fall back to
+ * `getArenaFallback`. Images live in public/arenas/{internalName}.webp.
  * Case-insensitive matching.
  */
 export function getArenaImagePath(arena: string | null | undefined): string | null {
   if (!arena) return null;
   const resolved = resolveArenaKey(arena);
   if (!resolved) return null;
-  return `/arenas/${resolved}.webp`;
+
+  const alias = ARENA_MAP[resolved]?.imageFrom;
+  if (alias && ARENAS_WITH_IMAGE.has(alias)) return `/arenas/${alias}.webp`;
+  if (ARENAS_WITH_IMAGE.has(resolved)) return `/arenas/${resolved}.webp`;
+  return null;
+}
+
+/**
+ * Deterministic stand-in for arenas with no shipped image (new Psyonix maps,
+ * rotating event variants). Derives a stable hue from the arena key so the
+ * same map always looks the same, instead of showing a broken image.
+ */
+export function getArenaFallback(arena: string | null | undefined): {
+  hue: number;
+  initials: string;
+} {
+  const name = getArenaDisplayName(arena);
+  const seed = (arena ?? name) || "unknown";
+
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+
+  const initials = name
+    .replace(/\(.*\)/, "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0] ?? "")
+    .join("")
+    .toUpperCase();
+
+  return { hue: hash % 360, initials: initials || "?" };
 }

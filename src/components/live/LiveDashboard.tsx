@@ -233,6 +233,7 @@ export function LiveDashboard() {
           localPrimaryId={settings?.localPrimaryId ?? null}
           mmrLoading={isFetchingMmr}
           isLocalMatch={currentMatch.matchType === "local"}
+          playlist={liveMmr?.playlist ?? null}
         />
         <TeamPanel
           team="orange"
@@ -242,6 +243,7 @@ export function LiveDashboard() {
           localPrimaryId={settings?.localPrimaryId ?? null}
           mmrLoading={isFetchingMmr}
           isLocalMatch={currentMatch.matchType === "local"}
+          playlist={liveMmr?.playlist ?? null}
         />
       </div>
 

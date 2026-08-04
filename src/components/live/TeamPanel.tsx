@@ -12,9 +12,11 @@ interface TeamPanelProps {
   localPrimaryId?: string | null;
   mmrLoading?: boolean;
   isLocalMatch?: boolean;
+  /** Playlist of the current match, so rank is derived on the right ladder. */
+  playlist?: string | null;
 }
 
-export const TeamPanel = memo(function TeamPanel({ team, players, mmrByPlayerId, headToHeadByPlayerId, localPrimaryId, mmrLoading, isLocalMatch }: TeamPanelProps) {
+export const TeamPanel = memo(function TeamPanel({ team, players, mmrByPlayerId, headToHeadByPlayerId, localPrimaryId, mmrLoading, isLocalMatch, playlist }: TeamPanelProps) {
   const { t } = useTranslation(["live", "common"]);
   const isBlue = team === "blue";
   const averageMmr = (() => {
@@ -75,6 +77,7 @@ export const TeamPanel = memo(function TeamPanel({ team, players, mmrByPlayerId,
             <PlayerCard
               key={player.id}
               player={player}
+              playlist={playlist}
               isCurrentUser={player.id === localPrimaryId}
               mmr={mmrByPlayerId?.[player.id] ?? null}
               headToHead={headToHeadByPlayerId?.[player.id] ?? null}

@@ -1,12 +1,95 @@
 import { memo } from "react";
 import { cn } from "@/lib/utils";
-import { getArenaDisplayName, getArenaImagePath } from "@/lib/arenaMap";
-import { MapPin } from "lucide-react";
+import {
+  getArenaDisplayName,
+  getArenaFallback,
+  getArenaImagePath,
+} from "@/lib/arenaMap";
+
+type ArenaSize = "sm" | "md" | "lg";
+
+const SIZE_CLASSES: Record<ArenaSize, string> = {
+  sm: "h-6 w-6 rounded",
+  md: "h-10 w-10 rounded-md",
+  lg: "h-16 w-16 rounded-lg",
+};
+
+const TEXT_SIZES: Record<ArenaSize, string> = {
+  sm: "text-[11px]",
+  md: "text-sm",
+  lg: "text-base",
+};
+
+const FALLBACK_TEXT: Record<ArenaSize, string> = {
+  sm: "text-[8px]",
+  md: "text-[11px]",
+  lg: "text-base",
+};
+
+interface ArenaThumbProps {
+  arena: string | null | undefined;
+  size?: ArenaSize;
+  className?: string;
+}
+
+/**
+ * Arena thumbnail.
+ *
+ * Falls back to a deterministic tinted tile when no image ships for the map,
+ * so newly released Psyonix arenas degrade gracefully instead of rendering a
+ * broken image.
+ */
+export const ArenaThumb = memo(function ArenaThumb({
+  arena,
+  size = "md",
+  className,
+}: ArenaThumbProps) {
+  const displayName = getArenaDisplayName(arena);
+  const imagePath = getArenaImagePath(arena);
+
+  if (imagePath) {
+    return (
+      <img
+        src={imagePath}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        title={displayName}
+        className={cn(
+          SIZE_CLASSES[size],
+          "shrink-0 border border-border-subtle object-cover",
+          className,
+        )}
+      />
+    );
+  }
+
+  const { hue, initials } = getArenaFallback(arena);
+
+  return (
+    <span
+      aria-hidden="true"
+      title={displayName}
+      className={cn(
+        SIZE_CLASSES[size],
+        FALLBACK_TEXT[size],
+        "flex shrink-0 items-center justify-center border border-border-subtle font-semibold tracking-tight",
+        className,
+      )}
+      style={{
+        backgroundColor: `oklch(0.45 0.09 ${hue} / 0.28)`,
+        color: `oklch(0.78 0.11 ${hue})`,
+      }}
+    >
+      {initials}
+    </span>
+  );
+});
 
 interface ArenaDisplayProps {
   arena: string | null | undefined;
   showImage?: boolean;
-  size?: "sm" | "md" | "lg";
+  size?: ArenaSize;
   className?: string;
 }
 
@@ -19,41 +102,12 @@ export const ArenaDisplay = memo(function ArenaDisplay({
   if (!arena) return null;
 
   const displayName = getArenaDisplayName(arena);
-  const imagePath = getArenaImagePath(arena);
-
-  const sizeClasses = {
-    sm: "h-6 w-6 rounded",
-    md: "h-10 w-10 rounded-lg",
-    lg: "h-16 w-16 rounded-xl",
-  };
-
-  const textSizes = {
-    sm: "text-[11px]",
-    md: "text-sm",
-    lg: "text-base",
-  };
 
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      {showImage && imagePath && (
-        <img
-          src={imagePath}
-          alt={displayName}
-          className={cn(
-            sizeClasses[size],
-            "object-cover border border-border-subtle bg-bg-panel shrink-0"
-          )}
-          onError={(e) => {
-            // Si la imagen no existe, ocultarla y mostrar solo icono+nombre
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      )}
+      {showImage && <ArenaThumb arena={arena} size={size} />}
       <span
-        className={cn(
-          "font-medium text-text-secondary truncate",
-          textSizes[size]
-        )}
+        className={cn("truncate text-text-secondary", TEXT_SIZES[size])}
         title={displayName}
       >
         {displayName}
@@ -63,7 +117,7 @@ export const ArenaDisplay = memo(function ArenaDisplay({
 });
 
 /**
- * Compact inline arena badge with icon — for use in cards and lists.
+ * Compact inline arena label for cards and lists.
  */
 export const ArenaBadge = memo(function ArenaBadge({
   arena,
@@ -77,13 +131,9 @@ export const ArenaBadge = memo(function ArenaBadge({
 
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1.5 text-[11px] text-text-muted truncate",
-        className
-      )}
+      className={cn("truncate text-[11px] text-text-muted", className)}
       title={displayName}
     >
-      <MapPin size={12} className="shrink-0 text-text-muted" />
       {displayName}
     </span>
   );
