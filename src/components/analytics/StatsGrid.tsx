@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
+import { cn } from "@/lib/utils";
 import type { AnalyticsData, DataScope } from "@/lib/types";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -161,23 +162,63 @@ export const SecondaryStatsRow = memo(function SecondaryStatsRow({ data, scope, 
 function StreakCompactCard({ best, current }: { best: number; current: number }) {
   const { t } = useTranslation(["analytics", "common"]);
 
+  // A negative current streak is a losing run. Painting it green regardless —
+  // as the old card did — told you nothing.
+  const onLosingRun = current < 0;
+  const magnitude = Math.abs(current);
+
   return (
-    <Card className="flex items-center gap-4 border-l-[3px] border-l-accent-success p-4 sm:col-span-3 xl:col-span-2">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-success-subtle text-accent-success">
-        <Flame size={18} />
+    <Card className="p-4 sm:col-span-3 xl:col-span-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[13px] font-medium text-text-secondary">
+          {t("analytics:streaks.label")}
+        </p>
+        <Flame
+          size={15}
+          aria-hidden="true"
+          className={cn(
+            "shrink-0",
+            magnitude === 0
+              ? "text-text-tertiary"
+              : onLosingRun
+                ? "text-accent-danger"
+                : "text-accent-success",
+          )}
+        />
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold text-text-tertiary">{t("analytics:streaks.label")}</p>
-        <div className="mt-1 flex items-center gap-4">
-          <div>
-            <span className="numeral text-xl font-bold tracking-tight text-text-primary">{current}</span>
-            <span className="ml-1.5 text-[10px] text-text-tertiary">{t("analytics:streaks.current")}</span>
-          </div>
-          <div className="h-7 w-px bg-border-subtle" />
-          <div>
-            <span className="numeral text-xl font-bold tracking-tight text-accent-success">{best}</span>
-            <span className="ml-1.5 text-[10px] text-text-tertiary">{t("analytics:streaks.best")}</span>
-          </div>
+
+      <div className="mt-2 flex items-baseline gap-6">
+        <div>
+          <p
+            className={cn(
+              "numeral text-[28px] leading-none",
+              magnitude === 0
+                ? "text-text-primary"
+                : onLosingRun
+                  ? "text-accent-danger"
+                  : "text-accent-success",
+            )}
+          >
+            {magnitude}
+          </p>
+          <p className="mt-1.5 text-xs text-text-tertiary">
+            {magnitude === 0
+              ? t("analytics:streaks.current")
+              : onLosingRun
+                ? t("analytics:streaks.currentLosses", {
+                    defaultValue: "derrotas seguidas",
+                  })
+                : t("analytics:streaks.currentWins", {
+                    defaultValue: "victorias seguidas",
+                  })}
+          </p>
+        </div>
+
+        <div>
+          <p className="numeral text-[28px] leading-none text-text-primary">{best}</p>
+          <p className="mt-1.5 text-xs text-text-tertiary">
+            {t("analytics:streaks.best")}
+          </p>
         </div>
       </div>
     </Card>

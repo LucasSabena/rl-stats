@@ -290,7 +290,7 @@ function InsightsPanel({
         </h3>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 w-full rounded-xl" />
+            <Skeleton key={i} className="h-40 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -512,32 +512,29 @@ export function AnalyticsPage() {
 
   return (
     <PageContainer>
-      <div className="mb-6 space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-text-primary">{t("analytics:title")}</h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              leftIcon={Share2}
-              onClick={() => setShareOpen(true)}
-              disabled={!shareContext || friendsLoading}
-            >
-              {t("common:buttons.share", { defaultValue: "Compartir" })}
-            </Button>
-          </div>
-          {result?.data && (
-            <p className="mt-1 text-sm text-text-secondary">
+      <div className="mb-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          {result?.data ? (
+            <p className="text-sm text-text-secondary">
               {scope === "team"
-                ? `Estadísticas del equipo · ${t("analytics:matchCount", { count: result.data.totalMatches })}`
+                ? `${t("analytics:filters.scope.team")} · ${t("analytics:matchCount", { count: result.data.totalMatches })}`
                 : t("analytics:matchCount", { count: result.data.totalMatches })}
               {hasActiveFilters && t("analytics:activeFilters")}
             </p>
+          ) : (
+            <span />
           )}
-          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={Share2}
+            onClick={() => setShareOpen(true)}
+            disabled={!shareContext || friendsLoading}
+          >
+            {t("common:buttons.share", { defaultValue: "Compartir" })}
+          </Button>
         </div>
-        <div className="rounded-xl border border-border-subtle bg-bg-surface/70 p-3 shadow-[var(--shadow-card-inner)]">
+        <div className="rounded-lg border border-border-subtle bg-bg-surface p-2.5">
           <AnalyticsFilters
             period={period}
             onPeriodChange={setPeriod}
@@ -553,17 +550,17 @@ export function AnalyticsPage() {
       </div>
 
       {isLoading && (
-        <div className="space-y-8">
-          <Skeleton className="h-12 w-full rounded-xl" />
+        <div className="flex flex-col gap-6">
+          <Skeleton className="h-12 w-full rounded-lg" />
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+              <Skeleton key={i} className="h-28 w-full rounded-lg" />
             ))}
           </div>
-          <Skeleton className="h-80 w-full rounded-xl" />
+          <Skeleton className="h-80 w-full rounded-lg" />
           <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 w-full rounded-xl" />
+              <Skeleton key={i} className="h-24 w-full rounded-lg" />
             ))}
           </div>
         </div>
@@ -578,7 +575,7 @@ export function AnalyticsPage() {
       )}
 
       {!isLoading && !isError && result && (
-        <div className="space-y-8">
+        <div className="flex flex-col gap-6">
           {result.data.totalMatches === 0 ? (
             <EmptyState
               icon={BarChart3}
