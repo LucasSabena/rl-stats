@@ -1,5 +1,37 @@
 # Changelog
 
+## v2.3.0 — Design system rebuild and stats correctness
+
+### The design never actually rendered
+
+- Self-hosted the UI fonts. The Tauri CSP is `style-src 'self'` / `font-src 'self'`, so the Google Fonts stylesheet was blocked outright — and the display font every heading asked for (Rajdhani) was never even requested. Every heading and label had been falling back to `system-ui`.
+- Fixed light mode, which was a no-op: `@theme` only ever defined dark values, so the `.light` class the toggle applied had nothing to switch to. Rebuilt on OKLCH tokens wired through `@theme inline`, with the theme applied before first paint.
+- Fixed the app logo. The sidebar pointed at a path Vite never serves, so it always fell back to a hand-drawn "RL" placeholder. Now uses the real mark, 705 KB down to 4.6 KB.
+- Gave the brand accent its own hue so "selected" no longer reads as "blue team"; team blue/orange are reserved for team identity again.
+- Stripped the decorative layer from the shared components: glossy sheens, radial hover glows, hover translation, blurred pill badges and colored icon tiles.
+- Regrouped the sidebar by intent and collapsed the two duplicate connection indicators in the header into one.
+
+### Stats correctness
+
+- **Kickoff goals counted every goal in the match.** The round-start anchor defaulted to `0` and was only set from `RoundStarted`, which real streams don't emit — so the window evaluated to `time_remaining >= -7`, always true. Now anchored properly, with `GoalReplayEnd` accepted as the real-world marker.
+- **Changing the session window or kickoff threshold left analytics stale.** Both are applied server-side, but saving settings only invalidated the settings query, so every analytics screen kept showing numbers derived from the old value.
+- Ranks are derived from MMR again. The tracker integrations that supplied them are dead, so every rank field arrived as null and no rank was ever displayed.
+
+### Reliability
+
+- A Tauri command that never settles can no longer freeze a screen indefinitely. Calls are now bounded and raise a real error naming the command, with bulk-DB, network and filesystem commands exempted.
+- Match detail surfaces the actual failure instead of a blanket "not found", with a retry.
+
+### Other
+
+- New hours-of-day win rate wheel: radius encodes win rate against a drawn 50% baseline, and low-sample hours are desaturated so a two-game "100%" hour can't pose as your best.
+- Rank insignia drawn as SVG — legible at 16px, nothing to 404.
+- Arena images no longer 404: variants can borrow another arena's image, and anything unmapped renders a generated tile so new Psyonix maps degrade gracefully.
+- The OBS overlay is genuinely minimal now — no gradients, glows, per-player cards or letterspaced caps.
+- `Select` gained full keyboard support and correct combobox/listbox ARIA; it was mouse-only.
+- Removed dead styles (`tailwindcss-animate` classes with no plugin installed, a Radix variable that doesn't exist here) and a dead `useSessions` hook.
+- Applied all 18 open Dependabot updates (npm, cargo, GitHub Actions), including `sysinfo` 0.34 to 0.39 and vitest 3 to 4.
+
 ## v2.1.0 — Live reliability, guided setup and clearer insights
 
 ### Stability and performance
