@@ -125,14 +125,51 @@ function SessionCard({
 }
 
 
-function SessionMatchDetail({ matches }: { matches: SessionMatch[] }) {
+function SessionMatchDetail({
+  matches,
+  isLoading,
+  isError,
+}: {
+  matches: SessionMatch[];
+  isLoading: boolean;
+  isError: boolean;
+}) {
   const { t } = useTranslation(["analytics", "common", "players"]);
   const { data: friends } = useFriends();
+
+  // These three states were collapsed into one: an empty result rendered the
+  // loading message, so a session with no rows — or a failed query — looked
+  // like it was loading forever.
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex h-32 items-center justify-center">
+        <p className="text-sm text-accent-danger">
+          {t("analytics:matchDetail.error", {
+            defaultValue: "No se pudieron cargar las partidas de esta sesión.",
+          })}
+        </p>
+      </div>
+    );
+  }
 
   if (matches.length === 0) {
     return (
       <div className="flex h-32 items-center justify-center">
-        <p className="text-sm text-text-secondary">{t("analytics:matchDetail.loading")}</p>
+        <p className="text-sm text-text-secondary">
+          {t("analytics:matchDetail.empty", {
+            defaultValue: "No hay partidas en esta sesión.",
+          })}
+        </p>
       </div>
     );
   }
@@ -409,7 +446,11 @@ export function AnalyticsPage() {
   const { data: result, isLoading, isError } = useAnalytics(period, filters);
   const { data: insights, isLoading: insightsLoading } = useInsights(period, filters);
 
-  const { data: sessionMatches, isLoading: matchesLoading } = useSessionMatches(
+  const {
+    data: sessionMatches,
+    isLoading: matchesLoading,
+    isError: matchesError,
+  } = useSessionMatches(
     selectedSession?.start_time,
     selectedSession?.end_time
   );
@@ -620,7 +661,9 @@ export function AnalyticsPage() {
               <span className="text-text-tertiary">{Math.round(selectedSession.duration_seconds / 60)}m</span>
             </div>
             <SessionMatchDetail
-              matches={matchesLoading ? [] : (sessionMatches ?? [])}
+              matches={sessionMatches ?? []}
+              isLoading={matchesLoading}
+              isError={matchesError}
             />
           </div>
         )}
