@@ -44,7 +44,14 @@ pub struct SessionManager {
     mmr_snapshot: Option<MatchMmrSnapshot>,
     // Kickoff goal tracking
     kickoff_threshold_seconds: i32,
-    round_start_game_time: i32,
+    /// Game clock reading when the current round started.
+    ///
+    /// `None` until a round-start marker is seen. This used to default to `0`,
+    /// which made the non-overtime window `time_remaining >= 0 - threshold`,
+    /// i.e. always true — so every goal in the match was recorded as a kickoff
+    /// goal. Real streams frequently carry no `RoundStarted` at all, so the
+    /// default was the common case rather than an edge case.
+    round_start_game_time: Option<i32>,
     round_start_wall_time: Option<chrono::DateTime<chrono::Utc>>,
     kickoff_goals_by_player: HashMap<String, i32>,
 }
@@ -71,7 +78,7 @@ impl SessionManager {
             last_touch_team: None,
             mmr_snapshot: None,
             kickoff_threshold_seconds,
-            round_start_game_time: 0,
+            round_start_game_time: None,
             round_start_wall_time: None,
             kickoff_goals_by_player: HashMap::new(),
         }
@@ -92,6 +99,36 @@ impl SessionManager {
     /// Store the MMR snapshot so it can be persisted with the finished match.
     pub fn set_mmr_snapshot(&mut self, snapshot: MatchMmrSnapshot) {
         self.mmr_snapshot = Some(snapshot);
+    }
+
+    /// Anchor the start of a round for kickoff-goal detection.
+    fn mark_round_start(&mut self) {
+        self.round_start_game_time = Some(self.time_remaining);
+        self.round_start_wall_time = Some(Utc::now());
+    }
+
+    /// Was the goal being processed scored straight off a kickoff?
+    ///
+    /// Returns false when no round start has been observed yet, so an
+    /// unknown anchor can never mark every goal as a kickoff goal.
+    fn is_kickoff_goal(&self) -> bool {
+        if self.is_overtime {
+            // In overtime the game clock sits at 0 and never moves, so the
+            // only usable signal is wall-clock time since the round started.
+            return self
+                .round_start_wall_time
+                .map(|start| {
+                    let elapsed = (Utc::now() - start).num_seconds();
+                    (0..=i64::from(self.kickoff_threshold_seconds)).contains(&elapsed)
+                })
+                .unwrap_or(false);
+        }
+
+        // Regulation: the clock counts down, so a goal is a kickoff goal while
+        // time_remaining is still within `threshold` of the round start.
+        self.round_start_game_time
+            .map(|start| self.time_remaining >= start - self.kickoff_threshold_seconds)
+            .unwrap_or(false)
     }
 
     pub fn live_state(&self) -> LiveMatchState {
@@ -138,6 +175,12 @@ impl SessionManager {
                     self.arena.clone_from(&game.arena);
                     self.is_overtime = game.is_overtime;
                     self.time_remaining = game.time;
+                    // Anchor the opening kickoff. Streams don't reliably emit a
+                    // round-start marker before the first goal, so without this
+                    // the opening kickoff could never be detected.
+                    if self.round_start_game_time.is_none() && game.time > 0 {
+                        self.mark_round_start();
+                    }
                     self.ball_speed = game.ball.as_ref().map(|ball| ball.speed).unwrap_or(0.0);
                     if let Some(teams) = &game.teams {
                         if !teams.is_empty() {
@@ -169,37 +212,30 @@ impl SessionManager {
             RlEvent::ClockUpdatedSeconds { time } => {
                 self.time_remaining = *time;
             }
-            RlEvent::RoundStarted | RlEvent::CountdownBegin if self.phase == MatchPhase::Active => {
+            RlEvent::RoundStarted | RlEvent::CountdownBegin | RlEvent::GoalReplayEnd
+                if self.phase == MatchPhase::Active =>
+            {
                 let event_name = match &event {
                     RlEvent::RoundStarted => "RoundStarted",
+                    RlEvent::GoalReplayEnd => "GoalReplayEnd",
                     _ => "CountdownBegin",
                 };
                 info!("{} event", event_name);
-                self.round_start_game_time = self.time_remaining;
-                self.round_start_wall_time = Some(Utc::now());
-                let json = serde_json::json!({"time_remaining": self.time_remaining}).to_string();
-                self.events.push((event_name.into(), json, Utc::now()));
+                self.mark_round_start();
+                // GoalReplayEnd is only used as a kickoff anchor; it is not
+                // part of the persisted match timeline.
+                if !matches!(&event, RlEvent::GoalReplayEnd) {
+                    let json =
+                        serde_json::json!({"time_remaining": self.time_remaining}).to_string();
+                    self.events.push((event_name.into(), json, Utc::now()));
+                }
             }
             RlEvent::GoalScored { data } if self.phase == MatchPhase::Active => {
                 info!(scorer = %data.scorer.name, "Goal scored");
                 let json = serde_json::to_string(&data).unwrap_or_default();
                 self.events.push(("GoalScored".into(), json, Utc::now()));
 
-                let is_kickoff_goal = if self.is_overtime {
-                    // In overtime, game.time is 0 and doesn't change, so use wall-clock time
-                    if let Some(round_start) = self.round_start_wall_time {
-                        let elapsed = (Utc::now() - round_start).num_seconds();
-                        elapsed <= self.kickoff_threshold_seconds as i64 && elapsed >= 0
-                    } else {
-                        false
-                    }
-                } else {
-                    // Check if goal happened within threshold seconds of round start game time
-                    // After a round starts, time_remaining decreases. So if the current
-                    // time_remaining is still close to the round_start_game_time, it's a kickoff goal.
-                    self.time_remaining
-                        >= self.round_start_game_time - self.kickoff_threshold_seconds
-                };
+                let is_kickoff_goal = self.is_kickoff_goal();
 
                 if is_kickoff_goal {
                     let scorer_id = &data.scorer.id;
@@ -589,7 +625,7 @@ impl SessionManager {
         self.max_player_count = 0;
         self.last_touch_team = None;
         self.mmr_snapshot = None;
-        self.round_start_game_time = 0;
+        self.round_start_game_time = None;
         self.round_start_wall_time = None;
         self.kickoff_goals_by_player.clear();
     }
@@ -687,4 +723,150 @@ pub fn identity_candidate_names(settings: &AppSettings) -> Vec<String> {
     }
 
     names
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::models::{GameState, GoalScoredData, StatfeedTarget};
+
+    const THRESHOLD: i32 = 7;
+
+    fn scorer(id: &str) -> GoalScoredData {
+        GoalScoredData {
+            scorer: StatfeedTarget {
+                id: id.to_string(),
+                name: id.to_string(),
+                team_num: 0,
+            },
+            assister: None,
+        }
+    }
+
+    fn update_state(time: i32) -> RlEvent {
+        RlEvent::UpdateState {
+            match_guid: Some("guid-1".into()),
+            game: GameState {
+                teams: None,
+                time,
+                is_overtime: false,
+                ball: None,
+                arena: Some("stadium_p".into()),
+                target: None,
+            },
+            players: HashMap::new(),
+        }
+    }
+
+    fn started_session() -> SessionManager {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        session.handle_event(update_state(300));
+        session
+    }
+
+    fn kickoff_goals(session: &SessionManager, id: &str) -> i32 {
+        *session.kickoff_goals_by_player.get(id).unwrap_or(&0)
+    }
+
+    #[test]
+    fn goal_right_off_the_opening_kickoff_counts() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 296 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+    }
+
+    #[test]
+    fn goal_in_open_play_does_not_count() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 200 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(
+            kickoff_goals(&session, "p1"),
+            0,
+            "a goal 100s into the round is not a kickoff goal"
+        );
+    }
+
+    /// Regression: `round_start_game_time` used to default to 0, making the
+    /// window `time_remaining >= -threshold` — true for every goal. Real
+    /// streams often carry no round-start marker, so this was the norm.
+    #[test]
+    fn goals_are_not_all_kickoff_goals_without_a_round_marker() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        // No UpdateState and no RoundStarted: the anchor is unknown.
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 180 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(
+            kickoff_goals(&session, "p1"),
+            0,
+            "an unknown round start must not mark every goal as a kickoff goal"
+        );
+    }
+
+    /// Real streams emit GoalReplayEnd before each restart but frequently no
+    /// RoundStarted, so it has to work as a kickoff anchor.
+    #[test]
+    fn goal_replay_end_anchors_the_next_kickoff() {
+        let mut session = started_session();
+
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 240 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+        assert_eq!(kickoff_goals(&session, "p1"), 0);
+
+        // Kickoff after the replay, then an immediate goal.
+        session.handle_event(RlEvent::GoalReplayEnd);
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 236 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p2") });
+
+        assert_eq!(kickoff_goals(&session, "p2"), 1);
+    }
+
+    #[test]
+    fn round_started_resets_the_anchor() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 150 });
+        session.handle_event(RlEvent::RoundStarted);
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 145 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+    }
+
+    #[test]
+    fn goal_exactly_on_the_threshold_still_counts() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 300 - THRESHOLD });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+
+        // One second past the window.
+        session.handle_event(RlEvent::GoalReplayEnd);
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 280 });
+        session.handle_event(RlEvent::RoundStarted);
+        session.handle_event(RlEvent::ClockUpdatedSeconds {
+            time: 280 - THRESHOLD - 1,
+        });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p2") });
+
+        assert_eq!(kickoff_goals(&session, "p2"), 0);
+    }
+
+    #[test]
+    fn reset_clears_the_anchor_between_matches() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 296 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+
+        session.handle_event(RlEvent::MatchCreated);
+        assert!(session.round_start_game_time.is_none());
+        assert_eq!(kickoff_goals(&session, "p1"), 0);
+    }
 }
