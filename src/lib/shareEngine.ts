@@ -1,29 +1,54 @@
 import type { ShareContext, ShareStat, SharePlayer } from "@/lib/types";
 
-/* ─── Design tokens ─── */
+/* ─── Design tokens ───
+   Mirrors the app's dark palette so a shared card is recognisably the same
+   product. These are literals rather than var() lookups because canvas
+   cannot resolve CSS custom properties. Keep in sync with globals.css. */
 const C = {
-  bg1: "#0B0E1A",
-  bg2: "#0F1225",
-  accent: "#00E5A0",       // vibrant mint/green
-  accentAlt: "#00B4D8",    // cyan
-  win: "#00E5A0",
-  loss: "#FF4F6D",
-  gold: "#FFD166",
-  text: "#F0F2F5",
-  textSoft: "#A0A8BE",
-  textMuted: "#5E6580",
+  bg1: "#0d0f14",
+  bg2: "#14171e",
+  accent: "#8b7bf7",       // brand violet
+  accentAlt: "#5b93f0",    // team blue
+  win: "#42c98a",
+  loss: "#f2685f",
+  gold: "#e8b04b",
+  text: "#f7f8fa",
+  textSoft: "#adb3c0",
+  textMuted: "#838b9b",
   surface: "rgba(255,255,255,0.04)",
   surfaceLight: "rgba(255,255,255,0.07)",
   border: "rgba(255,255,255,0.08)",
-  scoreBarMy: "#00B4D8",
+  scoreBarMy: "#5b93f0",
   scoreBarOpp: "rgba(255,255,255,0.06)",
 } as const;
 
+/* Geist is the only family the app actually ships. The previous stack asked
+   for Outfit/Inter/JetBrains Mono, none of which are loaded any more, so
+   every share card silently rendered in the system fallback. */
 const FONT = {
-  heading: '"Outfit", "Inter", system-ui, sans-serif',
-  body: '"Inter", system-ui, sans-serif',
-  mono: '"JetBrains Mono", "Fira Code", monospace',
+  heading: '"Geist Variable", system-ui, sans-serif',
+  body: '"Geist Variable", system-ui, sans-serif',
+  mono: '"Geist Mono Variable", ui-monospace, monospace',
 } as const;
+
+/**
+ * Canvas draws with whatever fonts are already loaded, so a card rendered
+ * before the webfont resolves falls back to system-ui. Awaiting this first
+ * keeps the output consistent.
+ */
+export async function ensureShareFontsReady(): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
+  try {
+    await Promise.all([
+      document.fonts.load('700 48px "Geist Variable"'),
+      document.fonts.load('400 24px "Geist Variable"'),
+      document.fonts.load('500 24px "Geist Mono Variable"'),
+    ]);
+    await document.fonts.ready;
+  } catch {
+    // Fallback rendering is acceptable; never block sharing on font loading.
+  }
+}
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -637,6 +662,10 @@ export async function renderShareCard(
   iconSrc?: string
 ): Promise<void> {
   const pad = 80;
+
+  // Without this the card can render in the system fallback face if the
+  // webfont hasn't resolved yet.
+  await ensureShareFontsReady();
 
   drawBg(c, W, H, ctxData.win);
 

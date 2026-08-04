@@ -19,7 +19,7 @@ export function useShareCard() {
 
     setIsGenerating(true);
     try {
-      await renderShareCard(c, ctx, STORY_W, STORY_H, iconPath || "/icon.png");
+      await renderShareCard(c, ctx, STORY_W, STORY_H, iconPath || "/brand/logo-256.png");
       canvasRef.current = canvas;
       return canvas;
     } finally {

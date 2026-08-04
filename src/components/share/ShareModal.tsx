@@ -23,7 +23,7 @@ export function ShareModal({ isOpen, onClose, context }: ShareModalProps) {
     if (!context) return;
     setError(null);
     try {
-      const canvas = await generate(context, "/icon.png");
+      const canvas = await generate(context, "/brand/logo-256.png");
       if (!canvas) {
         throw new Error(t("modal.generationError"));
       }

@@ -1,9 +1,9 @@
 /**
  * Generates the optimized brand assets the app actually loads at runtime.
  *
- * The source logo is a 1111x1134 PNG (~700 KB) and there is also a 4.7 MB
- * icon.svg with embedded rasters. Neither belongs on a sidebar at 36px, so
- * this emits small webp/png variants into public/brand/.
+ * The source logo is a 1111x1134 PNG (~700 KB), which has no business being
+ * fetched to render a 26px sidebar mark. It lives outside public/ so it is
+ * never shipped; this emits small webp/png variants into public/brand/.
  *
  * Run with: pnpm assets:optimize
  */
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const source = path.join(root, "public", "icon.png");
+const source = path.join(root, "assets-src", "logo-source.png");
 const outDir = path.join(root, "public", "brand");
 
 const SIZES = [32, 64, 128, 256];
