@@ -841,7 +841,9 @@ mod tests {
     #[test]
     fn goal_exactly_on_the_threshold_still_counts() {
         let mut session = started_session();
-        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 300 - THRESHOLD });
+        session.handle_event(RlEvent::ClockUpdatedSeconds {
+            time: 300 - THRESHOLD,
+        });
         session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
 
         assert_eq!(kickoff_goals(&session, "p1"), 1);
