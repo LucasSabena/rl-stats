@@ -28,16 +28,24 @@ function applyTheme(theme: Theme) {
   root.style.colorScheme = theme;
 }
 
+/**
+ * Mirrors public/theme-init.js, which already applied the theme before paint.
+ * Kept in sync so the store never disagrees with what is on screen.
+ */
+function resolveInitialTheme(): Theme {
+  const stored = localStorage.getItem("rl-theme");
+  if (stored === "light" || stored === "dark") return stored;
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
+
 export const useUIStore = create<UIState>()(
   immer((set, get) => ({
-    sidebarExpanded: false,
+    sidebarExpanded: true,
     activePage: "/",
     toastQueue: [],
-    theme: ((): Theme => {
-      const stored = localStorage.getItem("rl-theme");
-      if (stored === "light" || stored === "dark") return stored;
-      return "dark";
-    })(),
+    theme: resolveInitialTheme(),
 
     toggleSidebar: () =>
       set((state) => {
@@ -85,6 +93,6 @@ export const useUIStore = create<UIState>()(
   }))
 );
 
-// Apply stored theme on load
-const stored = localStorage.getItem("rl-theme") as Theme | null;
-applyTheme(stored === "light" ? "light" : "dark");
+// Re-assert on load. public/theme-init.js already did this before paint;
+// this only keeps the DOM in sync if that script was bypassed (e.g. tests).
+applyTheme(resolveInitialTheme());

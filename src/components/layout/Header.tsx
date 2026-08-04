@@ -1,29 +1,38 @@
-import { useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { Plus } from "lucide-react";
 import { useLiveStore } from "@/stores/liveStore";
 import { useProfileStore } from "@/stores/profileStore";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { Radio, Sparkles, User } from "lucide-react";
 import {
   CreateProfileModal,
   SwitchProfileModal,
 } from "@/components/settings/ProfileModals";
 
+const TITLE_KEYS: Record<string, string> = {
+  "/": "pageTitles.live",
+  "/history": "pageTitles.history",
+  "/analytics": "pageTitles.analytics",
+  "/players": "pageTitles.players",
+  "/pro-configs": "pageTitles.proConfigs",
+  "/training-packs": "pageTitles.trainingPacks",
+  "/profile": "pageTitles.profile",
+  "/settings": "pageTitles.settings",
+};
+
+function resolveTitleKey(pathname: string): string {
+  if (TITLE_KEYS[pathname]) return TITLE_KEYS[pathname];
+  if (pathname.startsWith("/history/")) return "pageTitles.matchDetail";
+  if (pathname.startsWith("/players/")) return "pageTitles.players";
+  return "pageTitles.fallback";
+}
+
 export function Header() {
   const { t } = useTranslation("common");
   const location = useLocation();
-
-  const pageTitles: Record<string, string> = {
-    "/": t("pageTitles.live"),
-    "/history": t("pageTitles.history"),
-    "/analytics": t("pageTitles.analytics"),
-    "/pro-configs": t("pageTitles.proConfigs"),
-    "/settings": t("pageTitles.settings"),
-  };
 
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
   const currentMatch = useLiveStore((state) => state.currentMatch);
@@ -45,9 +54,18 @@ export function Header() {
   }, [fetchProfiles]);
 
   const isLive = connectionStatus === "connected" && currentMatch !== null;
-  const title = pageTitles[location.pathname] || t("pageTitles.fallback");
-
   const profileOptions = profiles.map((p) => ({ value: p.id, label: p.name }));
+
+  // One connection indicator, not two. Previously the header showed both a
+  // "waiting for game" badge and a separate ONLINE/OFFLINE pill saying the
+  // same thing.
+  const connection = isLive
+    ? { dot: "bg-accent-success", label: t("status.live") }
+    : connectionStatus === "connected"
+      ? { dot: "bg-accent-success", label: t("connection.waitingForGame") }
+      : connectionStatus === "connecting"
+        ? { dot: "bg-accent-warning animate-pulse", label: t("connection.connecting") }
+        : { dot: "bg-text-tertiary", label: t("connection.offline") };
 
   const handleSwitchProfile = (id: string) => {
     if (id === activeProfile?.id) return;
@@ -83,62 +101,42 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-border-highlight/50 surface-glass px-8 z-20 sticky top-0">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-accent-primary opacity-80" />
-            <h1 className="font-display text-lg font-bold tracking-tight text-text-primary text-shadow-sm">
-              {title}
-            </h1>
-          </div>
+      <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border-subtle bg-bg-base px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="truncate text-[15px] font-semibold tracking-tight text-text-primary">
+            {t(resolveTitleKey(location.pathname))}
+          </h1>
 
-          <div className="h-4 w-[1px] bg-border-highlight/50 mx-2" />
-
-          {isLive ? (
-            <Badge variant="live">
-              {t("status.live")}
-            </Badge>
-          ) : (
-            <Badge variant="default" className="opacity-80">
-              <Radio size={10} className="mr-1.5" />
-              {t("connection.waitingForGame")}
-            </Badge>
-          )}
+          <span
+            data-tour="connection"
+            className="flex shrink-0 items-center gap-1.5 text-xs text-text-secondary"
+          >
+            <span
+              aria-hidden="true"
+              className={cn("h-1.5 w-1.5 rounded-full", connection.dot)}
+            />
+            {connection.label}
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Profile selector */}
-          <div className="flex items-center gap-2 mr-2" data-tour="profiles">
-            <User size={14} className="text-text-secondary shrink-0" />
-            <Select
-              options={profileOptions}
-              value={activeProfile?.id ?? ""}
-              onChange={handleSwitchProfile}
-              placeholder={t("profile.selectPlaceholder")}
-              size="sm"
-              align="right"
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsCreateOpen(true)}
-            >
-              {t("profile.new")}
-            </Button>
-          </div>
-
-          {/* Connection status indicator dot */}
-          <div className="flex items-center gap-2 mr-4 bg-bg-panel/50 px-3 py-1.5 rounded-full border border-border-subtle shadow-[var(--shadow-card-inner)]" data-tour="connection">
-            <div className={cn(
-              "h-2 w-2 rounded-full",
-              connectionStatus === "connected" ? "bg-accent-success shadow-[0_0_8px_rgba(16,185,129,0.6)]" :
-              connectionStatus === "connecting" ? "bg-accent-warning animate-pulse" :
-              "bg-accent-danger"
-            )} />
-            <span className="text-[10px] font-mono text-text-secondary uppercase tracking-widest">
-              {connectionStatus === "connected" ? t("connection.online") : connectionStatus === "connecting" ? t("connection.connecting") : t("connection.offline")}
-            </span>
-          </div>
+        <div className="flex shrink-0 items-center gap-1.5" data-tour="profiles">
+          <Select
+            options={profileOptions}
+            value={activeProfile?.id ?? ""}
+            onChange={handleSwitchProfile}
+            placeholder={t("profile.selectPlaceholder")}
+            size="sm"
+            align="right"
+          />
+          <Button
+            variant="icon"
+            size="sm"
+            onClick={() => setIsCreateOpen(true)}
+            aria-label={t("profile.new")}
+            title={t("profile.new")}
+          >
+            <Plus size={15} aria-hidden="true" />
+          </Button>
         </div>
       </header>
 

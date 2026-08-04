@@ -8,6 +8,14 @@ interface CardProps {
   onClick?: () => void;
 }
 
+const VARIANTS = {
+  default: "border-border-subtle bg-bg-surface",
+  elevated: "border-border-default bg-bg-elevated shadow-level-2",
+  panel: "border-border-subtle bg-bg-secondary",
+  glass: "surface-glass border-border-default",
+  accent: "border-[color-mix(in_oklab,var(--accent)_40%,transparent)] bg-accent-primary-muted",
+} as const;
+
 export function Card({
   children,
   className,
@@ -15,29 +23,22 @@ export function Card({
   hoverable = false,
   onClick,
 }: CardProps) {
-  const variants = {
-    default: "border-border-subtle bg-bg-surface shadow-[var(--shadow-card-inner)]",
-    elevated: "border-border-default bg-bg-elevated shadow-level-2 shadow-[var(--shadow-card-inner)]",
-    panel: "border-border-subtle bg-bg-panel shadow-[var(--shadow-card-inner)]",
-    glass: "surface-glass border-border-highlight shadow-[var(--shadow-card-inner)]",
-    accent: "border-border-accent bg-accent-primary-muted shadow-[var(--shadow-card-inner)]",
-  };
+  const interactive = hoverable || Boolean(onClick);
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl border p-4 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-        variants[variant],
-        hoverable && "cursor-pointer group hover:-translate-y-1 hover:shadow-level-3 hover:border-border-highlight",
-        className
+        "rounded-lg border p-4",
+        VARIANTS[variant],
+        // Depth comes from the border and surface step, not from lifting the
+        // card off the page on hover.
+        interactive &&
+          "group cursor-pointer transition-colors duration-150 hover:border-border-highlight hover:bg-surface-hover",
+        className,
       )}
       onClick={onClick}
     >
-      {/* Inner glow effect on hover */}
-      {hoverable && (
-        <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-b from-white/[0.03] to-transparent" />
-      )}
-      <div className="relative z-10">{children}</div>
+      {children}
     </div>
   );
 }

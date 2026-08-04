@@ -1,223 +1,419 @@
 @import "tailwindcss";
 
-@theme {
-  --font-display: "Rajdhani", system-ui, sans-serif;
-  --font-body: "Inter", system-ui, sans-serif;
-  --color-bg-base: #050d16;
-  --color-bg-surface: #0b1524;
-  --color-bg-elevated: #111e32;
-  --color-bg-panel: #192540;
-  --color-bg-secondary: #0e1a2b;
-  --color-bg-hover: rgba(255, 255, 255, 0.04);
-  --color-surface-hover: rgba(255, 255, 255, 0.06);
-  --color-text-primary: #f0f0f0;
-  --color-text-secondary: #a9b6c8;
-  --color-text-muted: #8290a5;
-  --color-text-tertiary: #6f7f95;
-  --color-border-subtle: rgba(255, 255, 255, 0.06);
-  --color-border-default: rgba(255, 255, 255, 0.08);
-  --color-border-highlight: rgba(255, 255, 255, 0.14);
-  --color-border-accent: #3b82f6;
-  --color-accent-primary: #3b82f6;
-  --color-accent-primary-hover: #2563eb;
-  --color-accent-primary-muted: rgba(59, 130, 246, 0.1);
-  --color-accent-primary-subtle: rgba(59, 130, 246, 0.1);
-  --color-accent-secondary: #f59e0b;
-  --color-accent-secondary-subtle: rgba(245, 158, 11, 0.1);
-  --color-accent-success: #10b981;
-  --color-accent-success-subtle: rgba(16, 185, 129, 0.1);
-  --color-accent-danger: #ef4444;
-  --color-accent-danger-subtle: rgba(239, 68, 68, 0.1);
-  --color-accent-warning: #f59e0b;
-  --color-accent-warning-subtle: rgba(245, 158, 11, 0.1);
-  --color-accent-info: #3b82f6;
-  --color-accent-info-subtle: rgba(59, 130, 246, 0.1);
-  --color-accent-purple: #8b5cf6;
-  --color-accent-purple-subtle: rgba(139, 92, 246, 0.1);
-  --color-ring: rgba(59, 130, 246, 0.4);
-  --color-surface-glass: rgba(11, 21, 36, 0.65);
-  --color-overlay: rgba(0, 0, 0, 0.7);
-  --color-link: #60a5fa;
-  --color-link-hover: #93c5fd;
-  --color-boost-full: #22d3ee;
-  --color-boost-mid: #f59e0b;
-  --color-boost-low: #ef4444;
-  --color-team-blue: #3b82f6;
-  --color-team-orange: #f59e0b;
-  --color-team-blue-bg: rgba(59, 130, 246, 0.12);
-  --color-team-orange-bg: rgba(245, 158, 11, 0.12);
-  --color-team-blue-glow: rgba(59, 130, 246, 0.4);
-  --color-team-orange-glow: rgba(245, 158, 11, 0.4);
-  --shadow-level-1: 0 1px 2px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-level-2: 0 4px 6px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
-  --shadow-level-3: 0 10px 15px rgba(0, 0, 0, 0.2), 0 4px 6px rgba(0, 0, 0, 0.12);
-  --shadow-level-4: 0 20px 25px rgba(0, 0, 0, 0.25), 0 8px 10px rgba(0, 0, 0, 0.15);
-  --shadow-card-inner: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --shadow-glow-blue: 0 0 12px rgba(59, 130, 246, 0.25);
-  --shadow-glow-orange: 0 0 12px rgba(245, 158, 11, 0.25);
+/* ============================================================
+   Fonts — self-hosted.
+   The Tauri CSP is `style-src 'self'` / `font-src 'self'`, so the
+   Google Fonts <link> was silently blocked and every heading fell
+   back to system-ui. These are bundled by Vite and served from the
+   app origin, so they actually render.
+   ============================================================ */
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/geist-mono/index.css";
+
+/* Class-based dark mode (the theme store toggles .dark / .light on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   Palette — light theme is the :root default, .dark overrides.
+   Colors are OKLCH so that lightness steps are perceptually even
+   and tints stay chromatically consistent across both themes.
+   ============================================================ */
+:root {
+  /* Surfaces */
+  --canvas: oklch(0.985 0.002 265);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(1 0 0);
+  --surface-sunken: oklch(0.965 0.003 265);
+
+  /* Foreground */
+  --fg: oklch(0.22 0.012 265);
+  --fg-secondary: oklch(0.44 0.014 265);
+  --fg-muted: oklch(0.56 0.014 265);
+  --fg-subtle: oklch(0.68 0.012 265);
+
+  /* Hairlines */
+  --line-subtle: oklch(0 0 0 / 0.07);
+  --line: oklch(0 0 0 / 0.11);
+  --line-strong: oklch(0 0 0 / 0.2);
+
+  /* Interaction wash */
+  --wash: oklch(0 0 0 / 0.04);
+  --wash-strong: oklch(0 0 0 / 0.07);
+
+  /* Brand accent — deliberately NOT team blue, so "selected" never
+     reads as "blue team". */
+  --accent: oklch(0.54 0.2 285);
+  --accent-hover: oklch(0.48 0.21 285);
+  --accent-fg: oklch(1 0 0);
+
+  /* Status */
+  --success: oklch(0.54 0.15 157);
+  --danger: oklch(0.55 0.21 25);
+  --warning: oklch(0.65 0.16 65);
+  --info: oklch(0.55 0.18 250);
+  --purple: oklch(0.55 0.2 300);
+
+  /* Team identity — reserved, never decorative */
+  --team-blue: oklch(0.55 0.18 250);
+  --team-orange: oklch(0.63 0.17 50);
+
+  /* Boost telemetry */
+  --boost-full: oklch(0.6 0.14 195);
+  --boost-mid: oklch(0.65 0.16 65);
+  --boost-low: oklch(0.55 0.21 25);
+
+  /* Elevation — real shadows in light, borders carry depth in dark */
+  --shadow-1: 0 1px 2px oklch(0.2 0.02 265 / 0.06);
+  --shadow-2: 0 2px 4px oklch(0.2 0.02 265 / 0.06), 0 1px 2px oklch(0.2 0.02 265 / 0.04);
+  --shadow-3: 0 8px 16px oklch(0.2 0.02 265 / 0.08), 0 2px 4px oklch(0.2 0.02 265 / 0.05);
+  --shadow-4: 0 16px 32px oklch(0.2 0.02 265 / 0.12), 0 4px 8px oklch(0.2 0.02 265 / 0.06);
+
+  --glass: oklch(1 0 0 / 0.72);
+  --scrim: oklch(0.22 0.012 265 / 0.4);
+
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: oklch(0.155 0.008 265);
+  --surface: oklch(0.196 0.009 265);
+  --surface-raised: oklch(0.238 0.011 265);
+  --surface-sunken: oklch(0.128 0.007 265);
+
+  --fg: oklch(0.98 0.003 265);
+  --fg-secondary: oklch(0.76 0.012 265);
+  --fg-muted: oklch(0.62 0.014 265);
+  --fg-subtle: oklch(0.5 0.014 265);
+
+  --line-subtle: oklch(1 0 0 / 0.06);
+  --line: oklch(1 0 0 / 0.1);
+  --line-strong: oklch(1 0 0 / 0.18);
+
+  --wash: oklch(1 0 0 / 0.04);
+  --wash-strong: oklch(1 0 0 / 0.08);
+
+  --accent: oklch(0.66 0.19 285);
+  --accent-hover: oklch(0.72 0.18 285);
+  --accent-fg: oklch(0.16 0.02 285);
+
+  --success: oklch(0.74 0.17 157);
+  --danger: oklch(0.66 0.2 25);
+  --warning: oklch(0.79 0.16 75);
+  --info: oklch(0.66 0.16 250);
+  --purple: oklch(0.68 0.18 300);
+
+  --team-blue: oklch(0.66 0.16 250);
+  --team-orange: oklch(0.74 0.16 58);
+
+  --boost-full: oklch(0.78 0.14 195);
+  --boost-mid: oklch(0.79 0.16 75);
+  --boost-low: oklch(0.66 0.2 25);
+
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-2: 0 2px 4px oklch(0 0 0 / 0.32), 0 1px 2px oklch(0 0 0 / 0.24);
+  --shadow-3: 0 8px 16px oklch(0 0 0 / 0.4), 0 2px 4px oklch(0 0 0 / 0.28);
+  --shadow-4: 0 16px 32px oklch(0 0 0 / 0.48), 0 4px 8px oklch(0 0 0 / 0.32);
+
+  --glass: oklch(0.196 0.009 265 / 0.76);
+  --scrim: oklch(0.1 0.006 265 / 0.64);
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   Tailwind theme.
+   `inline` keeps the var() reference in the generated utility so
+   colors follow the .dark / .light class at runtime instead of
+   being frozen at build time.
+   ============================================================ */
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+
+  /* ── Surfaces (legacy names preserved so existing markup keeps working) ── */
+  --color-bg-base: var(--canvas);
+  --color-bg-surface: var(--surface);
+  --color-bg-elevated: var(--surface-raised);
+  --color-bg-panel: var(--surface-raised);
+  --color-bg-secondary: var(--surface-sunken);
+  --color-bg-sunken: var(--surface-sunken);
+  --color-surface-elevated: var(--surface-raised);
+  --color-bg-hover: var(--wash);
+  --color-surface-hover: var(--wash-strong);
+
+  /* ── Text ── */
+  --color-text-primary: var(--fg);
+  --color-text-secondary: var(--fg-secondary);
+  --color-text-muted: var(--fg-muted);
+  --color-text-tertiary: var(--fg-subtle);
+
+  /* ── Hairlines ── */
+  --color-border-subtle: var(--line-subtle);
+  --color-border-default: var(--line);
+  --color-border-highlight: var(--line-strong);
+  --color-border-accent: var(--accent);
+
+  /* ── Accent ── */
+  --color-accent-primary: var(--accent);
+  --color-accent-primary-hover: var(--accent-hover);
+  --color-accent-primary-fg: var(--accent-fg);
+  --color-accent-primary-subtle: color-mix(in oklab, var(--accent) 14%, transparent);
+  --color-accent-primary-muted: color-mix(in oklab, var(--accent) 10%, transparent);
+  --color-accent-secondary: var(--team-orange);
+  --color-accent-secondary-subtle: color-mix(in oklab, var(--team-orange) 14%, transparent);
+
+  /* ── Status ── */
+  --color-accent-success: var(--success);
+  --color-accent-success-subtle: color-mix(in oklab, var(--success) 14%, transparent);
+  --color-accent-danger: var(--danger);
+  --color-accent-danger-subtle: color-mix(in oklab, var(--danger) 14%, transparent);
+  --color-accent-warning: var(--warning);
+  --color-accent-warning-subtle: color-mix(in oklab, var(--warning) 14%, transparent);
+  --color-accent-info: var(--info);
+  --color-accent-info-subtle: color-mix(in oklab, var(--info) 14%, transparent);
+  --color-accent-purple: var(--purple);
+  --color-accent-purple-subtle: color-mix(in oklab, var(--purple) 14%, transparent);
+
+  /* ── Team identity ── */
+  --color-team-blue: var(--team-blue);
+  --color-team-orange: var(--team-orange);
+  --color-team-blue-bg: color-mix(in oklab, var(--team-blue) 12%, transparent);
+  --color-team-orange-bg: color-mix(in oklab, var(--team-orange) 12%, transparent);
+  --color-team-blue-glow: color-mix(in oklab, var(--team-blue) 32%, transparent);
+  --color-team-orange-glow: color-mix(in oklab, var(--team-orange) 32%, transparent);
+
+  /* ── Boost ── */
+  --color-boost-full: var(--boost-full);
+  --color-boost-mid: var(--boost-mid);
+  --color-boost-low: var(--boost-low);
+
+  /* ── Misc ── */
+  --color-link: var(--accent);
+  --color-link-hover: var(--accent-hover);
+  --color-ring: color-mix(in oklab, var(--accent) 55%, transparent);
+  --color-surface-glass: var(--glass);
+  --color-overlay: var(--scrim);
+
+  /* ── Radius ── */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  /* ── Elevation ── */
+  --shadow-level-1: var(--shadow-1);
+  --shadow-level-2: var(--shadow-2);
+  --shadow-level-3: var(--shadow-3);
+  --shadow-level-4: var(--shadow-4);
+  --shadow-card-inner: none;
+
+  /* ── Motion ── */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 @layer base {
-  :root {
-    background-color: #050d16;
-    color: #f0f0f0;
-    --background: #050d16;
-    --foreground: #f0f0f0;
-  }
-  body {
-    font-family: "Inter", system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    overflow-x: hidden;
-  }
-  ::selection {
-    background: rgba(59, 130, 246, 0.25);
-    color: #f0f0f0;
-  }
-  h1, h2, h3, h4, h5, h6 {
-    font-family: "Rajdhani", system-ui, sans-serif;
-    letter-spacing: -0.025em;
-    font-weight: 600;
-  }
-  :focus-visible {
-    outline: 2px solid var(--color-accent-primary);
-    outline-offset: 2px;
+  html {
+    background-color: var(--canvas);
   }
 
-  /* Scrollbar styling for native app feel */
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--canvas);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01";
+    font-variant-ligatures: common-ligatures;
+    overflow-x: hidden;
+  }
+
+  /* Numeric data must not reflow as values change. */
+  th, td,
+  [data-numeric],
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    color: var(--fg);
+    text-wrap: balance;
+  }
+
+  h1 { letter-spacing: -0.028em; }
+
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 28%, transparent);
+    color: var(--fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Only show focus rings for keyboard users. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border-default);
+    background: var(--line-strong);
     border-radius: 9999px;
-    border: 2px solid transparent;
+    border: 3px solid transparent;
     background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-border-highlight);
-    border: 2px solid transparent;
+    background: var(--fg-subtle);
+    border: 3px solid transparent;
     background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /* The overlay window renders over gameplay — never paint a background. */
+  .overlay-window,
+  .overlay-window body {
+    background: transparent !important;
   }
 }
 
-/* ============================================
-   Utilities
-   ============================================ */
 @layer utilities {
   .surface-glass {
-    background: var(--color-surface-glass);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    background: var(--glass);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Large scoreboard/stat numerals. */
+  .numeral {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.04em;
+    font-weight: 600;
   }
 
   .text-gradient {
-    background: linear-gradient(to right, var(--color-text-primary), var(--color-text-secondary));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .text-gradient-accent {
-    background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary));
+    background: linear-gradient(180deg, var(--fg), color-mix(in oklab, var(--fg) 62%, transparent));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* ── Boost Bar Colors ── */
-  .bg-boost-full { background-color: var(--color-boost-full); }
-  .bg-boost-mid { background-color: var(--color-boost-mid); }
-  .bg-boost-low { background-color: var(--color-boost-low); }
+  .bg-boost-full { background-color: var(--boost-full); }
+  .bg-boost-mid { background-color: var(--boost-mid); }
+  .bg-boost-low { background-color: var(--boost-low); }
 
-  /* ── Overlay HUD Panel ── */
+  .mmr-high { color: var(--boost-full); }
+  .mmr-mid { color: var(--boost-mid); }
+  .mmr-low { color: var(--fg-subtle); }
+
+  /* OBS overlay panel — always dark, it sits over the game. */
   .overlay-hud {
-    background: rgba(5, 7, 10, 0.65);
-    backdrop-filter: blur(20px) saturate(1.3);
-    -webkit-backdrop-filter: blur(20px) saturate(1.3);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.03),
-      0 8px 32px rgba(0, 0, 0, 0.4),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    background: oklch(0.12 0.006 265 / 0.72);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid oklch(1 0 0 / 0.08);
+    box-shadow: 0 8px 32px oklch(0 0 0 / 0.45);
   }
 
-  /* ── Overtime Pulse ── */
-  @keyframes overtime-pulse {
-    0%, 100% { opacity: 1; text-shadow: 0 0 8px rgba(245, 158, 11, 0.4); }
-    50% { opacity: 0.7; text-shadow: 0 0 16px rgba(245, 158, 11, 0.6); }
-  }
-  .animate-overtime { animation: overtime-pulse 1.5s ease-in-out infinite; }
-
-  /* ── Score Glow ── */
-  @keyframes score-glow-blue {
-    0%, 100% { text-shadow: 0 0 12px rgba(59, 130, 246, 0.2); }
-    50% { text-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
-  }
-  @keyframes score-glow-orange {
-    0%, 100% { text-shadow: 0 0 12px rgba(249, 115, 22, 0.2); }
-    50% { text-shadow: 0 0 20px rgba(249, 115, 22, 0.4); }
-  }
-  .score-glow-blue { animation: score-glow-blue 2s ease-in-out infinite; }
-  .score-glow-orange { animation: score-glow-orange 2s ease-in-out infinite; }
-
-  /* ── Player Row Hover (interactive mode) ── */
   .player-row-hover {
-    transition: background-color 0.15s ease;
+    transition: background-color 0.14s var(--ease-out-quint);
   }
   .player-row-hover:hover {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: var(--wash);
   }
 
-  /* ── MMR Badge Colors ── */
-  .mmr-high { color: var(--color-boost-full); }
-  .mmr-mid { color: var(--color-boost-mid); }
-  .mmr-low { color: var(--color-text-tertiary); }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
-/* ============================================
-   Animations (Exponential Easing)
-   ============================================ */
+/* ============================================================
+   Motion
+   ============================================================ */
 @keyframes slide-in-up {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes spring-in {
-  0% { opacity: 0; transform: scale(0.9); }
-  70% { transform: scale(1.02); }
-  100% { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
 }
-
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
+  50% { opacity: 0.72; }
 }
-
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
 @keyframes scale-in {
-  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-
 @keyframes slide-down {
-  from { opacity: 0; transform: translateY(-8px); }
+  from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes overtime-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
-.animate-slide-in-up { animation: slide-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.animate-spring-in { animation: spring-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-.animate-pulse-subtle { animation: pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-.animate-fade-in { animation: fade-in 0.18s ease-out both; }
-.animate-scale-in { animation: scale-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.animate-slide-down { animation: slide-down 0.24s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-slide-in-up { animation: slide-in-up 0.32s var(--ease-out-quint) both; }
+.animate-spring-in { animation: spring-in 0.28s var(--ease-spring) both; }
+.animate-pulse-subtle { animation: pulse-subtle 2.4s ease-in-out infinite; }
+.animate-fade-in { animation: fade-in 0.16s ease-out both; }
+.animate-scale-in { animation: scale-in 0.18s var(--ease-out-quint) both; }
+.animate-slide-down { animation: slide-down 0.2s var(--ease-out-quint) both; }
+.animate-overtime { animation: overtime-pulse 1.6s ease-in-out infinite; }
+
+/* Score glows were pure decoration and cost a repaint every frame;
+   kept as no-ops so existing markup doesn't need touching. */
+.score-glow-blue,
+.score-glow-orange { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -228,27 +424,4 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* ── Hide Scrollbar utility ── */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── Line Clamp utilities ── */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.line-clamp-3 {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }

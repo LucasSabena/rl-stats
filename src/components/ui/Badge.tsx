@@ -1,6 +1,16 @@
 import { cn } from "@/lib/utils";
 
-export type BadgeVariant = "live" | "win" | "loss" | "overtime" | "ranked" | "default" | "info" | "accent" | "success" | "danger";
+export type BadgeVariant =
+  | "live"
+  | "win"
+  | "loss"
+  | "overtime"
+  | "ranked"
+  | "default"
+  | "info"
+  | "accent"
+  | "success"
+  | "danger";
 
 interface BadgeProps {
   variant?: BadgeVariant;
@@ -9,31 +19,46 @@ interface BadgeProps {
   glow?: boolean;
 }
 
-export function Badge({ variant = "default", children, className, glow = false }: BadgeProps) {
-  const variants: Record<BadgeVariant, string> = {
-    live: "bg-accent-success-subtle text-accent-success border border-accent-success/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]",
-    win: "bg-accent-success-subtle text-accent-success border border-accent-success/20",
-    loss: "bg-accent-danger-subtle text-accent-danger border border-accent-danger/20",
-    overtime: "bg-accent-warning-subtle text-accent-warning border border-accent-warning/20",
-    ranked: "bg-accent-purple-subtle text-accent-purple border border-accent-purple/20",
-    default: "bg-bg-elevated text-text-secondary border border-border-default shadow-[var(--shadow-card-inner)]",
-    info: "bg-accent-info-subtle text-accent-info border border-accent-info/20",
-    accent: "bg-accent-primary-subtle text-accent-primary border border-accent-primary/20",
-    success: "bg-accent-success-subtle text-accent-success border border-accent-success/20",
-    danger: "bg-accent-danger-subtle text-accent-danger border border-accent-danger/20",
-  };
+/**
+ * Small status marker.
+ *
+ * Deliberately quiet: text-weight and a low-opacity tint carry the meaning.
+ * Badges were previously pill-shaped, blurred and glowing, which made every
+ * screen look like a notification tray.
+ */
+const VARIANTS: Record<BadgeVariant, string> = {
+  live: "bg-accent-success-subtle text-accent-success",
+  win: "bg-accent-success-subtle text-accent-success",
+  loss: "bg-accent-danger-subtle text-accent-danger",
+  overtime: "bg-accent-warning-subtle text-accent-warning",
+  ranked: "bg-accent-purple-subtle text-accent-purple",
+  default: "bg-[var(--wash-strong)] text-text-secondary",
+  info: "bg-accent-info-subtle text-accent-info",
+  accent: "bg-accent-primary-subtle text-accent-primary",
+  success: "bg-accent-success-subtle text-accent-success",
+  danger: "bg-accent-danger-subtle text-accent-danger",
+};
 
+export function Badge({
+  variant = "default",
+  children,
+  className,
+  glow = false,
+}: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide backdrop-blur-sm",
-        variants[variant],
+        "inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] font-medium leading-tight",
+        VARIANTS[variant],
         glow && "animate-pulse-subtle",
-        className
+        className,
       )}
     >
-      {variant === 'live' && (
-        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-accent-success animate-pulse" />
+      {variant === "live" && (
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 rounded-full bg-accent-success animate-pulse"
+        />
       )}
       {children}
     </span>

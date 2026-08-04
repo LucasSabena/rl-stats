@@ -9,7 +9,12 @@
     "profile": "Perfil",
     "settings": "Ajustes",
     "collapse": "Colapsar sidebar",
-    "expand": "Expandir sidebar"
+    "expand": "Expandir sidebar",
+    "groups": {
+      "play": "En partida",
+      "data": "Tus datos",
+      "improve": "Mejorar"
+    }
   },
   "pageTitles": {
     "live": "Live Dashboard",
@@ -18,7 +23,10 @@
     "proConfigs": "Configuraciones Pro",
     "trainingPacks": "Entrenamientos",
     "settings": "Ajustes",
-    "fallback": "RL Stats"
+    "fallback": "RL Stats",
+    "players": "Jugadores",
+    "profile": "Mi carrera",
+    "matchDetail": "Detalle de partida"
   },
   "connection": {
     "online": "Online",

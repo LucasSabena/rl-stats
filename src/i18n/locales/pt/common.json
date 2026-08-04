@@ -9,7 +9,12 @@
     "profile": "Perfil",
     "settings": "Configurações",
     "collapse": "Recolher barra lateral",
-    "expand": "Expandir barra lateral"
+    "expand": "Expandir barra lateral",
+    "groups": {
+      "play": "Em jogo",
+      "data": "Seus dados",
+      "improve": "Melhorar"
+    }
   },
   "pageTitles": {
     "live": "Painel ao Vivo",
@@ -18,7 +23,10 @@
     "proConfigs": "Configs de Pros",
     "trainingPacks": "Packs de Treino",
     "settings": "Configurações",
-    "fallback": "RL Stats"
+    "fallback": "RL Stats",
+    "players": "Jogadores",
+    "profile": "Minha carreira",
+    "matchDetail": "Detalhe da partida"
   },
   "connection": {
     "online": "Online",

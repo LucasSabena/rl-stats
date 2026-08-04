@@ -1,7 +1,7 @@
-import { useUIStore } from "@/stores/uiStore";
+import { Moon, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
-import { Sun, Moon } from "lucide-react";
 
 interface ThemeToggleProps {
   collapsed?: boolean;
@@ -12,42 +12,28 @@ export function ThemeToggle({ collapsed }: ThemeToggleProps) {
   const theme = useUIStore((s) => s.theme);
   const toggleTheme = useUIStore((s) => s.toggleTheme);
 
+  const label = theme === "dark" ? t("theme.light") : t("theme.dark");
+
   return (
     <button
       onClick={toggleTheme}
+      aria-label={
+        theme === "dark" ? t("theme.switchToLight") : t("theme.switchToDark")
+      }
+      title={label}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-text-secondary transition-all duration-200",
+        "flex h-9 items-center gap-2.5 rounded-md text-[13px] font-medium",
+        "text-text-secondary transition-colors duration-150",
         "hover:bg-surface-hover hover:text-text-primary",
-        collapsed && "justify-center px-2"
+        collapsed ? "justify-center px-0" : "px-2.5",
       )}
-      aria-label={theme === "dark" ? t("theme.switchToLight") : t("theme.switchToDark")}
-      title={theme === "dark" ? t("theme.light") : t("theme.dark")}
     >
-      <span className="relative flex h-5 w-5 items-center justify-center">
-        <Sun
-          size={18}
-          className={cn(
-            "absolute transition-all duration-300",
-            theme === "dark"
-              ? "rotate-90 scale-0 opacity-0"
-              : "rotate-0 scale-100 opacity-100"
-          )}
-        />
-        <Moon
-          size={18}
-          className={cn(
-            "absolute transition-all duration-300",
-            theme === "dark"
-              ? "rotate-0 scale-100 opacity-100"
-              : "-rotate-90 scale-0 opacity-0"
-          )}
-        />
-      </span>
-      {!collapsed && (
-        <span className="text-sm font-medium">
-          {theme === "dark" ? t("theme.light") : t("theme.dark")}
-        </span>
+      {theme === "dark" ? (
+        <Sun size={17} aria-hidden="true" />
+      ) : (
+        <Moon size={17} aria-hidden="true" />
       )}
+      {!collapsed && <span className="truncate">{label}</span>}
     </button>
   );
 }

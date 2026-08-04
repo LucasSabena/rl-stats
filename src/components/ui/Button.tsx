@@ -2,7 +2,13 @@ import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
-export type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "icon" | "accent";
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "danger"
+  | "ghost"
+  | "icon"
+  | "accent";
 export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,6 +18,31 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   leftIcon?: LucideIcon;
   rightIcon?: LucideIcon;
 }
+
+const VARIANTS: Record<ButtonVariant, string> = {
+  primary: "bg-accent-primary text-[var(--accent-fg)] hover:bg-accent-primary-hover",
+  // Alias of primary: the old gradient variant read as decoration, not hierarchy.
+  accent: "bg-accent-primary text-[var(--accent-fg)] hover:bg-accent-primary-hover",
+  secondary:
+    "border border-border-default bg-bg-surface text-text-primary hover:bg-surface-hover hover:border-border-highlight",
+  danger: "bg-accent-danger text-white hover:brightness-110",
+  ghost: "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
+  icon: "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
+};
+
+const SIZES: Record<ButtonSize, string> = {
+  sm: "h-8 gap-1.5 px-3 text-[13px]",
+  md: "h-9 gap-2 px-3.5 text-sm",
+  lg: "h-11 gap-2 px-5 text-[15px]",
+};
+
+const ICON_ONLY_SIZES: Record<ButtonSize, string> = {
+  sm: "h-8 w-8",
+  md: "h-9 w-9",
+  lg: "h-11 w-11",
+};
+
+const ICON_SIZES: Record<ButtonSize, number> = { sm: 14, md: 16, lg: 18 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -26,62 +57,37 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       ...props
     },
-    ref
+    ref,
   ) => {
-    const baseStyles =
-      "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] disabled:opacity-50 disabled:pointer-events-none active:scale-95 select-none relative overflow-hidden group";
-
-    const variants: Record<ButtonVariant, string> = {
-      primary:
-        "bg-accent-primary text-white hover:bg-accent-primary-hover shadow-level-1 hover:shadow-glow-blue border border-accent-primary-hover/50",
-      accent:
-        "bg-gradient-to-r from-accent-primary to-accent-secondary text-white shadow-level-1 hover:shadow-level-2 hover:shadow-glow-orange border border-white/10",
-      secondary:
-        "border border-border-default bg-bg-surface text-text-primary hover:bg-surface-hover hover:border-border-highlight shadow-[var(--shadow-card-inner)] hover:shadow-level-1",
-      danger:
-        "border border-accent-danger/30 bg-accent-danger-subtle text-accent-danger hover:bg-accent-danger/20 hover:border-accent-danger/50",
-      ghost:
-        "bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary",
-      icon: "h-9 w-9 rounded-lg bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary",
-    };
-
-    const sizes: Record<ButtonSize, string> = {
-      sm: "px-3 py-1.5 text-xs",
-      md: "px-4 py-2 text-sm",
-      lg: "px-6 py-2.5 text-base",
-    };
+    const iconSize = ICON_SIZES[size];
 
     return (
       <button
         ref={ref}
         className={cn(
-          baseStyles,
-          variant !== "icon" && sizes[size],
-          variants[variant],
-          className
+          "inline-flex select-none items-center justify-center rounded-md font-medium",
+          "transition-colors duration-150",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
+          "disabled:pointer-events-none disabled:opacity-45",
+          variant === "icon" ? ICON_ONLY_SIZES[size] : SIZES[size],
+          VARIANTS[variant],
+          className,
         )}
         disabled={disabled || isLoading}
         {...props}
       >
-        {/* Glossy overlay for non-ghost/icon buttons */}
-        {(variant === "primary" || variant === "accent") && (
-          <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent pointer-events-none rounded-lg" />
+        {isLoading && (
+          <span
+            aria-hidden="true"
+            className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+          />
         )}
-        
-        {/* Glow effect on hover */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1)_0%,transparent_70%)]" />
-
-        <span className="relative z-10 flex items-center justify-center gap-2">
-          {isLoading && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          )}
-          {!isLoading && LeftIcon && <LeftIcon size={16} />}
-          {children}
-          {!isLoading && RightIcon && <RightIcon size={16} />}
-        </span>
+        {!isLoading && LeftIcon && <LeftIcon size={iconSize} aria-hidden="true" />}
+        {children}
+        {!isLoading && RightIcon && <RightIcon size={iconSize} aria-hidden="true" />}
       </button>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";

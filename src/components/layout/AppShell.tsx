@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
@@ -10,22 +11,20 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const location = useLocation();
+  const setActivePage = useUIStore((state) => state.setActivePage);
 
-  useUIStore.getState().setActivePage(location.pathname);
+  // Was called inline during render, which mutated the store mid-render.
+  useEffect(() => {
+    setActivePage(location.pathname);
+  }, [location.pathname, setActivePage]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg-base relative text-text-primary selection:bg-accent-primary-subtle">
-      {/* Immersive background glow effects */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden mix-blend-screen opacity-40 dark:opacity-100">
-        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-accent-primary/10 blur-[120px]" />
-        <div className="absolute top-[60%] -right-[10%] w-[40%] h-[40%] rounded-full bg-accent-secondary/10 blur-[120px]" />
-      </div>
-
+    <div className="flex h-screen w-screen overflow-hidden bg-bg-base text-text-primary">
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden relative z-10">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-y-auto p-6 relative">
-          <div className="mx-auto max-w-[1400px] animate-fade-in">{children}</div>
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1360px] px-6 py-6">{children}</div>
         </main>
       </div>
       <ToastContainer />
