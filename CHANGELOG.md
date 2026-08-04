@@ -1,5 +1,58 @@
 # Changelog
 
+## v2.3.2 — Bug fixes: share preview, MMR, kickoff goals, timeline
+
+### Fixes
+
+- **The share preview was blank.** It renders the card to a `blob:` URL, but
+  the CSP is `img-src 'self' data:` — `blob:` was never allowed, so the
+  browser blocked the image outright and the modal showed a broken-image
+  placeholder.
+- **Per-match MMR was discarded.** The backend has always persisted and sent
+  `stats.mmr`, but the frontend never declared or mapped it, so the MMR
+  recorded for each match was dropped on arrival. It now appears in the match
+  roster alongside the rank insignia derived from it.
+- **Kickoff goals were always zero.** Counts were keyed by the raw scorer id
+  from the goal event but read back at save time using the session's
+  player-map key. Those come from different parser paths, so any mismatch
+  wrote the count under a key nothing reads. Scorer resolution now tries the
+  exact id, a case-insensitive id, then the display name, and warns instead of
+  silently discarding a goal.
+- **Session detail said "loading" forever.** The component showed the loading
+  message whenever the match list was empty, collapsing loading, empty and
+  error into one state — and the parent passed an empty list while fetching.
+  All three are now distinct.
+- **Player names shifted around in the stats table.** MVP and placement badges
+  rendered *before* the name, so every row started at a different position.
+  Badges now follow the name. Rank 1 also rendered both an "MVP" badge and a
+  "1º" medal; deduplicated.
+
+### Match detail
+
+- Reordered: scoreboard, rosters, full stats table, goals, timeline, metadata.
+  The stats table previously sat at the very bottom below the timeline,
+  burying the numbers the page exists for.
+- The timeline drew every event identically, so a shot looked as important as
+  a goal. Goals now carry the running score and full weight; saves, epic
+  saves, assists, demos and shots are quiet supporting rows. Names are links,
+  and a goals-only toggle handles long matches. Also replaced a hardcoded
+  `border-gray-700` that stayed dark in light mode.
+
+### Analytics
+
+- The streak card was green whether you were on a winning or losing run. It
+  now reads the sign and says which it is, and matches the other stat cards
+  instead of carrying its own icon tile and border accent.
+- Fixed the page header and section rhythm; the app header already renders
+  the page title, which the page was duplicating inside nested wrappers.
+
+### Known gaps
+
+- Crossbar hits are parsed and stored as events but not yet surfaced as a
+  stat.
+- Parc de Paris still has no arena image and uses the generated tile.
+- The OBS overlay has not been verified against a live OBS instance.
+
 ## v2.3.1 — Official rank icons, career page, working loading states
 
 ### Official Rocket League rank icons
