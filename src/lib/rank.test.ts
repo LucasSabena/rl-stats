@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveRank } from "./rank";
+import { deriveRank, rankIconIndex } from "./rank";
 
 describe("deriveRank", () => {
   it("returns null without an MMR value", () => {
@@ -48,5 +48,35 @@ describe("deriveRank", () => {
   it("produces compact labels for dense rows", () => {
     expect(deriveRank(620)?.short).toBe("D1");
     expect(deriveRank(1100)?.short).toBe("GC1");
+  });
+});
+
+describe("rankIconIndex", () => {
+  const idx = (mmr: number) => {
+    const r = deriveRank(mmr);
+    if (!r) throw new Error("expected a rank");
+    return rankIconIndex(r);
+  };
+
+  it("maps onto the in-game 0-22 ladder", () => {
+    expect(idx(0)).toBe(1); // Bronze I
+    expect(idx(180)).toBe(2); // Bronze II
+    expect(idx(260)).toBe(4); // Silver I
+    expect(idx(620)).toBe(13); // Diamond I
+    expect(idx(900)).toBe(17); // Champion II
+    expect(idx(1100)).toBe(19); // Grand Champion I
+    expect(idx(1500)).toBe(22); // Supersonic Legend
+  });
+
+  it("covers every division without gaps or overlap", () => {
+    const seen = new Set<number>();
+    for (let mmr = 0; mmr <= 1400; mmr += 5) {
+      const r = deriveRank(mmr);
+      if (r) seen.add(rankIconIndex(r));
+    }
+    // 1..22 — every tier icon except Unranked, which has no MMR.
+    expect([...seen].sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 22 }, (_, i) => i + 1),
+    );
   });
 });

@@ -328,3 +328,8 @@ See [LICENSE](LICENSE) for full text.
 - [rlstatsapi](https://github.com/xentrick/rlstatsapi) — Rust library reference for event parsing
 - [RocketLeagueStatsAPI](https://github.com/manucabral/RocketLeagueStatsAPI) — Python library reference for event schema
 - [Tauri](https://tauri.app/) — The framework that makes this app possible
+- [InGameRank](https://github.com/nixvio64/InGameRank) (MIT) — source of the rank tier icons in `public/ranks/`
+- [Geist](https://vercel.com/font) (SIL OFL 1.1) — the UI typeface, self-hosted via `@fontsource`
+
+Rocket League, its rank insignia and arena imagery are trademarks and assets of
+Psyonix LLC. This is an unaffiliated fan-made companion app.

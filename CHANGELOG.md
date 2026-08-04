@@ -1,5 +1,56 @@
 # Changelog
 
+## v2.3.1 — Official rank icons, career page, working loading states
+
+### Official Rocket League rank icons
+
+- All 22 rank tiers (Bronze I through Supersonic Legend) now use the real
+  in-game insignia, sourced from the MIT-licensed
+  [InGameRank](https://github.com/nixvio64/InGameRank) and optimized to webp
+  at two sizes (228 KB total). The SVG insignia remains as a fallback if an
+  icon ever fails to load. Icon indexing is covered by tests across the full
+  MMR ladder.
+
+### Loading states were invisible
+
+- `Skeleton` asked for an `animate-shimmer` utility that was never defined —
+  only the bare `@keyframes` existed. Every loading placeholder rendered as a
+  transparent empty div, so all loading states looked like blank pages.
+
+### Player profiles were unreachable
+
+- The player detail route only accepted a numeric database row id, but live
+  matches and match detail only carry a Rocket League PrimaryId, so a player
+  link from those screens could never resolve. Added
+  `get_player_detail_by_primary_id`; the route now accepts either form, and
+  names are clickable in the live dashboard, match roster and stats table.
+
+### Profile page rebuilt on local data
+
+- The tracker/MMR integration behind it can no longer be authenticated. It is
+  now a career view built entirely from the local match database: totals, win
+  rate, streaks, kickoff goals, per-playlist breakdown, your share of the
+  team's output, overtime/close/blowout records and your best hours.
+
+### Share card
+
+- It carried its own unrelated palette and asked for Outfit / Inter /
+  JetBrains Mono — none of which are loaded any more, so every generated card
+  silently rendered in the system fallback face. Repointed at the app tokens,
+  switched to Geist, and it now waits for the webfont before drawing.
+
+### Other
+
+- Match history cards were loading each arena image three times per row; now
+  loaded once, lazily, keeping the hover reveal.
+- Fixed a nested `<button>` in the training pack card that made the favourite
+  and copy controls unreachable by keyboard.
+- Swept 33 files for letterspaced caps, 7-9px text, glow shadows and
+  hover-lift; display numbers use tabular figures instead of a monospace face.
+- Removed 5.5 MB of dead assets, including a 4.7 MB `icon.svg` referenced
+  nowhere.
+- Added attribution for the rank icons and the Geist typeface.
+
 ## v2.3.0 — Design system rebuild and stats correctness
 
 ### The design never actually rendered

@@ -161,3 +161,28 @@ export const TIER_RANK_INDEX: Record<RankTier, number> = {
   "Grand Champion": 7,
   "Supersonic Legend": 8,
 };
+
+/** First tier index on the in-game 0-22 ladder for each named tier. */
+const TIER_ICON_BASE: Record<RankTier, number> = {
+  Unranked: 0,
+  Bronze: 1,
+  Silver: 4,
+  Gold: 7,
+  Platinum: 10,
+  Diamond: 13,
+  Champion: 16,
+  "Grand Champion": 19,
+  "Supersonic Legend": 22,
+};
+
+/**
+ * Index into the shipped rank icons (public/ranks/{index}-{size}.webp).
+ *
+ * The in-game ladder is a flat 0-22: 0 Unranked, then three divisions per
+ * tier up to Grand Champion, and 22 for Supersonic Legend which has none.
+ */
+export function rankIconIndex(rank: DerivedRank): number {
+  const base = TIER_ICON_BASE[rank.tier];
+  if (rank.division === 0) return base;
+  return base + (rank.division - 1);
+}

@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
+  rankIconIndex,
   TIER_COLOR,
   TIER_RANK_INDEX,
   type DerivedRank,
@@ -16,13 +17,12 @@ interface RankInsigniaProps {
 }
 
 /**
- * Rank insignia, drawn as SVG rather than shipping Psyonix's artwork.
+ * Fallback insignia, drawn as SVG.
  *
- * Reads at 16px, scales losslessly, costs ~0 bytes over the wire, and can't
- * 404. The shape language follows the in-game progression: a shield whose
- * chevron count climbs with the tier, tinted with that tier's colour, with
- * division marked by pips. To use the official icons instead, drop PNGs into
- * public/ranks/{tier}-{division}.png and branch here.
+ * The real in-game icons ship in public/ranks/ and are preferred; this only
+ * renders if one fails to load. The shape language follows the in-game
+ * progression: a shield whose chevron count climbs with the tier, tinted with
+ * that tier's colour.
  */
 function Insignia({ tier, size }: { tier: RankTier; size: number }) {
   const color = TIER_COLOR[tier];
@@ -103,16 +103,36 @@ export const RankInsignia = memo(function RankInsignia({
   className,
   withLabel = false,
 }: RankInsigniaProps) {
+  const [iconFailed, setIconFailed] = useState(false);
+
   if (!rank) return null;
 
   const color = TIER_COLOR[rank.tier];
+  // Two sizes ship; pick the one that won't be upscaled.
+  const asset = size <= 32 ? 32 : 64;
 
   return (
     <span
       className={cn("inline-flex shrink-0 items-center gap-1.5", className)}
       title={rank.label}
     >
-      <Insignia tier={rank.tier} size={size} />
+      {iconFailed ? (
+        <Insignia tier={rank.tier} size={size} />
+      ) : (
+        <img
+          src={`/ranks/${rankIconIndex(rank)}-${asset}.webp`}
+          width={size}
+          height={size}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          style={{ width: size, height: size }}
+          className="shrink-0 select-none object-contain"
+          onError={() => setIconFailed(true)}
+        />
+      )}
       {withLabel && (
         <span className="text-[12px] font-medium" style={{ color }}>
           {rank.label}
