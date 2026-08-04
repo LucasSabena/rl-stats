@@ -344,6 +344,23 @@
     background-color: var(--wash);
   }
 
+  /* Loading placeholder.
+     The Skeleton component asked for `animate-shimmer`, but no utility ever
+     defined it — only the bare @keyframes existed. Skeletons rendered as
+     invisible empty divs, so every loading state looked like a blank page. */
+  .animate-shimmer {
+    background-color: var(--surface-raised);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--wash-strong) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

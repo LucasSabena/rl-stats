@@ -1,5 +1,4 @@
 import { memo, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Info } from "lucide-react";
 import { cn, formatBoost, formatSpeed } from "@/lib/utils";
@@ -9,6 +8,7 @@ import { useFriends } from "@/hooks/useFriends";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { RankInsignia } from "@/components/ui/RankInsignia";
+import { PlayerLink } from "@/components/ui/PlayerLink";
 
 interface PlayerCardProps {
   player: Player;
@@ -81,13 +81,11 @@ export const PlayerCard = memo(function PlayerCard({
 
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <Link
-                  to={`/players/${encodeURIComponent(player.id)}`}
-                  className="truncate text-[13px] font-medium leading-tight text-text-primary hover:text-accent-primary hover:underline"
-                  title={player.name}
-                >
-                  {player.name}
-                </Link>
+                <PlayerLink
+                  player={player.id}
+                  name={player.name}
+                  className="text-[13px] font-medium leading-tight text-text-primary"
+                />
 
                 {rank && <RankInsignia rank={rank} size={15} />}
 

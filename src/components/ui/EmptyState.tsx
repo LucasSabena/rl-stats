@@ -22,19 +22,21 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border-default p-16 text-center",
-        className
+        "flex flex-col items-center justify-center rounded-lg border border-border-subtle px-6 py-14 text-center",
+        className,
       )}
     >
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-primary-subtle">
-        <Icon size={28} className="text-accent-primary" />
-      </div>
-      <h3 className="mt-5 font-display text-lg font-semibold text-text-primary">{title}</h3>
+      {/* A quiet monochrome glyph — the colored tile made every empty state
+          read like a call to action. */}
+      <Icon size={22} aria-hidden="true" className="text-text-tertiary" />
+      <h3 className="mt-3 text-[15px] font-medium text-text-primary">{title}</h3>
       {description && (
-        <p className="mt-2 max-w-sm text-sm leading-relaxed text-text-secondary">{description}</p>
+        <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-text-secondary">
+          {description}
+        </p>
       )}
       {actionLabel && onAction && (
-        <Button variant="secondary" className="mt-6" onClick={onAction}>
+        <Button variant="secondary" size="sm" className="mt-5" onClick={onAction}>
           {actionLabel}
         </Button>
       )}

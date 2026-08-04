@@ -90,23 +90,23 @@ export function Modal({ isOpen, onClose, title, description, children, footer, s
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
         className={cn(
-          "w-full rounded-xl border border-border-highlight bg-bg-surface shadow-level-4 animate-scale-in",
+          "w-full rounded-lg border border-border-default bg-bg-elevated shadow-level-4 animate-scale-in",
           sizes[size]
         )}
       >
         {(title || description) && (
-          <div className="flex items-start justify-between border-b border-border-subtle px-6 py-5">
+          <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4">
             <div>
-              {title && <h2 id={titleId} className="font-display text-lg font-semibold text-text-primary">{title}</h2>}
-              {description && <p id={descriptionId} className="mt-1 text-sm text-text-secondary">{description}</p>}
+              {title && <h2 id={titleId} className="text-[15px] font-semibold text-text-primary">{title}</h2>}
+              {description && <p id={descriptionId} className="mt-1 text-[13px] leading-relaxed text-text-secondary">{description}</p>}
             </div>
-            <Button variant="icon" onClick={onClose} aria-label={t("accessibility.close")}>
-              <X size={18} />
+            <Button variant="icon" size="sm" onClick={onClose} aria-label={t("accessibility.close")}>
+              <X size={16} aria-hidden="true" />
             </Button>
           </div>
         )}
-        <div className="px-6 py-5">{children}</div>
-        {footer && <div className="border-t border-border-subtle px-6 py-4">{footer}</div>}
+        <div className="px-5 py-4">{children}</div>
+        {footer && <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-5 py-3.5">{footer}</div>}
       </div>
     </div>
   );

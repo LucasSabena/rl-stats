@@ -53,9 +53,15 @@ export function PlayerDetailPage() {
   const { t } = useTranslation(["players", "common"]);
   const { playerId } = useParams<{ playerId: string }>();
   const navigate = useNavigate();
-  const id = playerId ? parseInt(playerId, 10) : 0;
+  // The route accepts either the local row id (from the directory) or a
+  // PrimaryId (from a live match or match detail).
+  const routeId = playerId ?? "";
+  const lookup: number | string = /^\d+$/.test(routeId)
+    ? Number(routeId)
+    : decodeURIComponent(routeId);
 
-  const { data: player, isLoading } = usePlayerDetail(id);
+  const { data: player, isLoading } = usePlayerDetail(lookup);
+  const id = player?.player_id ?? 0;
   const { data: friends } = useFriends();
   const addFriend = useAddFriend();
   const removeFriend = useRemoveFriend();

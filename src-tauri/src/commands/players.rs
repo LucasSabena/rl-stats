@@ -65,6 +65,28 @@ pub async fn get_player_detail(
     }
 }
 
+/// Look a player up by their Rocket League PrimaryId rather than the local
+/// database row id.
+///
+/// Live matches and match detail only ever carry the PrimaryId, so without
+/// this there is no way to open a player's profile from those screens.
+#[tauri::command]
+pub async fn get_player_detail_by_primary_id(
+    state: State<'_, AppState>,
+    primary_id: String,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+
+    let player_id = storage::find_player_id_by_primary_id(pool, &primary_id)
+        .map_err(|e| {
+            error!(error = %e, primary_id, "Failed to resolve player by primary id");
+            e.to_string()
+        })?
+        .ok_or_else(|| "Player not found".to_string())?;
+
+    get_player_detail(state, player_id).await
+}
+
 fn resolve_player_names(settings: &crate::core::settings::AppSettings) -> Vec<String> {
     let mut names = Vec::new();
     if !settings.player_name.trim().is_empty() {

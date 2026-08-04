@@ -1093,10 +1093,24 @@ export async function getPlayerDirectory(filters?: {
   return response.players;
 }
 
+/**
+ * Fetch a player by local row id, or by Rocket League PrimaryId.
+ *
+ * Live matches and match detail only carry the PrimaryId, so profiles have to
+ * be reachable by that too — a numeric-only lookup made every player link from
+ * those screens dead.
+ */
 export async function getPlayerDetail(
-  playerId: number,
+  player: number | string,
 ): Promise<PlayerDetailRecord | null> {
-  return invokeCommand<PlayerDetailRecord>("get_player_detail", { playerId });
+  if (typeof player === "number") {
+    return invokeCommand<PlayerDetailRecord>("get_player_detail", {
+      playerId: player,
+    });
+  }
+  return invokeCommand<PlayerDetailRecord>("get_player_detail_by_primary_id", {
+    primaryId: player,
+  });
 }
 
 // ─── Profiles ────────────────────────────────────────────────────────────────

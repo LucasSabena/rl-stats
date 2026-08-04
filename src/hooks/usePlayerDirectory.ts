@@ -16,10 +16,13 @@ export function usePlayerDirectory(filters?: {
   });
 }
 
-export function usePlayerDetail(playerId: number) {
+export function usePlayerDetail(player: number | string) {
+  const enabled = typeof player === "number" ? player > 0 : player.length > 0;
+
   return useQuery({
-    queryKey: ["player-detail", playerId],
-    queryFn: () => getPlayerDetail(playerId),
+    queryKey: ["player-detail", player],
+    queryFn: () => getPlayerDetail(player),
     staleTime: QUERY_STALE_TIME.matches,
+    enabled,
   });
 }

@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { PlayerLink } from "@/components/ui/PlayerLink";
 import { Crown, Medal, Rocket } from "lucide-react";
 import type { PlayerStats } from "@/lib/types";
 import { useFriends } from "@/hooks/useFriends";
@@ -85,9 +86,11 @@ export const TeamRoster = memo(function TeamRoster({
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-text-primary">
-                    {player.name}
-                  </span>
+                  <PlayerLink
+                    player={player.id}
+                    name={player.name}
+                    className="text-sm font-medium text-text-primary"
+                  />
                   
                   {isMVP && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-accent-warning/15 border border-accent-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-warning">

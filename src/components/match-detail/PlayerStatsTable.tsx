@@ -2,6 +2,7 @@ import { memo, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { DataTable } from "@/components/ui/DataTable";
 import { cn } from "@/lib/utils";
+import { PlayerLink } from "@/components/ui/PlayerLink";
 import { Crown, Medal } from "lucide-react";
 import { useFriends } from "@/hooks/useFriends";
 import {
@@ -81,7 +82,7 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
                 {rank}º
               </div>
             )}
-            <span className="font-medium text-text-primary">{p.name}</span>
+            <PlayerLink player={p.id} name={p.name} className="font-medium text-text-primary" />
             {friends?.some((f) => f.primary_id === p.id) && (
               <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-primary">
                 {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}

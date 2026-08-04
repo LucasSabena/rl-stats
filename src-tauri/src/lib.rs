@@ -129,6 +129,7 @@ pub fn run() {
             commands::analytics::get_insights,
             commands::players::get_player_directory,
             commands::players::get_player_detail,
+            commands::players::get_player_detail_by_primary_id,
             commands::settings::get_settings_cmd,
             commands::settings::set_settings_cmd,
             commands::settings::configure_rl_ini_cmd,

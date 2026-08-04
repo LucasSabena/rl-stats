@@ -257,6 +257,19 @@ pub(crate) fn finish_match_conn(
     Ok(())
 }
 
+/// Resolve a player's local row id from their Rocket League PrimaryId.
+/// Returns None when the player has never been recorded.
+pub fn find_player_id_by_primary_id(pool: &DbPool, primary_id: &str) -> AppResult<Option<i64>> {
+    let conn = get_conn(pool)?;
+    conn.query_row(
+        "SELECT id FROM players WHERE primary_id = ?1",
+        params![primary_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| AppError::StorageError(e.to_string()))
+}
+
 pub(crate) fn get_or_create_player_conn(
     conn: &rusqlite::Connection,
     primary_id: &str,
