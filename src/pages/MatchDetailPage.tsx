@@ -23,7 +23,7 @@ export function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate = useNavigate();
   const id = Number(matchId);
-  const { data, isLoading, isError } = useMatchDetail(id);
+  const { data, isLoading, isError, error, refetch } = useMatchDetail(id);
   const { data: friends } = useFriends();
   const { data: settings } = useSettings();
   const [shareOpen, setShareOpen] = useState(false);
@@ -47,15 +47,26 @@ export function MatchDetailPage() {
   }
 
   if (isError || !data) {
+    // Show what actually failed rather than a blanket "not found" — a command
+    // error and a genuinely missing match need different fixes.
+    const reason = isError && error instanceof Error ? error.message : null;
+
     return (
       <PageContainer>
         <EmptyState
           icon={Gamepad2}
           title={t("matchDetail:page.notFoundTitle")}
-          description={t("matchDetail:page.notFoundDescription")}
+          description={reason ?? t("matchDetail:page.notFoundDescription")}
           actionLabel={t("matchDetail:page.backToHistory")}
           onAction={() => navigate("/history")}
         />
+        {isError && (
+          <div className="mt-4 flex justify-center">
+            <Button variant="secondary" onClick={() => void refetch()}>
+              {t("common:buttons.retry")}
+            </Button>
+          </div>
+        )}
       </PageContainer>
     );
   }

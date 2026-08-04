@@ -434,13 +434,75 @@ function mapSummaryToAnalyticsData(
   };
 }
 
+/**
+ * Default ceiling for a Tauri command round-trip.
+ *
+ * A command that never settles hangs the calling screen forever — React Query
+ * stays `pending`, so the UI sits on skeletons with no error and no retry. That
+ * happens whenever the Rust side panics mid-command: the response channel is
+ * dropped and the JS promise is simply never resolved or rejected. Bounding the
+ * wait turns a silent hang into a real error the UI can show and retry.
+ */
+const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
+
+/**
+ * Commands that legitimately run long (network round-trips, bulk DB work) and
+ * must not be cut off.
+ */
+const UNBOUNDED_COMMANDS = new Set([
+  // Bulk database / filesystem work
+  "export_data",
+  "export_data_json",
+  "import_data",
+  "import_data_json",
+  "clear_all_data_cmd",
+  "enqueue_existing_profile_history_for_sync_cmd",
+  // Network round-trips (tracker / RLStats / MMR providers)
+  "fetch_live_mmr_snapshot",
+  "fetch_tracker_profile",
+  "refresh_tracker_profile",
+  "fetch_rlstats_profile",
+  "refresh_rlstats_profile",
+  // Filesystem scans
+  "detect_rl_path",
+  "inspect_rl_path",
+  "detect_local_accounts_cmd",
+]);
+
 export async function invokeCommand<T>(
   command: string,
   args?: Record<string, unknown>,
+  options?: { timeoutMs?: number },
 ): Promise<T> {
+  const timeoutMs =
+    options?.timeoutMs ??
+    (UNBOUNDED_COMMANDS.has(command) ? 0 : DEFAULT_COMMAND_TIMEOUT_MS);
+
   try {
-    return await invoke<T>(command, args);
+    const call = invoke<T>(command, args);
+    if (timeoutMs <= 0) return await call;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        call,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new ApiError(
+                  `El comando "${command}" no respondió en ${Math.round(timeoutMs / 1000)}s.`,
+                ),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     const message = typeof error === "string" ? error : getErrorMessage(error);
     throw new ApiError(message);
   }
