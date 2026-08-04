@@ -2883,6 +2883,14 @@ pub fn get_analytics_summary_for_identity(
     Ok(summary)
 }
 
+/// Insights are always computed from the local player's own rows.
+///
+/// `scope` is accepted for call-site symmetry with the other analytics
+/// functions but deliberately unused: the query already joins on
+/// `local_primary_id`, so per-player figures are individual by construction,
+/// and everything else here (playlist / hourly win rates, overtime, close and
+/// blowout records) is a match outcome that is identical whichever scope the
+/// UI is showing. Wiring it up would not change a single number.
 pub fn get_insights(
     pool: &DbPool,
     local_primary_id: &str,

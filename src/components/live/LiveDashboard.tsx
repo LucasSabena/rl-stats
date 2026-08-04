@@ -224,7 +224,7 @@ export function LiveDashboard() {
 
       <RankWidget />
 
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <TeamPanel
           team="blue"
           players={bluePlayers}
