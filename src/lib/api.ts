@@ -123,6 +123,7 @@ interface RawPlayerStats {
   demos: number;
   speed: number;
   boost: number;
+  mmr?: number | null;
   kickoff_goals?: number;
   head_to_head?: PlayerStats["head_to_head"];
 }
@@ -339,6 +340,9 @@ function mapPlayerStats(player: RawMatchPlayer): PlayerStats {
     touches: player.stats.touches,
     boostAmount: player.stats.boost,
     speed: player.stats.speed,
+    // The backend has always persisted and sent this; it was simply never
+    // mapped, so per-match MMR was dropped on the floor by the frontend.
+    mmr: player.stats.mmr ?? null,
     kickoffGoals: player.stats.kickoff_goals,
     head_to_head: player.stats.head_to_head ?? null,
   };

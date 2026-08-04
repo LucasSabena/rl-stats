@@ -60,31 +60,40 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
         const rank = sortedAllPlayers.findIndex((item) => item.id === p.id) + 1;
         const isMVP = rank === 1;
         const isTop3 = rank <= 3;
-        
+
         return (
+          // The name owns a fixed left edge: badges used to render *before* it,
+          // so every row started at a different x depending on placement.
           <div className="flex items-center gap-2">
-            {isMVP && (
-              <span className="inline-flex items-center gap-1 rounded bg-accent-warning/10 px-1 py-0.5 text-[10px] font-bold text-accent-warning ring-1 ring-inset ring-accent-warning/20">
-                <Crown size={8} />
-                MVP
-              </span>
-            )}
+            <PlayerLink
+              player={p.id}
+              name={p.name}
+              className="min-w-0 font-medium text-text-primary"
+            />
+
             {isTop3 && (
-              <div 
+              <span
+                title={isMVP ? t("matchDetail:stats.mvp", { defaultValue: "MVP" }) : `#${rank}`}
                 className={cn(
-                  "flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-bold",
-                  rank === 1 ? "text-yellow-400 bg-yellow-400/10" :
-                  rank === 2 ? "text-gray-300 bg-gray-300/10" :
-                  "text-orange-400 bg-orange-400/10"
+                  "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none",
+                  rank === 1
+                    ? "bg-accent-warning-subtle text-accent-warning"
+                    : rank === 2
+                      ? "bg-[var(--wash-strong)] text-text-secondary"
+                      : "bg-accent-secondary-subtle text-accent-secondary",
                 )}
               >
-                <Medal size={10} />
-                {rank}º
-              </div>
+                {isMVP ? (
+                  <Crown size={9} aria-hidden="true" />
+                ) : (
+                  <Medal size={9} aria-hidden="true" />
+                )}
+                {isMVP ? "MVP" : `${rank}\u00ba`}
+              </span>
             )}
-            <PlayerLink player={p.id} name={p.name} className="font-medium text-text-primary" />
+
             {friends?.some((f) => f.primary_id === p.id) && (
-              <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-accent-primary">
+              <span className="shrink-0 rounded bg-accent-primary-subtle px-1 py-0.5 text-[10px] font-medium leading-none text-accent-primary">
                 {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
               </span>
             )}

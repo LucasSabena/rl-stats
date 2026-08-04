@@ -134,41 +134,43 @@ export function MatchDetailPage() {
         context={shareContext}
       />
 
-      {/* Sección 1: Header — marcador grande + metadata */}
+      {/* Scoreboard first — it is what the page is about. */}
       <div className="mt-4">
         <MatchHeader match={data} />
       </div>
 
-      {/* Sección 2: Grid principal — info + rosters lado a lado */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        {/* Panel de info */}
-        <MatchInfoPanel match={data} />
-
-        {/* Roster Azul */}
+      {/* Then the two rosters side by side, with per-player MMR and rank.
+          The full stats table used to sit at the very bottom of the page,
+          below the timeline, which buried the numbers people come here for. */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <TeamRoster
           players={data.players}
           teamNum={0}
           teamName={t("matchDetail:teams.blueTeam")}
           teamColorClass="blue"
+          playlist={data.playlist}
         />
-
-        {/* Roster Naranja */}
         <TeamRoster
           players={data.players}
           teamNum={1}
           teamName={t("matchDetail:teams.orangeTeam")}
           teamColorClass="orange"
+          playlist={data.playlist}
         />
       </div>
 
-      {/* Sección 3: Goles — tarjetas detalladas de cada gol */}
+      {/* Full comparison table, promoted above the narrative sections. */}
+      <div className="mt-6">
+        <PlayerStatsTable players={data.players} />
+      </div>
+
+      {/* Then the story of the match: goals, then the timeline. */}
       {hasGoals && (
         <div className="mt-6">
           <GoalDetail goals={data.goals} />
         </div>
       )}
 
-      {/* Sección 4: Cronología de eventos */}
       {goalsExist && (
         <div className="mt-6">
           <ScoreTimeline
@@ -179,10 +181,11 @@ export function MatchDetailPage() {
         </div>
       )}
 
-      {/* Sección 5: Stats de jugadores */}
+      {/* Match metadata last — reference detail, not headline. */}
       <div className="mt-6">
-        <PlayerStatsTable players={data.players} />
+        <MatchInfoPanel match={data} />
       </div>
+
     </PageContainer>
   );
 }

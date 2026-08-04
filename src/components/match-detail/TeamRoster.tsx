@@ -2,6 +2,8 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { PlayerLink } from "@/components/ui/PlayerLink";
+import { RankInsignia } from "@/components/ui/RankInsignia";
+import { deriveRank } from "@/lib/rank";
 import { Crown, Medal, Rocket } from "lucide-react";
 import type { PlayerStats } from "@/lib/types";
 import { useFriends } from "@/hooks/useFriends";
@@ -11,6 +13,8 @@ interface TeamRosterProps {
   teamNum: 0 | 1;
   teamName: string;
   teamColorClass: "blue" | "orange";
+  /** Match playlist, so rank is derived on the right ladder. */
+  playlist?: string | null;
 }
 
 function getInitials(name: string): string {
@@ -27,6 +31,7 @@ export const TeamRoster = memo(function TeamRoster({
   teamNum,
   teamName,
   teamColorClass,
+  playlist,
 }: TeamRosterProps) {
   const { t } = useTranslation(["matchDetail", "players"]);
   const { data: friends } = useFriends();
@@ -65,6 +70,7 @@ export const TeamRoster = memo(function TeamRoster({
           const rank = sortedAllPlayers.findIndex((p) => p.id === player.id) + 1;
           const isTop3 = rank <= 3;
           const isMVP = rank === 1;
+          const playerRank = deriveRank(player.mmr ?? null, playlist);
           const headToHeadLabel = player.head_to_head
             ? `Comp ${player.head_to_head.wins_together}-${player.head_to_head.losses_together} · Rival ${player.head_to_head.wins_against}-${player.head_to_head.losses_against}`
             : null;
@@ -92,34 +98,41 @@ export const TeamRoster = memo(function TeamRoster({
                     className="text-sm font-medium text-text-primary"
                   />
                   
-                  {isMVP && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-warning/15 border border-accent-warning/20 px-1.5 py-0.5 text-[10px] font-bold text-accent-warning">
-                      <Crown size={10} />
-                      MVP
+                  {isTop3 && (
+                    <span
+                      title={isMVP ? "MVP" : `#${rank}`}
+                      className={cn(
+                        "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none",
+                        rank === 1
+                          ? "bg-accent-warning-subtle text-accent-warning"
+                          : rank === 2
+                            ? "bg-[var(--wash-strong)] text-text-secondary"
+                            : "bg-accent-secondary-subtle text-accent-secondary",
+                      )}
+                    >
+                      {isMVP ? (
+                        <Crown size={9} aria-hidden="true" />
+                      ) : (
+                        <Medal size={9} aria-hidden="true" />
+                      )}
+                      {isMVP ? "MVP" : `${rank}\u00ba`}
                     </span>
                   )}
 
-                  {isTop3 && (
-                    <div 
-                      className={cn(
-                        "flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-bold",
-                        rank === 1 ? "text-yellow-400 bg-yellow-400/10" :
-                        rank === 2 ? "text-gray-300 bg-gray-300/10" :
-                        "text-orange-400 bg-orange-400/10"
-                      )}
-                      title={rank === 1 ? "Oro" : rank === 2 ? "Plata" : "Bronce"}
-                    >
-                      <Medal size={10} />
-                      {rank}º
-                    </div>
-                  )}
-
                   {friends?.some((f) => f.primary_id === player.id) && (
-                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-accent-primary">
+                    <span className="shrink-0 rounded bg-accent-primary-subtle px-1 py-0.5 text-[10px] font-medium leading-none text-accent-primary">
                       {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                     </span>
                   )}
                 </div>
+                {playerRank && (
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <RankInsignia rank={playerRank} size={16} />
+                    <span className="tabular text-[11px] text-text-secondary">
+                      {playerRank.label} · {player.mmr} MMR
+                    </span>
+                  </div>
+                )}
                 {headToHeadLabel && (
                   <div className="mt-1 text-[10px] font-medium text-text-tertiary">
                     {headToHeadLabel}

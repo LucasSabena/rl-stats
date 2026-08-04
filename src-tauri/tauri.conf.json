@@ -28,7 +28,7 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
-        "img-src": "'self' data:",
+        "img-src": "'self' data: blob:",
         "connect-src": "'self' https://github.com https://api.github.com https://raw.githubusercontent.com https://*.supabase.co",
         "font-src": "'self'",
         "frame-ancestors": "'none'",

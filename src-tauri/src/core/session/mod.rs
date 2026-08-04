@@ -101,6 +101,43 @@ impl SessionManager {
         self.mmr_snapshot = Some(snapshot);
     }
 
+    /// Map a goal's scorer onto a key that exists in `self.players`.
+    ///
+    /// Kickoff goals are stored per player and read back by the session's
+    /// player key at persist time. The scorer id comes from a different
+    /// parser path (`PrimaryId`/`Id`) than the player map key
+    /// (`PrimaryId`/`id`, falling back to the object index or the name), so an
+    /// exact match is not guaranteed — and a mismatch means the count is
+    /// written under a key nobody ever reads, leaving kickoff goals at zero.
+    fn resolve_scorer_key(&self, scorer: &crate::core::models::StatfeedTarget) -> Option<String> {
+        if !scorer.id.is_empty() {
+            if self.players.contains_key(&scorer.id) {
+                return Some(scorer.id.clone());
+            }
+            if let Some(key) = self
+                .players
+                .keys()
+                .find(|k| k.eq_ignore_ascii_case(&scorer.id))
+            {
+                return Some(key.clone());
+            }
+        }
+
+        // Fall back to the display name, which the parser also uses as a key
+        // when no id is present.
+        if !scorer.name.is_empty() {
+            if let Some((key, _)) = self
+                .players
+                .iter()
+                .find(|(_, p)| p.name.eq_ignore_ascii_case(&scorer.name))
+            {
+                return Some(key.clone());
+            }
+        }
+
+        None
+    }
+
     /// Anchor the start of a round for kickoff-goal detection.
     fn mark_round_start(&mut self) {
         self.round_start_game_time = Some(self.time_remaining);
@@ -238,16 +275,26 @@ impl SessionManager {
                 let is_kickoff_goal = self.is_kickoff_goal();
 
                 if is_kickoff_goal {
-                    let scorer_id = &data.scorer.id;
-                    *self
-                        .kickoff_goals_by_player
-                        .entry(scorer_id.clone())
-                        .or_insert(0) += 1;
-                    info!(
-                        scorer = %data.scorer.name,
-                        scorer_id = %scorer_id,
-                        "Kickoff goal detected"
-                    );
+                    match self.resolve_scorer_key(&data.scorer) {
+                        Some(key) => {
+                            *self.kickoff_goals_by_player.entry(key.clone()).or_insert(0) += 1;
+                            info!(
+                                scorer = %data.scorer.name,
+                                key = %key,
+                                "Kickoff goal detected"
+                            );
+                        }
+                        None => {
+                            // Persisting under an unmatched key silently drops
+                            // the goal at save time, which is how kickoff goals
+                            // ended up permanently at zero.
+                            warn!(
+                                scorer = %data.scorer.name,
+                                scorer_id = %data.scorer.id,
+                                "Kickoff goal scorer did not match any player in the session"
+                            );
+                        }
+                    }
                 }
             }
             RlEvent::StatfeedEvent { data } if self.phase == MatchPhase::Active => {
@@ -743,7 +790,26 @@ mod tests {
         }
     }
 
-    fn update_state(time: i32) -> RlEvent {
+    fn live_player(id: &str, name: &str) -> LivePlayer {
+        LivePlayer {
+            id: id.to_string(),
+            name: name.to_string(),
+            team: 0,
+            score: 0,
+            goals: 0,
+            shots: 0,
+            assists: 0,
+            saves: 0,
+            touches: 0,
+            car_touches: 0,
+            demos: 0,
+            speed: 0.0,
+            boost: 0,
+            kickoff_goals: 0,
+        }
+    }
+
+    fn update_state_with(time: i32, players: HashMap<String, LivePlayer>) -> RlEvent {
         RlEvent::UpdateState {
             match_guid: Some("guid-1".into()),
             game: GameState {
@@ -754,8 +820,12 @@ mod tests {
                 arena: Some("stadium_p".into()),
                 target: None,
             },
-            players: HashMap::new(),
+            players,
         }
+    }
+
+    fn update_state(time: i32) -> RlEvent {
+        update_state_with(time, HashMap::new())
     }
 
     fn started_session() -> SessionManager {
@@ -858,6 +928,84 @@ mod tests {
         session.handle_event(RlEvent::GoalScored { data: scorer("p2") });
 
         assert_eq!(kickoff_goals(&session, "p2"), 0);
+    }
+
+    /// Regression: kickoff goals were stored under the raw scorer id, but read
+    /// back at persist time using the session's player-map key. When those
+    /// differed the count was written somewhere nobody reads, so kickoff goals
+    /// sat permanently at zero.
+    #[test]
+    fn kickoff_goal_is_attributed_to_the_session_player_key() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+
+        let mut players = HashMap::new();
+        players.insert(
+            "Player1_guid".to_string(),
+            live_player("Player1_guid", "Alpha"),
+        );
+        session.handle_event(update_state_with(300, players));
+
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 297 });
+        session.handle_event(RlEvent::GoalScored {
+            data: scorer("Player1_guid"),
+        });
+
+        assert_eq!(kickoff_goals(&session, "Player1_guid"), 1);
+    }
+
+    #[test]
+    fn kickoff_goal_matches_the_player_key_case_insensitively() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+
+        let mut players = HashMap::new();
+        players.insert("ABC123".to_string(), live_player("ABC123", "Alpha"));
+        session.handle_event(update_state_with(300, players));
+
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 297 });
+        session.handle_event(RlEvent::GoalScored {
+            data: scorer("abc123"),
+        });
+
+        assert_eq!(kickoff_goals(&session, "ABC123"), 1);
+    }
+
+    /// Some streams key players by object index and carry no PrimaryId, so the
+    /// only thing tying a goal to a player is the display name.
+    #[test]
+    fn kickoff_goal_falls_back_to_the_player_name() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+
+        let mut players = HashMap::new();
+        players.insert("0".to_string(), live_player("", "Alpha"));
+        session.handle_event(update_state_with(300, players));
+
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 297 });
+        let mut data = scorer("");
+        data.scorer.name = "Alpha".into();
+        session.handle_event(RlEvent::GoalScored { data });
+
+        assert_eq!(kickoff_goals(&session, "0"), 1);
+    }
+
+    #[test]
+    fn unmatched_scorer_is_dropped_rather_than_stored_under_a_dead_key() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+
+        let mut players = HashMap::new();
+        players.insert("known".to_string(), live_player("known", "Alpha"));
+        session.handle_event(update_state_with(300, players));
+
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 297 });
+        session.handle_event(RlEvent::GoalScored {
+            data: scorer("someone-else"),
+        });
+
+        assert_eq!(kickoff_goals(&session, "someone-else"), 0);
+        assert_eq!(kickoff_goals(&session, "known"), 0);
     }
 
     #[test]
