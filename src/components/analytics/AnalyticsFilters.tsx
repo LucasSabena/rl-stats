@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { AnalyticsPeriod, PlaylistFilter, MatchTypeFilter, DataScope } from "@/lib/types";
 import { PeriodTabs } from "./PeriodTabs";
-import { ListMusic, Swords, User, Users } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 
 interface AnalyticsFiltersProps {
@@ -65,7 +64,7 @@ export function AnalyticsFilters({
             { value: "me", label: t("analytics:filters.scope.me") },
             { value: "team", label: t("analytics:filters.scope.team") }
           ]}
-          icon={scope === "me" ? <User size={14} /> : <Users size={14} />}
+          aria-label={t("analytics:filters.scope.team")}
           disabled={isLoading}
           className="w-full"
         />
@@ -76,7 +75,7 @@ export function AnalyticsFilters({
           value={playlist}
           onChange={(val) => onPlaylistChange(val as PlaylistFilter)}
           options={playlistKeys.map(opt => ({ value: opt.value, label: t(opt.key) }))}
-          icon={<ListMusic size={14} />}
+          aria-label={t("analytics:filters.playlists.all")}
           disabled={isLoading}
           className="w-full"
         />
@@ -87,7 +86,7 @@ export function AnalyticsFilters({
           value={matchType}
           onChange={(val) => onMatchTypeChange(val as MatchTypeFilter)}
           options={matchTypeKeys.map(opt => ({ value: opt.value, label: t(opt.key) }))}
-          icon={<Swords size={14} />}
+          aria-label={t("analytics:filters.matchTypes.all")}
           disabled={isLoading}
           className="w-full"
         />

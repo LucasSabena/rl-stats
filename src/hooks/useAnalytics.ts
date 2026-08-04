@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getAnalytics, getDailyRollups, getSessions, getSessionMatches, getInsights } from "@/lib/api";
+import { getAnalytics, getDailyRollups, getSessionMatches, getInsights } from "@/lib/api";
 import type { AnalyticsData, AnalyticsPeriod, DailyRollup, MatchSession, InsightsData, PlaylistFilter, MatchTypeFilter, DataScope } from "@/lib/types";
 import { QUERY_STALE_TIME } from "@/lib/constants";
 
@@ -26,14 +26,6 @@ export function useAnalytics(period: AnalyticsPeriod, filters?: AnalyticsFilters
         sessions: result.sessions ?? [],
       };
     },
-    staleTime: QUERY_STALE_TIME.analytics,
-  });
-}
-
-export function useSessions(gapMinutes?: number, filters?: AnalyticsFiltersState) {
-  return useQuery({
-    queryKey: ["sessions", gapMinutes, filters],
-    queryFn: () => getSessions(gapMinutes, filters),
     staleTime: QUERY_STALE_TIME.analytics,
   });
 }

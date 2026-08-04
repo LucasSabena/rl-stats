@@ -40,7 +40,7 @@ export function TabsList({ children, className }: { children: React.ReactNode; c
   return (
     <div
       className={cn(
-        "inline-flex h-10 items-center justify-center rounded-md bg-bg-surface p-1 text-text-muted border border-border-subtle",
+        "inline-flex h-9 items-center justify-center gap-0.5 rounded-md border border-border-subtle bg-bg-secondary p-0.5 text-text-muted",
         className
       )}
     >
@@ -70,10 +70,10 @@ export function TabsTrigger({
       aria-selected={isSelected}
       onClick={() => context.onValueChange(value)}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-bg-base transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex h-8 items-center justify-center whitespace-nowrap rounded px-3 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-45",
         isSelected
-          ? "bg-bg-base text-text-primary shadow-sm"
-          : "hover:bg-bg-base/50 hover:text-text-secondary",
+          ? "bg-bg-surface text-text-primary"
+          : "text-text-secondary hover:text-text-primary",
         className
       )}
     >
@@ -100,7 +100,7 @@ export function TabsContent({
     <div
       role="tabpanel"
       className={cn(
-        "mt-2 ring-offset-bg-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 animate-in fade-in-0 slide-in-from-bottom-2 duration-300",
+        "mt-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
         className
       )}
     >

@@ -20,15 +20,15 @@ export function PeriodTabs({ active, onChange }: PeriodTabsProps) {
   const { t } = useTranslation(["analytics", "common"]);
 
   return (
-    <div className="flex items-center gap-0.5 rounded-lg border border-border-subtle bg-bg-panel p-0.5">
+    <div className="flex items-center gap-0.5 rounded-md border border-border-subtle bg-bg-secondary p-0.5">
       {periodKeys.map((period) => (
         <button
           key={period.value}
           onClick={() => onChange(period.value)}
           className={cn(
-            "rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200",
+            "h-8 rounded px-3 text-[13px] font-medium transition-colors duration-150",
             active === period.value
-              ? "bg-accent-primary text-white shadow-sm"
+              ? "bg-bg-surface text-text-primary"
               : "text-text-secondary hover:text-text-primary"
           )}
           aria-pressed={active === period.value}

@@ -223,16 +223,16 @@ function MatchContent({ match, connectionStatus, display, fontScale, mmrMap, mmr
   return (
     <div className="flex flex-1 flex-col gap-2">
       {/* ── Widget Panel ── */}
-      <div className="flex flex-col rounded-2xl bg-bg-surface/85 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] overflow-hidden">
+      <div className="flex flex-col overflow-hidden rounded-md border border-white/10 bg-black/55 backdrop-blur-md">
         
         {/* TOP BAR: Score & Timer */}
         {(display.showScore || display.showTimer) && (
-          <div className="relative flex flex-col items-center bg-black/40 pt-3 pb-2 px-4">
+          <div className="relative flex flex-col items-center px-3 pb-1.5 pt-2">
             
             {/* Arena Name (Absolute Top) */}
             {display.showTimer && match.gameState.arena && (
               <div className="absolute top-1 right-3 flex items-center gap-1.5">
-                <span className={cn("uppercase tracking-[0.2em] font-medium text-text-muted opacity-80", fontScale.arena)}>
+                <span className={cn("text-white/45", fontScale.arena)}>
                   {getArenaDisplayName(match.gameState.arena)}
                 </span>
                 <span className={cn("h-1.5 w-1.5 rounded-full shadow-sm", connectionStatus === "connected" ? "bg-accent-success" : "bg-accent-warning")} />
@@ -244,9 +244,9 @@ function MatchContent({ match, connectionStatus, display, fontScale, mmrMap, mmr
               {display.showScore && (
                 <div className="flex-1 flex justify-end">
                   <span className={cn(
-                    "font-display font-bold tabular-nums drop-shadow-md",
+                    "font-semibold tabular-nums",
                     fontScale.score,
-                    match.teamBlueScore > match.teamOrangeScore ? "text-team-blue score-glow-blue" : "text-white"
+                    match.teamBlueScore > match.teamOrangeScore ? "text-team-blue" : "text-white"
                   )}>
                     {match.teamBlueScore}
                   </span>
@@ -254,24 +254,24 @@ function MatchContent({ match, connectionStatus, display, fontScale, mmrMap, mmr
               )}
               
               {display.showTimer && (
-                <div className="flex shrink-0 flex-col items-center justify-center px-4 py-1.5 rounded-lg bg-white/5 border border-white/5">
+                <div className="flex shrink-0 flex-col items-center justify-center px-3">
                   <span className={cn(
-                    "font-mono font-bold tabular-nums tracking-wider",
+                    "font-mono tabular-nums",
                     fontScale.timer,
                     match.gameState.isOvertime ? "text-accent-warning animate-overtime" : "text-white"
                   )}>
                     {match.gameState.isOvertime ? `+${formatDuration(match.gameState.timeRemaining)}` : formatDuration(match.gameState.timeRemaining)}
                   </span>
-                  {match.gameState.isOvertime && <span className="text-[9px] font-black tracking-widest text-accent-warning uppercase mt-0.5">{t("overlay:labels.overtime")}</span>}
+                  {match.gameState.isOvertime && <span className="mt-0.5 text-[9px] text-accent-warning">{t("overlay:labels.overtime")}</span>}
                 </div>
               )}
 
               {display.showScore && (
                 <div className="flex-1 flex justify-start">
                   <span className={cn(
-                    "font-display font-bold tabular-nums drop-shadow-md",
+                    "font-semibold tabular-nums",
                     fontScale.score,
-                    match.teamOrangeScore > match.teamBlueScore ? "text-team-orange score-glow-orange" : "text-white"
+                    match.teamOrangeScore > match.teamBlueScore ? "text-team-orange" : "text-white"
                   )}>
                     {match.teamOrangeScore}
                   </span>
@@ -279,10 +279,7 @@ function MatchContent({ match, connectionStatus, display, fontScale, mmrMap, mmr
               )}
             </div>
             
-            {/* Blue/Orange subtle gradients */}
-            <div className="absolute top-0 left-0 w-1/3 h-full bg-gradient-to-r from-team-blue/10 to-transparent pointer-events-none" />
-            <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-team-orange/10 to-transparent pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-team-blue/40 via-white/10 to-team-orange/40" />
+            <div className="absolute bottom-0 left-0 h-px w-full bg-white/8" />
           </div>
         )}
 
@@ -301,10 +298,7 @@ function MatchContent({ match, connectionStatus, display, fontScale, mmrMap, mmr
             )}
             
             {showBothTeams && (
-              <div className="flex items-center justify-center py-0.5 relative">
-                 <div className="absolute w-full h-px bg-white/5" />
-                  <span className="relative z-10 bg-bg-surface px-2 text-[9px] font-bold text-text-muted/50 uppercase tracking-widest">{t("overlay:labels.vs")}</span>
-              </div>
+              <div className="mx-2 h-px bg-white/8" />
             )}
             
             {orangePlayers.length > 0 && (
@@ -356,12 +350,7 @@ const TeamSection = memo(function TeamSection({
   const isBlue = team === 0;
 
   return (
-    <div className="flex flex-col py-1.5 px-2 gap-1 relative">
-      {/* Background Accent */}
-      <div className={cn(
-        "absolute inset-0 opacity-[0.03] pointer-events-none",
-        isBlue ? "bg-team-blue" : "bg-team-orange"
-      )} />
+    <div className="flex flex-col gap-px px-1.5 py-1">
       
       {players.map((p) => (
         <OverlayPlayerRow
@@ -395,43 +384,29 @@ const OverlayPlayerRow = memo(function OverlayPlayerRow({
   fontScale: FontScale;
   isBlue: boolean;
 }) {
-  const { t } = useTranslation(["overlay", "common"]);
   const teamColor = isBlue ? "text-team-blue" : "text-team-orange";
 
   return (
-    <div className={cn(
-      "relative overflow-hidden rounded-lg border border-white/5 bg-black/20 flex flex-col",
-      "transition-all duration-200"
-    )}>
+    <div className="flex flex-col">
       {/* Main row data */}
-      <div className="flex items-center gap-3 px-3 py-2 relative z-10">
-        
-        {/* Color stripe */}
-        <div className={cn("absolute left-0 top-0 bottom-0 w-1", isBlue ? "bg-team-blue" : "bg-team-orange")} />
+      <div className="flex items-center gap-2 px-1.5 py-1">
+        <span
+          aria-hidden="true"
+          className={cn("h-3 w-0.5 shrink-0 rounded-full", isBlue ? "bg-team-blue" : "bg-team-orange")}
+        />
 
         {/* Player Name */}
         {display.showNames && (
-          <span className={cn(
-            "truncate font-display font-semibold tracking-wide ml-1",
-            fontScale.name,
-            "text-white drop-shadow-sm"
-          )}>
+          <span className={cn("truncate text-white", fontScale.name)}>
             {player.name}
           </span>
         )}
 
         {/* Puntos */}
         {display.showPlayerScore && (
-          <div className="flex items-center gap-1.5 ml-2">
-            <span className={cn(
-              "font-mono font-bold tabular-nums",
-              fontScale.playerScore,
-              teamColor
-            )}>
-              {player.score}
-            </span>
-            <span className="text-[9px] uppercase font-bold text-text-muted/60 tracking-wider">{t("overlay:labels.pts")}</span>
-          </div>
+          <span className={cn("tabular-nums", fontScale.playerScore, teamColor)}>
+            {player.score}
+          </span>
         )}
 
         {/* Stats (G/A/S) */}

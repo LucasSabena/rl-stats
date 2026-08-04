@@ -19,7 +19,7 @@ export default function Step1({ onNext }: StepProps) {
       </p>
       <button
         onClick={onNext}
-        className="bg-accent-primary hover:bg-accent-primary-hover text-white px-8 py-3 rounded-lg font-semibold transition-all duration-200 shadow-level-1 hover:shadow-glow-blue"
+        className="bg-accent-primary hover:bg-accent-primary-hover text-white px-8 py-3 rounded-lg font-semibold transition-all duration-200 shadow-level-1"
       >
         {t('onboarding:welcome.cta')}
       </button>

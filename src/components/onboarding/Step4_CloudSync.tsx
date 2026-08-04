@@ -26,7 +26,7 @@ export default function Step4CloudSync({ onNext, onBack }: StepProps) {
 
   return (
     <div className="animate-fade-in text-center">
-      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-primary-subtle shadow-glow-blue">
+      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent-primary-subtle">
         <Cloud className="h-8 w-8 text-accent-primary" />
       </div>
       <h2 className="font-display mb-3 text-2xl font-bold text-text-primary">Cloud Sync is optional</h2>
