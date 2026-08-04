@@ -824,14 +824,17 @@ mod tests {
         }
     }
 
-    fn update_state(time: i32) -> RlEvent {
-        update_state_with(time, HashMap::new())
-    }
-
+    /// A live session with the two scorers used across these tests already
+    /// present. Kickoff goals are attributed to a player in the session, so a
+    /// roster is required for a goal to be recorded at all.
     fn started_session() -> SessionManager {
         let mut session = SessionManager::new(THRESHOLD);
         session.handle_event(RlEvent::MatchCreated);
-        session.handle_event(update_state(300));
+
+        let mut players = HashMap::new();
+        players.insert("p1".to_string(), live_player("p1", "Alpha"));
+        players.insert("p2".to_string(), live_player("p2", "Beta"));
+        session.handle_event(update_state_with(300, players));
         session
     }
 
