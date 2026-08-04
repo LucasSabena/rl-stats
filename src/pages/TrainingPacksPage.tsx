@@ -219,12 +219,19 @@ export function TrainingPacksPage() {
                 const copied = copiedId === pack.id;
 
                 return (
-                  <button
+                  <div
                     key={pack.id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedPackId(pack.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedPackId(pack.id);
+                      }
+                    }}
                     className={cn(
-                      "group relative flex flex-col rounded-xl border p-4 text-left transition-all duration-200",
+                      "group relative flex cursor-pointer flex-col rounded-xl border p-4 text-left transition-all duration-200",
                       selectedPackId === pack.id
                         ? "border-accent-primary bg-accent-primary-muted shadow-md"
                         : "border-border-subtle bg-bg-panel hover:border-border-highlight hover:bg-bg-hover hover:shadow-sm"
@@ -291,7 +298,7 @@ export function TrainingPacksPage() {
                         )}
                       </button>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
