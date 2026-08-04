@@ -11,6 +11,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
+import { HoursWheel } from "@/components/analytics/HoursWheel";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ShareModal } from "@/components/share/ShareModal";
@@ -243,11 +244,6 @@ function InsightsPanel({
 }) {
   const { t } = useTranslation(["analytics", "common"]);
 
-  const maxHourPlayed = useMemo(
-    () => (insights?.byHour?.length ? Math.max(...insights.byHour.map((hour) => hour.played)) : 0),
-    [insights?.byHour]
-  );
-
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -298,34 +294,17 @@ function InsightsPanel({
         )}
 
         {insights.byHour && insights.byHour.length > 0 && (
-          <Card className="p-4">
-            <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
-              <Clock size={14} /> {t("analytics:insights.bestHour")}
-            </h4>
-            <p className="mb-2 text-sm text-text-primary">
-              {t("analytics:insights.bestHourDetail", { hour: insights.bestHour })}
-              <span className="font-bold text-accent-success">{insights.bestHourWR}%</span>
-            </p>
-            <div className="flex h-28 items-end gap-1">
-              {insights.byHour.map((h) => {
-                const height = maxHourPlayed > 0 ? (h.played / maxHourPlayed) * 100 : 0;
-                return (
-                  <div key={h.hour} className="group relative flex-1" title={t("analytics:insights.hourTooltip", { hour: h.hour, played: h.played, winRate: h.winRate })}>
-                    <div
-                      className={`w-full rounded-t transition-colors ${
-                        h.winRate >= 50
-                          ? "bg-accent-success/80 group-hover:bg-accent-success"
-                          : "bg-accent-danger/60 group-hover:bg-accent-danger"
-                      }`}
-                      style={{ height: `${Math.max(height, 2)}%` }}
-                    />
-                    <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-text-tertiary">
-                      {h.hour}
-                    </span>
-                  </div>
-                );
-              })}
+          <Card className="p-4 sm:col-span-2">
+            <div className="mb-4 flex flex-wrap items-baseline gap-x-2">
+              <h4 className="text-sm font-medium text-text-primary">
+                {t("analytics:insights.bestHour")}
+              </h4>
+              <p className="text-sm text-text-secondary">
+                {t("analytics:insights.bestHourDetail", { hour: insights.bestHour })}
+                <span className="text-accent-success">{insights.bestHourWR}%</span>
+              </p>
             </div>
+            <HoursWheel data={insights.byHour} />
           </Card>
         )}
 
