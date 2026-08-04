@@ -231,7 +231,7 @@ export function TrainingPacksPage() {
                     )}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="rounded-full bg-bg-elevated border border-border-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                      <span className="rounded-full bg-bg-elevated border border-border-subtle px-2 py-0.5 text-[10px] font-semibold text-text-muted">
                         {t(`categories.${pack.category}`)}
                       </span>
                       <button
@@ -320,7 +320,7 @@ export function TrainingPacksPage() {
             <div className="mt-4">
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-px flex-1 bg-border-subtle" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                <span className="text-xs font-semibold text-text-tertiary">
                   {t("page.featuredPacks")}
                 </span>
                 <div className="h-px flex-1 bg-border-subtle" />
@@ -340,7 +340,7 @@ export function TrainingPacksPage() {
                           size={12}
                           className="text-yellow-400 fill-yellow-400"
                         />
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-accent-primary">
+                        <span className="text-[10px] font-semibold text-accent-primary">
                           {t("page.featured")}
                         </span>
                       </div>

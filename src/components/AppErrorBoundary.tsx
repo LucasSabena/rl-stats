@@ -28,7 +28,7 @@ export class AppErrorBoundary extends Component<Props, State> {
     return (
       <main className="flex min-h-screen items-center justify-center bg-bg-base p-8 text-text-primary">
         <section className="w-full max-w-lg rounded-2xl border border-accent-danger/30 bg-bg-panel p-8 shadow-2xl">
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-accent-danger">
+          <p className="mb-2 text-xs font-bold tracking-[0.22em] text-accent-danger">
             Recuperación segura
           </p>
           <h1 className="font-display text-2xl font-bold">La interfaz tuvo un problema</h1>

@@ -20,7 +20,7 @@ export const MatchTimer = memo(function MatchTimer({ timeRemaining, isOvertime }
       )}
       <div
         className={cn(
-          "rounded-lg border px-3 py-1.5 font-mono text-base font-bold tracking-wider",
+          "rounded-lg border px-3 py-1.5 font-mono text-base font-bold",
           isOvertime
             ? "border-accent-warning/30 bg-accent-warning-subtle text-accent-warning"
             : "border-border-subtle bg-bg-surface text-text-primary"

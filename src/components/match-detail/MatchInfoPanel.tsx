@@ -92,7 +92,7 @@ function InfoItem({
 }) {
   return (
     <div className="rounded-lg bg-bg-panel/80 p-3">
-      <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+      <p className="flex items-center gap-1 text-[10px] font-semibold text-text-tertiary">
         {icon}
         {label}
       </p>

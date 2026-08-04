@@ -64,7 +64,7 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
         return (
           <div className="flex items-center gap-2">
             {isMVP && (
-              <span className="inline-flex items-center gap-1 rounded bg-accent-warning/10 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-accent-warning ring-1 ring-inset ring-accent-warning/20">
+              <span className="inline-flex items-center gap-1 rounded bg-accent-warning/10 px-1 py-0.5 text-[10px] font-bold text-accent-warning ring-1 ring-inset ring-accent-warning/20">
                 <Crown size={8} />
                 MVP
               </span>
@@ -84,7 +84,7 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
             )}
             <PlayerLink player={p.id} name={p.name} className="font-medium text-text-primary" />
             {friends?.some((f) => f.primary_id === p.id) && (
-              <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-primary">
+              <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-accent-primary">
                 {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
               </span>
             )}

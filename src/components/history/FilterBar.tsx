@@ -149,7 +149,7 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
     <div className="mt-6 rounded-xl border border-border-subtle bg-bg-panel/50 p-5">
       <div className="flex items-center gap-2 mb-4">
         <SlidersHorizontal size={16} className="text-text-muted" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <span className="text-xs font-semibold text-text-muted">
           {t("history:filters.title")}
         </span>
         {hasFilters && (

@@ -52,7 +52,7 @@ export const TeamRoster = memo(function TeamRoster({
     <div className="rounded-xl border border-border-subtle bg-bg-surface p-5 shadow-level-1">
       <div className="mb-4 flex items-center gap-2">
         <div className={cn("h-3 w-3 rounded-full", colorBg)} />
-        <h3 className={cn("font-display text-sm font-bold uppercase tracking-wider", colorText)}>
+        <h3 className={cn("font-display text-sm font-bold", colorText)}>
           {teamName}
         </h3>
         <span className="ml-auto text-xs text-text-tertiary">
@@ -93,7 +93,7 @@ export const TeamRoster = memo(function TeamRoster({
                   />
                   
                   {isMVP && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-warning/15 border border-accent-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-warning">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-accent-warning/15 border border-accent-warning/20 px-1.5 py-0.5 text-[10px] font-bold text-accent-warning">
                       <Crown size={10} />
                       MVP
                     </span>
@@ -115,7 +115,7 @@ export const TeamRoster = memo(function TeamRoster({
                   )}
 
                   {friends?.some((f) => f.primary_id === player.id) && (
-                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-primary">
+                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-accent-primary">
                       {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                     </span>
                   )}

@@ -125,7 +125,7 @@ export function PlayerDetailPage() {
                 {player.name}
               </h1>
               {isFriend && (
-                <span className="shrink-0 rounded-full bg-accent-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-primary">
+                <span className="shrink-0 rounded-full bg-accent-primary/15 px-2 py-0.5 text-[10px] font-bold text-accent-primary">
                   {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                 </span>
               )}
@@ -286,7 +286,7 @@ export function PlayerDetailPage() {
                 {player.recent_matches.map((m) => (
                   <Card
                     key={m.match_id}
-                    className="cursor-pointer transition-all hover:shadow-level-2 hover:-translate-y-0.5"
+                    className="cursor-pointer transition-all hover:shadow-level-2"
                     onClick={() => navigate(`/history/${m.match_id}`)}
                   >
                     <div className="flex items-center gap-4 p-3">

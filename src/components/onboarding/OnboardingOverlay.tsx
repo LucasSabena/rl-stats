@@ -263,10 +263,10 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
         <section className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-accent-primary/25 bg-bg-panel p-10 shadow-2xl">
           <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-accent-primary/20 blur-3xl" />
           <div className="relative">
-            <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl border border-accent-primary/30 bg-accent-primary-subtle text-accent-primary shadow-[0_0_40px_rgba(59,130,246,0.18)]">
+            <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl border border-accent-primary/30 bg-accent-primary-subtle text-accent-primary">
               <Sparkles size={30} />
             </div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-accent-primary">
+            <p className="text-xs font-bold tracking-[0.24em] text-accent-primary">
               {t("welcome.eyebrow")}
             </p>
             <h1 className="mt-3 max-w-xl font-display text-4xl font-bold leading-tight text-text-primary">
@@ -305,7 +305,7 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
         <section className="mx-auto my-4 w-full max-w-4xl rounded-3xl border border-border-highlight/60 bg-bg-panel shadow-2xl">
           <header className="flex items-start justify-between border-b border-border-subtle px-8 py-6">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent-primary">{t("setup.eyebrow")}</p>
+              <p className="text-xs font-bold tracking-[0.2em] text-accent-primary">{t("setup.eyebrow")}</p>
               <h2 className="mt-2 font-display text-2xl font-bold text-text-primary">{t("setup.title")}</h2>
               <p className="mt-2 text-sm text-text-secondary">{t("setup.description")}</p>
             </div>
@@ -327,7 +327,7 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
                         {selectedPath === item.path && <Check size={16} className="text-accent-primary" />}
                       </span>
                       <span className="mt-1 block truncate font-mono text-[11px] text-text-muted">{item.path}</span>
-                      <span className="mt-2 block text-[10px] uppercase tracking-wider text-accent-success">{item.configured ? t("setup.alreadyConfigured") : item.source}</span>
+                      <span className="mt-2 block text-[10px] text-accent-success">{item.configured ? t("setup.alreadyConfigured") : item.source}</span>
                     </button>
                   ))}
                 </div>
@@ -352,7 +352,7 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
                     <button key={account.primary_id} type="button" onClick={() => setSelectedAccount(account.primary_id)} className={cn("w-full rounded-xl border p-3 text-left transition", selectedAccount === account.primary_id ? "border-accent-primary bg-accent-primary-subtle" : "border-border-subtle bg-bg-base hover:border-border-highlight")}>
                       <span className="flex items-center justify-between gap-3">
                         <span className="text-sm font-semibold text-text-primary">{account.display_name}</span>
-                        {account.active ? <span className="rounded-full bg-accent-success/15 px-2 py-1 text-[10px] font-bold uppercase text-accent-success">{t("setup.active")}</span> : selectedAccount === account.primary_id ? <Check size={16} className="text-accent-primary" /> : null}
+                        {account.active ? <span className="rounded-full bg-accent-success/15 px-2 py-1 text-[10px] font-bold text-accent-success">{t("setup.active")}</span> : selectedAccount === account.primary_id ? <Check size={16} className="text-accent-primary" /> : null}
                       </span>
                       <span className="mt-1 block font-mono text-[11px] text-text-muted">{account.account_name} · {account.platform}</span>
                     </button>
@@ -395,11 +395,11 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
     <div className="pointer-events-none fixed inset-0 z-50" aria-live="polite">
       <div className="absolute inset-0 bg-black/72" />
       {targetRect && (
-        <div className="absolute rounded-2xl border-2 border-accent-primary bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.16),0_0_32px_rgba(59,130,246,0.65)] transition-all duration-300" style={targetRect} />
+        <div className="absolute rounded-2xl border-2 border-accent-primary bg-transparent transition-all duration-300" style={targetRect} />
       )}
       <section role="dialog" aria-modal="true" aria-labelledby="tour-title" className="pointer-events-auto absolute w-[360px] rounded-2xl border border-accent-primary/30 bg-bg-panel p-5 shadow-2xl transition-all duration-300" style={{ top: tooltipTop, left: tooltipLeft }}>
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-accent-primary">{t("tour.progress", { current: tourIndex + 1, total: tourSteps.length })}</span>
+          <span className="text-[11px] font-bold tracking-[0.18em] text-accent-primary">{t("tour.progress", { current: tourIndex + 1, total: tourSteps.length })}</span>
           <button type="button" onClick={finishTour} className="rounded-md p-1 text-text-muted hover:bg-bg-surface hover:text-text-primary" aria-label={t("actions.close")}><X size={16} /></button>
         </div>
         <h2 id="tour-title" className="mt-3 font-display text-xl font-bold text-text-primary">{step.title}</h2>
@@ -422,7 +422,7 @@ function SetupSection({ icon: Icon, title, status, children }: { icon: typeof Ga
     <section className="rounded-2xl border border-border-subtle bg-bg-surface/70 p-5">
       <header className="mb-4 flex items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 font-display text-base font-bold text-text-primary"><Icon size={18} className="text-accent-primary" /> {title}</h3>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{status}</span>
+        <span className="text-[10px] font-bold text-text-muted">{status}</span>
       </header>
       {children}
     </section>

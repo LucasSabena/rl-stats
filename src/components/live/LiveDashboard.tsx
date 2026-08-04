@@ -101,7 +101,7 @@ function MatchEndBanner() {
     >
       <div className="flex items-center gap-2">
         <span className="text-xs font-bold text-text-primary">{label}</span>
-        <span className="text-[9px] text-text-tertiary">
+        <span className="text-[10px] text-text-tertiary">
           {t("live:matchEnd.summary", { duration: durationStr, count: players.length })}
         </span>
       </div>
@@ -170,7 +170,7 @@ export function LiveDashboard() {
           )}
           {liveMmr && (
             <div
-              className="flex items-center gap-1.5 text-[9px]"
+              className="flex items-center gap-1.5 text-[10px]"
               aria-live="polite"
               title={t("live:mmr.coverageHint")}
             >
@@ -251,7 +251,7 @@ export function LiveDashboard() {
         <div className="rounded-lg border border-border-subtle bg-bg-surface/60 p-2">
           <div className="mb-1 flex items-center gap-1.5">
             <div className="h-2 w-2 rounded-full bg-text-muted" />
-            <h3 className="font-display text-[10px] font-bold uppercase tracking-wide text-text-secondary">
+            <h3 className="font-display text-[10px] font-bold tracking-wide text-text-secondary">
               {t("live:players.other")}
             </h3>
           </div>

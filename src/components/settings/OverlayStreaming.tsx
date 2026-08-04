@@ -307,7 +307,7 @@ export function OverlayStreaming() {
           {/* URL list */}
           {urls.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">{t("overlay:streaming.overlayUrls")}</p>
+              <p className="text-xs font-semibold tracking-wide text-text-secondary">{t("overlay:streaming.overlayUrls")}</p>
               <div className="space-y-2">
                 {urls.map((item) => {
                   const isCopied = copiedUrl === item.url;

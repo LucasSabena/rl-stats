@@ -69,7 +69,7 @@ export const EventFeed = memo(function EventFeed() {
       <div className="flex items-center justify-between border-b border-border-subtle/50 px-2.5 py-1">
         <h3 className="font-display text-[10px] font-semibold text-text-secondary">{t("live:events.title")}</h3>
         {events.length > 0 && (
-          <span className="font-mono text-[9px] text-text-muted">{events.length}</span>
+          <span className="font-mono text-[10px] text-text-muted">{events.length}</span>
         )}
       </div>
       <div className="h-24 overflow-y-auto p-1">
@@ -94,7 +94,7 @@ function EventItem({ event }: { event: RlEvent }) {
     <div className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-surface-hover/50">
       <Icon size={11} className={cn("shrink-0", eventColors[event.type] ?? "text-text-tertiary")} />
       <span className="truncate text-text-secondary">{t(eventTranslationKeys[event.type] ?? `live:events.${event.type}`) ?? event.type}</span>
-      <span className="ml-auto shrink-0 font-mono text-[9px] text-text-muted">{formatDateTime(event.timestamp * 1000)}</span>
+      <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">{formatDateTime(event.timestamp * 1000)}</span>
     </div>
   );
 }

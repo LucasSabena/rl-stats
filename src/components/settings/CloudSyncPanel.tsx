@@ -594,7 +594,7 @@ function StatusMetric({
 }) {
   return (
     <div className="rounded-lg border border-border-subtle bg-bg-base/70 px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wide text-text-muted">
+      <p className="text-[10px] tracking-wide text-text-muted">
         {label}
       </p>
       <p

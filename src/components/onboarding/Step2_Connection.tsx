@@ -16,7 +16,7 @@ export default function Step2({ onNext, onBack }: StepProps) {
         <Trans i18nKey="onboarding:connection.description" components={{ port: <span className="text-accent-primary font-mono font-semibold">49123</span> }} />
       </p>
       <div className="bg-bg-panel rounded-xl p-6 max-w-md mx-auto mb-12 text-left border border-border-subtle">
-        <h3 className="font-display text-sm font-semibold text-text-primary uppercase mb-3">{t('onboarding:connection.howItWorks')}</h3>
+        <h3 className="font-display text-sm font-semibold text-text-primary mb-3">{t('onboarding:connection.howItWorks')}</h3>
         <ul className="space-y-3 text-sm text-text-secondary">
           <li className="flex items-start gap-2">
             <span className="text-accent-success mt-0.5 font-bold">&#10003;</span>

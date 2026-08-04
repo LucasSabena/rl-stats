@@ -167,15 +167,15 @@ function StreakCompactCard({ best, current }: { best: number; current: number })
         <Flame size={18} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">{t("analytics:streaks.label")}</p>
+        <p className="text-[11px] font-semibold text-text-tertiary">{t("analytics:streaks.label")}</p>
         <div className="mt-1 flex items-center gap-4">
           <div>
-            <span className="font-mono text-xl font-bold tracking-tight text-text-primary">{current}</span>
+            <span className="numeral text-xl font-bold tracking-tight text-text-primary">{current}</span>
             <span className="ml-1.5 text-[10px] text-text-tertiary">{t("analytics:streaks.current")}</span>
           </div>
           <div className="h-7 w-px bg-border-subtle" />
           <div>
-            <span className="font-mono text-xl font-bold tracking-tight text-accent-success">{best}</span>
+            <span className="numeral text-xl font-bold tracking-tight text-accent-success">{best}</span>
             <span className="ml-1.5 text-[10px] text-text-tertiary">{t("analytics:streaks.best")}</span>
           </div>
         </div>

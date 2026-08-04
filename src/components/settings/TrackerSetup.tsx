@@ -195,7 +195,7 @@ export function TrackerSetup() {
         {/* Divider */}
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-gradient-to-r from-transparent to-border-subtle" />
-          <span className="text-[10px] font-medium uppercase tracking-widest text-text-tertiary">{t("tracker:setup.orManual")}</span>
+          <span className="text-[10px] font-medium text-text-tertiary">{t("tracker:setup.orManual")}</span>
           <div className="h-px flex-1 bg-gradient-to-l from-transparent to-border-subtle" />
         </div>
 

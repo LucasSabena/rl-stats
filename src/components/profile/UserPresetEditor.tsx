@@ -78,7 +78,7 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
 
   const SectionHeader = ({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: (v: boolean) => void }) => (
     <div className="mb-3 flex items-center justify-between">
-      <h4 className="text-sm font-semibold uppercase tracking-wide text-text-tertiary">{label}</h4>
+      <h4 className="text-sm font-semibold tracking-wide text-text-tertiary">{label}</h4>
       <label className="inline-flex cursor-pointer items-center gap-2">
         <input
           type="checkbox"

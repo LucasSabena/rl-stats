@@ -313,11 +313,11 @@ export function OverlayConfig() {
               {watched.positionPreset === "custom" && (
                 <div className="flex items-center gap-3 rounded-lg bg-bg-base p-3 border border-border-subtle">
                   <div className="flex-1">
-                    <label className="text-[10px] font-medium uppercase tracking-wider text-text-muted block mb-1">{t("overlay:config.axis.x")}</label>
+                    <label className="text-[10px] font-medium text-text-muted block mb-1">{t("overlay:config.axis.x")}</label>
                     <input type="number" {...register("positionX", { valueAsNumber: true })} className="w-full rounded bg-bg-surface px-2 py-1.5 text-sm outline-none border border-border-subtle focus:border-accent-primary" />
                   </div>
                   <div className="flex-1">
-                    <label className="text-[10px] font-medium uppercase tracking-wider text-text-muted block mb-1">{t("overlay:config.axis.y")}</label>
+                    <label className="text-[10px] font-medium text-text-muted block mb-1">{t("overlay:config.axis.y")}</label>
                     <input type="number" {...register("positionY", { valueAsNumber: true })} className="w-full rounded bg-bg-surface px-2 py-1.5 text-sm outline-none border border-border-subtle focus:border-accent-primary" />
                   </div>
                 </div>
@@ -325,11 +325,11 @@ export function OverlayConfig() {
 
               <div className="mt-4 pt-4 border-t border-border-subtle flex gap-3">
                 <div className="flex-1">
-                  <label className="text-[10px] font-medium uppercase tracking-wider text-text-muted block mb-1">{t("overlay:config.dimensions.width")}</label>
+                  <label className="text-[10px] font-medium text-text-muted block mb-1">{t("overlay:config.dimensions.width")}</label>
                   <input type="number" min={300} max={1000} {...register("width", { valueAsNumber: true })} className="w-full rounded bg-bg-base px-2 py-1.5 text-sm outline-none border border-border-subtle focus:border-accent-primary" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-[10px] font-medium uppercase tracking-wider text-text-muted block mb-1">{t("overlay:config.dimensions.height")}</label>
+                  <label className="text-[10px] font-medium text-text-muted block mb-1">{t("overlay:config.dimensions.height")}</label>
                   <input type="number" min={200} max={800} {...register("height", { valueAsNumber: true })} className="w-full rounded bg-bg-base px-2 py-1.5 text-sm outline-none border border-border-subtle focus:border-accent-primary" />
                 </div>
               </div>

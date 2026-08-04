@@ -76,7 +76,7 @@ export function DataTable<T>({
               <th
                 key={col.key}
                 className={cn(
-                  "px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary",
+                  "px-4 py-3 text-left text-[11px] font-semibold text-text-tertiary",
                   col.sortable && "cursor-pointer select-none hover:text-text-primary transition-colors",
                   col.className
                 )}

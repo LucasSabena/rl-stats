@@ -94,7 +94,7 @@ export default function Step2({ onNext, onBack }: StepProps) {
             <Search className="h-8 w-8 text-accent-primary" />
           )}
           <span className="text-sm font-semibold text-text-primary">{t('onboarding:findGame.autoDetect')}</span>
-          <span className="text-[10px] font-semibold text-accent-primary uppercase tracking-wider">{t('onboarding:findGame.recommended')}</span>
+          <span className="text-[10px] font-semibold text-accent-primary">{t('onboarding:findGame.recommended')}</span>
         </button>
 
         <button

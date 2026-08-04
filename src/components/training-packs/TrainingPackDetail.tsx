@@ -73,7 +73,7 @@ export function TrainingPackDetail({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="rounded-full bg-bg-elevated border border-border-subtle px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+            <span className="rounded-full bg-bg-elevated border border-border-subtle px-2.5 py-0.5 text-[10px] font-semibold text-text-muted">
               {t(`categories.${pack.category}`)}
             </span>
             <span
@@ -104,7 +104,7 @@ export function TrainingPackDetail({
       {/* Code display */}
       <div className="rounded-xl border border-border-subtle bg-bg-base p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+          <span className="text-[10px] font-semibold text-text-muted">
             {t("page.codeLabel")}
           </span>
           <button
@@ -122,7 +122,7 @@ export function TrainingPackDetail({
           </button>
         </div>
         <div
-          className="font-mono text-xl font-bold tracking-widest text-text-primary break-all select-all cursor-pointer"
+          className="numeral text-xl font-bold text-text-primary break-all select-all cursor-pointer"
           onClick={handleCopyCode}
           title={t("page.copyCode")}
         >
@@ -133,7 +133,7 @@ export function TrainingPackDetail({
       {/* Description */}
       {pack.description && (
         <div>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted block mb-1.5">
+          <span className="text-[10px] font-semibold text-text-muted block mb-1.5">
             {t("page.descriptionLabel")}
           </span>
           <p className="text-sm text-text-secondary leading-relaxed">
@@ -145,7 +145,7 @@ export function TrainingPackDetail({
       {/* Tags */}
       {pack.tags && pack.tags.length > 0 && (
         <div>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted block mb-1.5">
+          <span className="text-[10px] font-semibold text-text-muted block mb-1.5">
             Tags
           </span>
           <div className="flex flex-wrap gap-2">

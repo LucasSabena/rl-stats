@@ -118,7 +118,7 @@ export const ScoreTimeline = memo(function ScoreTimeline({
                           {scorerName}
                         </p>
                         {scorerIsFriend && (
-                          <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-accent-primary">
+                          <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
                             {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                           </span>
                         )}
@@ -129,7 +129,7 @@ export const ScoreTimeline = memo(function ScoreTimeline({
                             + {assisterName}
                           </p>
                           {assisterIsFriend && (
-                            <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-accent-primary">
+                            <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
                               {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                             </span>
                           )}
@@ -170,7 +170,7 @@ export const ScoreTimeline = memo(function ScoreTimeline({
                   {playerName}
                 </span>
                 {playerIsFriend && (
-                  <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-accent-primary">
+                  <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
                     {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                   </span>
                 )}

@@ -18,8 +18,8 @@ export const StreakCard = memo(function StreakCard({ bestStreak, currentStreak }
           <Flame size={24} />
         </div>
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">{t("analytics:streaks.current")}</p>
-          <p className="mt-0.5 font-mono text-2xl font-bold tracking-tight text-text-primary">{currentStreak}</p>
+          <p className="text-[11px] font-semibold text-text-tertiary">{t("analytics:streaks.current")}</p>
+          <p className="mt-0.5 numeral text-2xl font-bold tracking-tight text-text-primary">{currentStreak}</p>
         </div>
       </Card>
 
@@ -28,8 +28,8 @@ export const StreakCard = memo(function StreakCard({ bestStreak, currentStreak }
           <Trophy size={24} />
         </div>
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">{t("analytics:streaks.best")}</p>
-          <p className="mt-0.5 font-mono text-2xl font-bold tracking-tight text-text-primary">{bestStreak}</p>
+          <p className="text-[11px] font-semibold text-text-tertiary">{t("analytics:streaks.best")}</p>
+          <p className="mt-0.5 numeral text-2xl font-bold tracking-tight text-text-primary">{bestStreak}</p>
         </div>
       </Card>
     </div>

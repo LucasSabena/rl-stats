@@ -77,7 +77,7 @@ export const GoalDetail = memo(function GoalDetail({ goals }: GoalDetailProps) {
                   >
                     {goalNumber}
                   </span>
-                  <span className="text-[9px] font-semibold text-text-muted">{teamLabel}</span>
+                  <span className="text-[10px] font-semibold text-text-muted">{teamLabel}</span>
                 </div>
               </div>
 
@@ -88,7 +88,7 @@ export const GoalDetail = memo(function GoalDetail({ goals }: GoalDetailProps) {
                     {goal.scorerName}
                   </p>
                   {isScorerFriend && (
-                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-accent-primary">
+                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
                       {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                     </span>
                   )}
@@ -100,7 +100,7 @@ export const GoalDetail = memo(function GoalDetail({ goals }: GoalDetailProps) {
                       <span className="font-medium text-text-primary">{goal.assisterName}</span>
                     </p>
                     {isAssisterFriend && (
-                      <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wider text-accent-primary">
+                      <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
                         {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                       </span>
                     )}

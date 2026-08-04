@@ -48,19 +48,19 @@ export const TeamPanel = memo(function TeamPanel({ team, players, mmrByPlayerId,
         />
         <h3
           className={cn(
-            "font-display text-[10px] font-bold uppercase tracking-wide",
+            "font-display text-[10px] font-bold tracking-wide",
             isBlue ? "text-team-blue" : "text-team-orange"
           )}
         >
           {isBlue ? t("live:teams.blue") : t("live:teams.orange")}
         </h3>
         {averageMmr !== null && (
-          <span className="text-[9px] text-text-tertiary">
+          <span className="text-[10px] text-text-tertiary">
             {t("live:mmr.average")} <span className="font-mono font-semibold text-text-secondary">{averageMmr}</span>
           </span>
         )}
         {mmrLoading && averageMmr === null && (
-          <span className="text-[9px] text-text-tertiary">{t("live:mmr.searching")}</span>
+          <span className="text-[10px] text-text-tertiary">{t("live:mmr.searching")}</span>
         )}
         <span className="ml-auto font-mono text-sm font-bold text-text-primary">
           {players.reduce((sum, p) => sum + p.score, 0)}

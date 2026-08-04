@@ -6,8 +6,9 @@ import { formatDateTime, formatDuration } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import type { MatchSummary } from "@/lib/types";
-import { Eye, Pencil, Trash2, Clock, MapPin } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import { getArenaDisplayName, getArenaImagePath } from "@/lib/arenaMap";
+import { ArenaThumb } from "@/components/ui/ArenaDisplay";
 
 interface MatchCardProps {
   match: MatchSummary;
@@ -93,144 +94,87 @@ export const MatchCard = memo(function MatchCard({ match, onClick, onEdit, onDel
         role="button"
         tabIndex={0}
         className={cn(
-          "group relative cursor-pointer rounded-xl border border-border-default shadow-[var(--shadow-card-inner)] overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          "hover:-translate-y-1 hover:border-border-highlight hover:shadow-level-3",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
+          "group relative cursor-pointer overflow-hidden rounded-lg border border-border-subtle",
+          "transition-colors duration-150 hover:border-border-highlight",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
         )}
       >
-        {/* Arena background image on hover */}
+        {/* Arena reveal on hover. Loaded lazily so a long history list does
+            not fetch every arena image up front. */}
         {arenaImage && (
-          <img
-            src={arenaImage}
-            alt={arenaName ?? ""}
-            className="absolute inset-0 h-full w-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
+          <>
+            <img
+              src={arenaImage}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-bg-surface/88 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+          </>
         )}
 
-        {/* Dark overlay on hover when image shows */}
-        <div
-          className={cn(
-            "absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none",
-            arenaImage ? "bg-gradient-to-r from-bg-surface/90 via-bg-surface/80 to-bg-surface/90" : ""
-          )}
-        />
+        <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-4 bg-bg-surface/70 p-3.5 group-hover:bg-transparent">
+          {/* Left: when, and what kind of match */}
+          <div className="flex min-w-0 items-center gap-3">
+            <ArenaThumb arena={match.arena} size="md" className="hidden sm:flex" />
 
-        {/* Subtle background glow based on win/loss/neutral */}
-        <div className={cn(
-          "absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none",
-          isWin ? "group-hover:opacity-100 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.05)_0%,transparent_70%)]"
-                : isLoss ? "group-hover:opacity-100 bg-[radial-gradient(ellipse_at_top,rgba(239,68,68,0.05)_0%,transparent_70%)]"
-                : "group-hover:opacity-100 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.02)_0%,transparent_70%)]"
-        )} />
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="text-xs text-text-tertiary">
+                {formatDateTime(match.startTime * 1000)}
+              </span>
 
-        {/* Content grid */}
-        <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center gap-4 p-4">
-          {/* Left column: thumbnail + date/badges/playlist */}
-          <div className="flex items-center gap-3 min-w-0">
-            {arenaImage && (
-              <img
-                src={arenaImage}
-                alt={arenaName ?? ""}
-                className="h-14 w-14 rounded-lg object-cover border border-border-subtle bg-bg-panel shrink-0 hidden sm:block"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            )}
-            <div className="flex min-w-0 flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-text-tertiary font-medium">
-                  {formatDateTime(match.startTime * 1000)}
-                </span>
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full shrink-0 shadow-[0_0_8px_currentColor]",
-                    match.isOnline ? "bg-accent-secondary text-accent-secondary" : "bg-text-muted text-text-muted"
-                  )}
-                  title={match.isOnline ? t("history:onlineStatus.online") : t("history:onlineStatus.local")}
-                />
-              </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {match.matchType && (
-                  <Badge
-                    variant={match.matchType === "ranked" ? "ranked" : "default"}
-                  >
+                  <Badge variant={match.matchType === "ranked" ? "ranked" : "default"}>
                     {matchTypeLabel[match.matchType] ?? match.matchType}
                   </Badge>
                 )}
-                {match.isOvertime && (
-                  <Badge variant="overtime">OT</Badge>
+                {match.isOvertime && <Badge variant="overtime">OT</Badge>}
+                {match.playlist && (
+                  <span className="truncate text-[11px] text-text-secondary">
+                    {playlistLabelMap[match.playlist] ?? match.playlist}
+                  </span>
                 )}
               </div>
-              {match.playlist && (
-                <span className="text-[11px] text-text-secondary font-medium tracking-wide uppercase truncate">
-                  {playlistLabelMap[match.playlist] ?? match.playlist}
+            </div>
+          </div>
+
+          {/* Centre: the score is the point of the row */}
+          <div className="flex items-baseline gap-2.5 px-2">
+            <span
+              className={cn(
+                "numeral text-[26px] leading-none",
+                blueWon ? "text-team-blue" : "text-text-tertiary",
+              )}
+            >
+              {match.teamBlueScore}
+            </span>
+            <span className="text-sm text-text-tertiary">–</span>
+            <span
+              className={cn(
+                "numeral text-[26px] leading-none",
+                orangeWon ? "text-team-orange" : "text-text-tertiary",
+              )}
+            >
+              {match.teamOrangeScore}
+            </span>
+          </div>
+
+          {/* Right: outcome and context */}
+          <div className="flex min-w-0 flex-col items-end gap-1">
+            <Badge variant={resultVariant}>{resultLabel}</Badge>
+            <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+              {match.durationSeconds ? (
+                <span className="tabular">{formatDuration(match.durationSeconds)}</span>
+              ) : null}
+              {arenaName && (
+                <span className="max-w-[10rem] truncate" title={arenaName}>
+                  {arenaName}
                 </span>
               )}
             </div>
-          </div>
-
-          {/* Center: Score with win highlight */}
-          <div className="flex items-center gap-4 px-4">
-            <div className="flex flex-col items-center">
-              <div className={cn(
-                "h-2 w-2 rounded-full mb-1.5 transition-all duration-300",
-                blueWon ? "bg-team-blue ring-4 ring-team-blue-bg shadow-[0_0_12px_rgba(59,130,246,0.6)]" : "bg-team-blue/30"
-              )} />
-              <span
-                className={cn(
-                  "font-display text-3xl font-bold tabular-nums leading-none tracking-tighter",
-                  blueWon ? "text-team-blue text-shadow-sm" : "text-text-muted"
-                )}
-              >
-                {match.teamBlueScore}
-              </span>
-            </div>
-            <span className="text-border-highlight font-display text-xl pb-1">–</span>
-            <div className="flex flex-col items-center">
-              <div className={cn(
-                "h-2 w-2 rounded-full mb-1.5 transition-all duration-300",
-                orangeWon ? "bg-team-orange ring-4 ring-team-orange-bg shadow-[0_0_12px_rgba(249,115,22,0.6)]" : "bg-team-orange/30"
-              )} />
-              <span
-                className={cn(
-                  "font-display text-3xl font-bold tabular-nums leading-none tracking-tighter",
-                  orangeWon ? "text-team-orange text-shadow-sm" : "text-text-muted"
-                )}
-              >
-                {match.teamOrangeScore}
-              </span>
-            </div>
-          </div>
-
-          {/* Right column: result, duration, arena */}
-          <div className="flex min-w-0 flex-col items-end gap-2">
-            <Badge variant={resultVariant} glow={isWin}>{resultLabel}</Badge>
-            {match.durationSeconds && (
-              <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-                <Clock size={12} className="text-text-muted" />
-                <span className="text-xs text-text-secondary font-mono tracking-tight">
-                  {formatDuration(match.durationSeconds)}
-                </span>
-              </div>
-            )}
-            {arenaName && (
-              <div className="flex items-center gap-1.5 max-w-[10rem] opacity-80 group-hover:opacity-100 transition-opacity">
-                <img
-                  src={arenaImage ?? ""}
-                  alt={arenaName}
-                  className="h-4 w-4 rounded object-cover border border-border-subtle bg-bg-panel shrink-0"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                />
-                <MapPin size={12} className="text-text-muted shrink-0" />
-                <span className="text-[11px] text-text-muted truncate" title={arenaName}>
-                  {arenaName}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>

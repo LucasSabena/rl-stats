@@ -45,7 +45,7 @@ export function PlayerDirectoryPage() {
       {/* Filters */}
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[220px]">
-          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <label className="mb-1.5 block text-xs font-semibold text-text-tertiary">
             {t("players:directory.searchLabel")}
           </label>
           <div className="relative">
@@ -109,7 +109,7 @@ export function PlayerDirectoryPage() {
             return (
               <Card
                 key={p.player_id}
-                className="cursor-pointer transition-all hover:shadow-level-2 hover:-translate-y-0.5"
+                className="cursor-pointer transition-all hover:shadow-level-2"
                 onClick={() => navigate(`/players/${p.player_id}`)}
               >
                 <div className="flex items-center gap-4 p-4">
@@ -120,17 +120,17 @@ export function PlayerDirectoryPage() {
                         {p.name}
                       </p>
                       {isFriend && (
-                        <span className="shrink-0 rounded-full bg-accent-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-primary">
+                        <span className="shrink-0 rounded-full bg-accent-primary/15 px-2 py-0.5 text-[10px] font-bold text-accent-primary">
                           {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                         </span>
                       )}
                       {p.matches_as_teammate === 0 && (
-                        <span className="shrink-0 rounded-full bg-accent-danger/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-danger">
+                        <span className="shrink-0 rounded-full bg-accent-danger/15 px-2 py-0.5 text-[10px] font-bold text-accent-danger">
                           {t("players:directory.badgeSoloRival")}
                         </span>
                       )}
                       {p.matches_as_opponent === 0 && (
-                        <span className="shrink-0 rounded-full bg-accent-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent-success">
+                        <span className="shrink-0 rounded-full bg-accent-success/15 px-2 py-0.5 text-[10px] font-bold text-accent-success">
                           {t("players:directory.badgeSoloTeammate")}
                         </span>
                       )}

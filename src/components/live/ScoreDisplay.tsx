@@ -41,17 +41,17 @@ export const ScoreDisplay = memo(function ScoreDisplay({
             />
           )}
           {displayName && (
-            <span className="hidden truncate text-[10px] font-semibold uppercase tracking-widest text-text-tertiary sm:inline">
+            <span className="hidden truncate text-[10px] font-semibold text-text-tertiary sm:inline">
               {displayName}
             </span>
           )}
           {matchSizeLabel && (
-            <span className="shrink-0 rounded border border-accent-primary/20 bg-accent-primary/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-primary">
+            <span className="shrink-0 rounded border border-accent-primary/20 bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-accent-primary">
               {matchSizeLabel}
             </span>
           )}
           {matchTypeLabel && (
-            <span className="shrink-0 rounded border border-border-subtle bg-bg-panel/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-text-secondary">
+            <span className="shrink-0 rounded border border-border-subtle bg-bg-panel/80 px-1.5 py-0.5 text-[10px] font-bold text-text-secondary">
               {matchTypeLabel}
             </span>
           )}
@@ -61,7 +61,7 @@ export const ScoreDisplay = memo(function ScoreDisplay({
           <div className="flex flex-col items-center">
             <span
               className={cn(
-                "font-mono text-3xl font-bold leading-none tracking-tight transition-colors duration-300",
+                "numeral text-3xl font-bold leading-none tracking-tight transition-colors duration-300",
                 blueScore > orangeScore
                   ? "text-team-blue drop-shadow-[0_0_12px_var(--color-team-blue-glow)]"
                   : "text-text-primary"
@@ -69,7 +69,7 @@ export const ScoreDisplay = memo(function ScoreDisplay({
             >
               {blueScore}
             </span>
-            <span className="text-[8px] font-semibold uppercase tracking-widest text-team-blue/60">
+            <span className="text-[10px] font-semibold text-team-blue/60">
               {t("live:teams.blueShort")}
             </span>
           </div>
@@ -79,7 +79,7 @@ export const ScoreDisplay = memo(function ScoreDisplay({
           <div className="flex flex-col items-center">
             <span
               className={cn(
-                "font-mono text-3xl font-bold leading-none tracking-tight transition-colors duration-300",
+                "numeral text-3xl font-bold leading-none tracking-tight transition-colors duration-300",
                 orangeScore > blueScore
                   ? "text-team-orange drop-shadow-[0_0_12px_var(--color-team-orange-glow)]"
                   : "text-text-primary"
@@ -87,7 +87,7 @@ export const ScoreDisplay = memo(function ScoreDisplay({
             >
               {orangeScore}
             </span>
-            <span className="text-[8px] font-semibold uppercase tracking-widest text-team-orange/60">
+            <span className="text-[10px] font-semibold text-team-orange/60">
               {t("live:teams.orangeShort")}
             </span>
           </div>
@@ -95,14 +95,14 @@ export const ScoreDisplay = memo(function ScoreDisplay({
 
         <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
           {isOvertime && (
-            <span className="animate-overtime rounded border border-accent-warning/20 bg-accent-warning-subtle px-1.5 py-0.5 text-[9px] font-bold text-accent-warning">
+            <span className="animate-overtime rounded border border-accent-warning/20 bg-accent-warning-subtle px-1.5 py-0.5 text-[10px] font-bold text-accent-warning">
               {t("live:overtime")}
             </span>
           )}
           {timeRemaining !== undefined && (
             <span
               className={cn(
-                "rounded px-2 py-0.5 font-mono text-sm font-bold tracking-wider",
+                "rounded px-2 py-0.5 font-mono text-sm font-bold",
                 isOvertime
                   ? "border border-accent-warning/30 bg-accent-warning-subtle text-accent-warning"
                   : "border border-border-subtle bg-bg-panel/60 text-text-secondary"

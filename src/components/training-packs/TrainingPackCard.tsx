@@ -36,7 +36,7 @@ export function TrainingPackCard({
     <Card
       variant="panel"
       hoverable
-      className="relative hover:-translate-y-0.5 hover:shadow-level-3 hover:border-border-highlight"
+      className="relative hover:shadow-level-3 hover:border-border-highlight"
       onClick={onViewDetail}
     >
       {/* Top-left: category badge */}

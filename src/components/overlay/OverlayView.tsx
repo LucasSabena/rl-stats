@@ -262,7 +262,7 @@ function MatchContent({ match, connectionStatus, display, fontScale, mmrMap, mmr
                   )}>
                     {match.gameState.isOvertime ? `+${formatDuration(match.gameState.timeRemaining)}` : formatDuration(match.gameState.timeRemaining)}
                   </span>
-                  {match.gameState.isOvertime && <span className="mt-0.5 text-[9px] text-accent-warning">{t("overlay:labels.overtime")}</span>}
+                  {match.gameState.isOvertime && <span className="mt-0.5 text-[10px] text-accent-warning">{t("overlay:labels.overtime")}</span>}
                 </div>
               )}
 
@@ -430,7 +430,7 @@ const OverlayPlayerRow = memo(function OverlayPlayerRow({
         {display.showMmr && mmrError && mmr === null && (
           <span
             className={cn(
-              "ml-2 flex items-center justify-center rounded px-2 py-0.5 font-bold uppercase tracking-wide border bg-accent-warning/15 text-accent-warning border-accent-warning/20",
+              "ml-2 flex items-center justify-center rounded px-2 py-0.5 font-bold tracking-wide border bg-accent-warning/15 text-accent-warning border-accent-warning/20",
               fontScale.mmr
             )}
             title={mmrError}
@@ -472,7 +472,7 @@ function StatPill({ value, icon }: { value: number; icon: string }) {
       active ? "text-white" : "text-text-muted/40"
     )}>
       <span className="font-mono font-semibold tabular-nums">{value}</span>
-      <span className={cn("text-[9px] font-black uppercase", active ? "text-text-muted" : "text-text-muted/30")}>{icon}</span>
+      <span className={cn("text-[10px] font-black", active ? "text-text-muted" : "text-text-muted/30")}>{icon}</span>
     </div>
   );
 }

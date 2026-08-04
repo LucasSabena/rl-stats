@@ -58,7 +58,7 @@ function SessionCard({
 
   return (
     <Card
-      className="cursor-pointer p-4 transition-all hover:shadow-level-2 hover:-translate-y-0.5"
+      className="cursor-pointer p-4 transition-all hover:shadow-level-2"
       onClick={onClick}
       aria-label={t("analytics:sessions.ariaLabel", { date: dateStr, count: session.match_count, winRate })}
     >
@@ -76,24 +76,24 @@ function SessionCard({
 
       <div className="grid grid-cols-4 gap-2 mb-3">
         <div className="text-center">
-          <p className="text-[10px] uppercase tracking-wider text-text-tertiary">{t("analytics:sessions.kpi.matches")}</p>
-          <p className="font-mono text-lg font-bold text-text-primary">{session.match_count}</p>
+          <p className="text-[10px] text-text-tertiary">{t("analytics:sessions.kpi.matches")}</p>
+          <p className="numeral text-lg font-bold text-text-primary">{session.match_count}</p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] uppercase tracking-wider text-text-tertiary">{t("analytics:sessions.kpi.wr")}</p>
+          <p className="text-[10px] text-text-tertiary">{t("analytics:sessions.kpi.wr")}</p>
           <p className={`font-mono text-lg font-bold ${winRate >= 50 ? "text-accent-success" : "text-accent-danger"}`}>
             {winRate}%
           </p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] uppercase tracking-wider text-text-tertiary">{t("analytics:sessions.kpi.goals")}</p>
-          <p className="font-mono text-lg font-bold text-text-primary">
+          <p className="text-[10px] text-text-tertiary">{t("analytics:sessions.kpi.goals")}</p>
+          <p className="numeral text-lg font-bold text-text-primary">
             {goalDiff > 0 ? `+${goalDiff}` : goalDiff}
           </p>
         </div>
         <div className="text-center">
-          <p className="text-[10px] uppercase tracking-wider text-text-tertiary">{t("analytics:sessions.kpi.shots")}</p>
-          <p className="font-mono text-lg font-bold text-text-primary">{session.total_shots}</p>
+          <p className="text-[10px] text-text-tertiary">{t("analytics:sessions.kpi.shots")}</p>
+          <p className="numeral text-lg font-bold text-text-primary">{session.total_shots}</p>
         </div>
       </div>
 
@@ -274,7 +274,7 @@ function InsightsPanel({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {insights.playlists && insights.playlists.length > 0 && (
           <Card className="p-4">
-            <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+            <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-text-tertiary">
               <Trophy size={14} /> {t("analytics:insights.byPlaylist")}
             </h4>
             <div className="space-y-2">
@@ -309,7 +309,7 @@ function InsightsPanel({
         )}
 
         <Card className="p-4">
-          <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-text-tertiary">
             <Gauge size={14} /> {t("analytics:insights.situational")}
           </h4>
           <div className="space-y-3 text-xs">
@@ -343,7 +343,7 @@ function InsightsPanel({
 
       {insights.contrib && (
         <Card className="p-4">
-          <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-text-tertiary">
             <Target size={14} /> {t("analytics:insights.contribution")}
           </h4>
           <div className="space-y-2">
@@ -370,7 +370,7 @@ function InsightsPanel({
 
       {summary && (
         <Card className="p-4">
-          <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+          <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-text-tertiary">
             <Gauge size={14} /> {t("analytics:insights.records")}
           </h4>
           <div className="space-y-3">

@@ -117,7 +117,7 @@ export const MatchHeader = memo(function MatchHeader({ match }: MatchHeaderProps
                   : "bg-team-blue/60"
               )}
             />
-            <span className="mt-2 text-xs font-bold uppercase tracking-widest text-team-blue">
+            <span className="mt-2 text-xs font-bold text-team-blue">
               {t("teams.blue")}
             </span>
           </div>
@@ -159,7 +159,7 @@ export const MatchHeader = memo(function MatchHeader({ match }: MatchHeaderProps
                   : "bg-team-orange/60"
               )}
             />
-            <span className="mt-2 text-xs font-bold uppercase tracking-widest text-team-orange">
+            <span className="mt-2 text-xs font-bold text-team-orange">
               {t("teams.orange")}
             </span>
           </div>
@@ -181,7 +181,7 @@ export const MatchHeader = memo(function MatchHeader({ match }: MatchHeaderProps
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-bg-panel/70 backdrop-blur-sm p-3 text-center">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+      <p className="text-[10px] font-semibold text-text-tertiary">
         {label}
       </p>
       <p className="mt-0.5 text-sm font-medium text-text-primary">{value}</p>
