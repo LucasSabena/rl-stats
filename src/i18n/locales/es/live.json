@@ -76,7 +76,8 @@
     "touches": "Toq",
     "demos": "Dem",
     "speed": "Vel",
-    "boost": "Bst"
+    "boost": "Bst",
+    "pts": "Pts"
   },
   "boostAriaLabel": "Boost de {{name}}",
   "events": {
@@ -97,6 +98,9 @@
     "MatchUnpaused": "Partida reanudada",
     "ClockUpdatedSeconds": "Reloj actualizado",
     "RoundStarted": "Ronda iniciada"
+  },
+  "scoreboard": {
+    "live": "En vivo"
   },
   "overtime": "PRORROGA",
   "connectionStatus": {

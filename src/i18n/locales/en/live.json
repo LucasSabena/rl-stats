@@ -76,7 +76,8 @@
     "touches": "Tch",
     "demos": "Dem",
     "speed": "Spd",
-    "boost": "Bst"
+    "boost": "Bst",
+    "pts": "Pts"
   },
   "boostAriaLabel": "{{name}}'s Boost",
   "events": {
@@ -104,5 +105,8 @@
     "connecting": "Connecting...",
     "disconnected": "Disconnected",
     "gameNotRunning": "Game closed"
+  },
+  "scoreboard": {
+    "live": "Live"
   }
 }

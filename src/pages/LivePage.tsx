@@ -93,9 +93,9 @@ export function LivePage() {
   }, [lastMatchSummary, friendsPresent]);
 
   return (
-    <PageContainer className="space-y-2">
+    <PageContainer>
       {lastMatchSummary && (
-        <div className="flex justify-end">
+        <div className="-mt-2 flex justify-end">
           <Button
             variant="ghost"
             size="sm"

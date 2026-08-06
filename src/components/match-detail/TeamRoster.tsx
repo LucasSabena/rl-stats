@@ -42,7 +42,10 @@ export const TeamRoster = memo(function TeamRoster({
   );
 
   const teamPlayers = useMemo(
-    () => players.filter((p) => p.team === teamNum),
+    () =>
+      players
+        .filter((p) => p.team === teamNum)
+        .sort((a, b) => b.score - a.score),
     [players, teamNum]
   );
 
@@ -54,102 +57,87 @@ export const TeamRoster = memo(function TeamRoster({
   if (teamPlayers.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-border-subtle bg-bg-surface p-5 shadow-level-1">
-      <div className="mb-4 flex items-center gap-2">
-        <div className={cn("h-3 w-3 rounded-full", colorBg)} />
-        <h3 className={cn("font-display text-sm font-bold", colorText)}>
-          {teamName}
-        </h3>
-        <span className="ml-auto text-xs text-text-tertiary">
+    <div className="min-w-0">
+      <header className="flex items-baseline gap-2 border-b border-border-subtle px-4 py-2.5">
+        <span aria-hidden="true" className={cn("h-2 w-2 self-center rounded-full", colorBg)} />
+        <h3 className={cn("micro-label", colorText)}>{teamName}</h3>
+        <span className="ml-auto text-[11px] text-text-tertiary">
           {t("roster.playerCount", { count: teamPlayers.length })}
         </span>
-      </div>
+      </header>
 
-      <div className="space-y-2">
+      <div className="divide-y divide-border-subtle">
         {teamPlayers.map((player) => {
           const rank = sortedAllPlayers.findIndex((p) => p.id === player.id) + 1;
           const isTop3 = rank <= 3;
           const isMVP = rank === 1;
           const playerRank = deriveRank(player.mmr ?? null, playlist);
-          const headToHeadLabel = player.head_to_head
-            ? `Comp ${player.head_to_head.wins_together}-${player.head_to_head.losses_together} · Rival ${player.head_to_head.wins_against}-${player.head_to_head.losses_against}`
-            : null;
 
           return (
-            <div
-              key={player.id}
-              className="flex items-center gap-3 rounded-lg bg-bg-panel/80 p-3 transition-colors hover:bg-surface-hover/80"
-            >
-              <div
+            <div key={player.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-hover">
+              <span
+                aria-hidden="true"
                 className={cn(
-                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold",
+                  "grid h-8 w-8 shrink-0 place-items-center rounded-md text-[11px] font-bold",
                   colorBgSoft,
-                  colorText
+                  colorText,
                 )}
               >
                 {getInitials(player.name)}
-              </div>
+              </span>
 
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <PlayerLink
-                    player={player.id}
-                    name={player.name}
-                    className="text-sm font-medium text-text-primary"
-                  />
-                  
+                <p className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
+                  <PlayerLink player={player.id} name={player.name} className="truncate" />
+
                   {isTop3 && (
                     <span
                       title={isMVP ? "MVP" : `#${rank}`}
                       className={cn(
-                        "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none",
+                        "inline-flex shrink-0 items-center gap-0.5 text-[10px] font-semibold leading-none",
                         rank === 1
-                          ? "bg-accent-warning-subtle text-accent-warning"
+                          ? "text-accent-warning"
                           : rank === 2
-                            ? "bg-[var(--wash-strong)] text-text-secondary"
-                            : "bg-accent-secondary-subtle text-accent-secondary",
+                            ? "text-text-secondary"
+                            : "text-accent-secondary",
                       )}
                     >
-                      {isMVP ? (
-                        <Crown size={9} aria-hidden="true" />
-                      ) : (
-                        <Medal size={9} aria-hidden="true" />
-                      )}
+                      {isMVP ? <Crown size={10} aria-hidden="true" /> : <Medal size={10} aria-hidden="true" />}
                       {isMVP ? "MVP" : `${rank}\u00ba`}
                     </span>
                   )}
 
                   {friends?.some((f) => f.primary_id === player.id) && (
-                    <span className="shrink-0 rounded bg-accent-primary-subtle px-1 py-0.5 text-[10px] font-medium leading-none text-accent-primary">
+                    <span className="shrink-0 text-[10px] text-accent-primary">
                       {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                     </span>
                   )}
-                </div>
-                {playerRank && (
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <RankInsignia rank={playerRank} size={16} />
-                    <span className="tabular text-[11px] text-text-secondary">
-                      {playerRank.label} · {player.mmr} MMR
+                </p>
+
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-text-tertiary">
+                  {playerRank && (
+                    <span className="flex items-center gap-1">
+                      <RankInsignia rank={playerRank} size={13} />
+                      <span className="tabular text-text-secondary">
+                        {player.mmr != null ? `${player.mmr} · ` : ""}
+                        {playerRank.label}
+                      </span>
                     </span>
-                  </div>
-                )}
-                {headToHeadLabel && (
-                  <div className="mt-1 text-[10px] font-medium text-text-tertiary">
-                    {headToHeadLabel}
-                  </div>
-                )}
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-secondary">
-                  <Stat value={player.score} label={t("roster.pts")} />
-                  <Stat value={player.goals} label={t("roster.gol")} />
-                  <Stat value={player.assists} label={t("roster.ast")} />
-                  <Stat value={player.saves} label={t("roster.par")} />
+                  )}
                   {player.kickoffGoals ? (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-accent-success/10 px-1 py-0.5 text-[10px] font-medium text-accent-success">
-                      <Rocket size={10} />
+                    <span className="inline-flex items-center gap-0.5 text-accent-success">
+                      <Rocket size={10} aria-hidden="true" />
                       {player.kickoffGoals} {t("roster.kg")}
                     </span>
                   ) : null}
-                </div>
+                </p>
+              </div>
+
+              <div className="shrink-0 text-right">
+                <p className="numeral text-lg leading-none text-text-primary">{player.score}</p>
+                <p className="tabular mt-0.5 text-[10px] text-text-tertiary">
+                  {player.goals} {t("roster.gol")} · {player.assists} {t("roster.ast")} · {player.saves} {t("roster.par")}
+                </p>
               </div>
             </div>
           );
@@ -158,12 +146,3 @@ export const TeamRoster = memo(function TeamRoster({
     </div>
   );
 });
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <span>
-      <span className="font-semibold text-text-primary">{value}</span>{" "}
-      <span className="text-text-tertiary">{label}</span>
-    </span>
-  );
-}

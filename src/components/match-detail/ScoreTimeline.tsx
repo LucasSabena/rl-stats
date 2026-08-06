@@ -37,7 +37,7 @@ function classify(event: RlEvent): Kind | null {
     (event.data as Record<string, unknown>).event_type ?? "",
   ).toLowerCase();
 
-  if (raw === "goal") return null; // already covered by GoalScored
+  if (raw === "goal") return null;
   if (raw.includes("epic")) return "epicSave";
   if (raw.includes("save")) return "save";
   if (raw.includes("assist")) return "assist";
@@ -49,10 +49,9 @@ function classify(event: RlEvent): Kind | null {
 /**
  * Chronological match timeline.
  *
- * Goals are the spine of the story, so they carry the running score and full
- * visual weight; supporting plays (saves, demos, assists, shots) render as
- * quiet rows that add texture without competing. Previously every event was
- * drawn identically, which made a shot look as important as a goal.
+ * Goals are the spine of the story: full visual weight with the running
+ * score. Supporting plays render as quiet rows that add texture without
+ * competing.
  */
 export const ScoreTimeline = memo(function ScoreTimeline({
   events,
@@ -66,7 +65,6 @@ export const ScoreTimeline = memo(function ScoreTimeline({
   const resolvedTeam0Name = team0Name ?? t("matchDetail:teams.blue");
   const resolvedTeam1Name = team1Name ?? t("matchDetail:teams.orange");
 
-  // Walk once, attaching the running score to each goal.
   const rows = useMemo(() => {
     let blue = 0;
     let orange = 0;
@@ -101,26 +99,24 @@ export const ScoreTimeline = memo(function ScoreTimeline({
     Boolean(name) && Boolean(friends?.some((f) => f.name === name));
 
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-surface p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-medium text-text-primary">
-          {t("matchDetail:timeline.title")}
-        </h3>
+    <section className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-4 py-2.5">
+        <h3 className="micro-label">{t("matchDetail:timeline.title")}</h3>
 
         <div className="flex items-center gap-3">
           <span className="flex items-baseline gap-1.5 text-sm">
             <span className="numeral text-team-blue">{finalScore.blue}</span>
-            <span className="text-xs text-text-tertiary">{resolvedTeam0Name}</span>
-            <span className="text-text-tertiary">·</span>
+            <span className="text-[11px] text-text-tertiary">{resolvedTeam0Name}</span>
+            <span aria-hidden="true" className="text-text-muted">·</span>
             <span className="numeral text-team-orange">{finalScore.orange}</span>
-            <span className="text-xs text-text-tertiary">{resolvedTeam1Name}</span>
+            <span className="text-[11px] text-text-tertiary">{resolvedTeam1Name}</span>
           </span>
 
           {supportingCount > 0 && (
             <button
               type="button"
               onClick={() => setGoalsOnly((v) => !v)}
-              className="rounded border border-border-default px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-border-highlight hover:text-text-primary"
+              className="rounded border border-border-subtle px-2 py-1 text-[11px] text-text-secondary transition-colors hover:border-border-highlight hover:text-text-primary"
             >
               {goalsOnly
                 ? t("matchDetail:timeline.showAll", { defaultValue: "Ver todo" })
@@ -128,10 +124,10 @@ export const ScoreTimeline = memo(function ScoreTimeline({
             </button>
           )}
         </div>
-      </div>
+      </header>
 
-      <ol className="relative ml-1 border-l border-border-default pl-5">
-        {visible.map(({ event, kind, team, blue, orange }) => {
+      <ol className="stagger-in divide-y divide-border-subtle/50">
+        {visible.map(({ event, kind, team, blue, orange }, index) => {
           const data = event.data as Record<string, unknown>;
           const time = formatDuration(event.timestamp);
           const isBlue = team === 0;
@@ -144,52 +140,37 @@ export const ScoreTimeline = memo(function ScoreTimeline({
             const assisterId = data.assister_id as string | undefined;
 
             return (
-              <li key={event.id} className="relative mb-3 last:mb-0">
+              <li
+                key={event.id}
+                style={{ "--stagger-i": Math.min(index, 14) } as React.CSSProperties}
+                className="flex items-center gap-3 px-4 py-2.5"
+              >
+                <span className="tabular w-10 shrink-0 text-[11px] text-text-tertiary">
+                  {time}
+                </span>
                 <span
                   aria-hidden="true"
-                  className={cn(
-                    "absolute -left-[27px] top-2 h-2.5 w-2.5 rounded-full ring-4 ring-bg-surface",
-                    isBlue ? "bg-team-blue" : "bg-team-orange",
-                  )}
+                  className={cn("h-2 w-2 shrink-0 rounded-full", isBlue ? "bg-team-blue" : "bg-team-orange")}
                 />
-                <div
-                  className={cn(
-                    "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
-                    isBlue
-                      ? "border-team-blue/25 bg-team-blue-bg"
-                      : "border-team-orange/25 bg-team-orange-bg",
-                  )}
-                >
-                  <div className="flex min-w-0 items-baseline gap-2.5">
-                    <span className="tabular shrink-0 text-[11px] text-text-tertiary">
-                      {time}
-                    </span>
-                    <div className="min-w-0">
-                      <span className="flex items-center gap-1.5">
-                        <PlayerLink
-                          player={scorerId}
-                          name={scorer}
-                          className="text-[13px] font-medium text-text-primary"
-                        />
-                        {isFriend(scorer) && (
-                          <span className="shrink-0 text-[10px] text-accent-primary">
-                            {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
-                          </span>
-                        )}
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
+                    <PlayerLink player={scorerId} name={scorer} className="truncate" />
+                    {isFriend(scorer) && (
+                      <span className="shrink-0 text-[10px] text-accent-primary">
+                        {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                       </span>
-                      {assister && (
-                        <span className="mt-0.5 flex items-center gap-1 text-[11px] text-text-secondary">
-                          <Zap size={10} aria-hidden="true" className="text-accent-purple" />
-                          <PlayerLink player={assisterId} name={assister} />
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <span className="numeral shrink-0 text-sm text-text-primary">
-                    {blue}–{orange}
-                  </span>
+                    )}
+                  </p>
+                  {assister && (
+                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-text-secondary">
+                      <Zap size={10} aria-hidden="true" className="text-accent-purple" />
+                      <PlayerLink player={assisterId} name={assister} />
+                    </p>
+                  )}
                 </div>
+                <span className="numeral shrink-0 text-sm text-text-primary">
+                  {blue}–{orange}
+                </span>
               </li>
             );
           }
@@ -204,30 +185,25 @@ export const ScoreTimeline = memo(function ScoreTimeline({
             (data.player_id as string) ?? (data.main_target_id as string);
 
           return (
-            <li key={event.id} className="relative mb-2 last:mb-0">
+            <li
+              key={event.id}
+              style={{ "--stagger-i": Math.min(index, 14) } as React.CSSProperties}
+              className="flex items-center gap-3 px-4 py-1.5 text-[12px]"
+            >
+              <span className="tabular w-10 shrink-0 text-[11px] text-text-tertiary">
+                {time}
+              </span>
               <span
                 aria-hidden="true"
-                className={cn(
-                  "absolute -left-[23px] top-1.5 h-1.5 w-1.5 rounded-full ring-4 ring-bg-surface",
-                  isBlue ? "bg-team-blue/50" : "bg-team-orange/50",
-                )}
+                className={cn("h-1 w-1 shrink-0 rounded-full", isBlue ? "bg-team-blue/50" : "bg-team-orange/50")}
               />
-              <div className="flex items-center gap-2.5 px-1 text-[12px]">
-                <span className="tabular shrink-0 text-[11px] text-text-tertiary">
-                  {time}
-                </span>
-                <Icon size={12} aria-hidden="true" className={cn("shrink-0", meta.tone)} />
-                <PlayerLink
-                  player={playerId}
-                  name={player}
-                  className="text-text-secondary"
-                />
-                <span className="truncate text-text-tertiary">{t(meta.labelKey)}</span>
-              </div>
+              <Icon size={12} aria-hidden="true" className={cn("shrink-0", meta.tone)} />
+              <PlayerLink player={playerId} name={player} className="truncate text-text-secondary" />
+              <span className="truncate text-text-tertiary">{t(meta.labelKey)}</span>
             </li>
           );
         })}
       </ol>
-    </div>
+    </section>
   );
 });

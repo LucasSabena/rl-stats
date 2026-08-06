@@ -1,9 +1,7 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
-import { formatDuration } from "@/lib/utils";
-import { Card } from "@/components/ui/Card";
-import { Goal, UserCheck, Timer, Zap } from "lucide-react";
+import { cn, formatDuration } from "@/lib/utils";
+import { Zap } from "lucide-react";
 import { useFriends } from "@/hooks/useFriends";
 import type { Goal as GoalType } from "@/lib/types";
 
@@ -17,118 +15,63 @@ export const GoalDetail = memo(function GoalDetail({ goals }: GoalDetailProps) {
 
   if (goals.length === 0) return null;
 
-  const team0Goals = goals.filter((g) => g.scorerTeam === 0);
-  const team1Goals = goals.filter((g) => g.scorerTeam === 1);
+  const team0Count = goals.filter((g) => g.scorerTeam === 0).length;
+  const team1Count = goals.length - team0Count;
 
   return (
-    <div className="rounded-xl border border-border-subtle bg-bg-surface p-5 shadow-level-1">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="flex items-center gap-1.5">
-          <Goal size={18} className="text-yellow-400" />
-          <h3 className="text-sm font-semibold text-text-primary">{t("matchDetail:goals.title")}</h3>
-        </div>
-        <div className="flex items-center gap-4 ml-auto">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-team-blue" />
-            <span className="text-xs font-mono font-bold text-text-primary">{team0Goals.length}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-team-orange" />
-            <span className="text-xs font-mono font-bold text-text-primary">{team1Goals.length}</span>
-          </div>
-        </div>
-      </div>
+    <section className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
+      <header className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+        <h3 className="micro-label">{t("matchDetail:goals.title")}</h3>
+        <span className="flex items-baseline gap-1.5 text-sm">
+          <span className="numeral text-team-blue">{team0Count}</span>
+          <span aria-hidden="true" className="text-text-muted">·</span>
+          <span className="numeral text-team-orange">{team1Count}</span>
+        </span>
+      </header>
 
-      <div className="space-y-3">
-        {goals.map((goal, idx) => {
+      <div className="stagger-in divide-y divide-border-subtle/50">
+        {goals.map((goal, index) => {
           const isBlue = goal.scorerTeam === 0;
-          const goalNumber = (isBlue ? team0Goals.indexOf(goal) : team1Goals.indexOf(goal)) + 1;
-          const teamLabel = isBlue ? t("matchDetail:teams.blueShort") : t("matchDetail:teams.orangeShort");
-          
-          const isScorerFriend = friends?.some(f => f.primary_id === goal.scorerId);
-          const isAssisterFriend = goal.assisterId ? friends?.some(f => f.primary_id === goal.assisterId) : false;
+          const isScorerFriend = friends?.some((f) => f.primary_id === goal.scorerId);
 
           return (
-            <Card
-              key={goal.id || idx}
-              className={cn(
-                "group flex items-center gap-4 border-l-[3px] p-4 transition-all hover:border-l-[5px]",
-                isBlue ? "border-l-team-blue" : "border-l-team-orange"
-              )}
+            <div
+              key={goal.id || index}
+              style={{ "--stagger-i": Math.min(index, 10) } as React.CSSProperties}
+              className="flex items-center gap-3 px-4 py-2.5"
             >
-              {/* Left: shooter avatar + number */}
-              <div className="flex shrink-0 items-center gap-3">
-                <div
-                  className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold",
-                    isBlue
-                      ? "bg-team-blue/15 text-team-blue"
-                      : "bg-team-orange/15 text-team-orange"
-                  )}
-                >
-                  <Goal size={18} />
-                </div>
-                <div className="flex flex-col items-center">
-                  <span
-                    className={cn(
-                      "text-xl font-bold font-mono leading-none",
-                      isBlue ? "text-team-blue" : "text-team-orange"
-                    )}
-                  >
-                    {goalNumber}
-                  </span>
-                  <span className="text-[10px] font-semibold text-text-muted">{teamLabel}</span>
-                </div>
-              </div>
-
-              {/* Center: scorer + assister */}
+              <span
+                aria-hidden="true"
+                className={cn("h-2 w-2 shrink-0 rounded-full", isBlue ? "bg-team-blue" : "bg-team-orange")}
+              />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold text-text-primary truncate">
-                    {goal.scorerName}
-                  </p>
+                <p className="flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
+                  <span className="truncate">{goal.scorerName}</span>
                   {isScorerFriend && (
-                    <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
+                    <span className="shrink-0 text-[10px] text-accent-primary">
                       {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
                     </span>
                   )}
-                </div>
+                </p>
                 {goal.assisterName && (
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <p className="flex items-center gap-1 text-xs text-text-secondary">
-                      <UserCheck size={11} className="text-text-tertiary" />
-                      <span className="font-medium text-text-primary">{goal.assisterName}</span>
-                    </p>
-                    {isAssisterFriend && (
-                      <span className="shrink-0 rounded-full bg-accent-primary/15 px-1 py-0.5 text-[10px] font-bold text-accent-primary">
-                        {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
-                      </span>
-                    )}
-                  </div>
+                  <p className="mt-0.5 flex items-center gap-1 text-[11px] text-text-secondary">
+                    <Zap size={10} aria-hidden="true" className="text-accent-purple" />
+                    <span className="truncate">{goal.assisterName}</span>
+                  </p>
                 )}
               </div>
-
-              {/* Right: time + ball speed */}
-              <div className="flex shrink-0 items-center gap-4 text-right">
-                <div className="flex items-center gap-1.5">
-                  <Timer size={13} className="text-text-muted" />
-                  <span className="font-mono text-xs font-semibold text-text-secondary">
-                    {formatDuration(goal.time)}
-                  </span>
-                </div>
-                {goal.ballSpeed > 0 && (
-                  <div className="flex items-center gap-1">
-                    <Zap size={13} className="text-yellow-500/60" />
-                    <span className="font-mono text-xs font-semibold text-text-secondary">
-                      {Math.round(goal.ballSpeed)} uu/s
-                    </span>
-                  </div>
-                )}
-              </div>
-            </Card>
+              <span className="tabular shrink-0 text-[11px] text-text-tertiary">
+                {formatDuration(goal.time)}
+              </span>
+              {goal.ballSpeed > 0 && (
+                <span className="tabular hidden w-20 shrink-0 text-right text-[11px] text-text-tertiary sm:block">
+                  {Math.round(goal.ballSpeed)} uu/s
+                </span>
+              )}
+            </div>
           );
         })}
       </div>
-    </div>
+    </section>
   );
 });

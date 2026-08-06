@@ -13,12 +13,14 @@ interface ContextMenuProps {
   children: React.ReactNode;
   items: ContextMenuItem[];
   onOpenChange?: (open: boolean) => void;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 const MENU_WIDTH = 180;
 const MENU_HEIGHT = 130;
 
-export function ContextMenu({ children, items, onOpenChange }: ContextMenuProps) {
+export function ContextMenu({ children, items, onOpenChange, className, style }: ContextMenuProps) {
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
@@ -66,7 +68,7 @@ export function ContextMenu({ children, items, onOpenChange }: ContextMenuProps)
   }
 
   return (
-    <div onContextMenu={handleContextMenu} className="w-full">
+    <div onContextMenu={handleContextMenu} className={cn("w-full", className)} style={style}>
       {children}
       {visible && (
         <div

@@ -35,7 +35,6 @@ export const PlayerCard = memo(function PlayerCard({
   const hasMmr = mmr?.mmr != null;
   const isFriend = friends?.some((f) => f.primary_id === player.id) ?? false;
 
-  // Rank comes from MMR — the tracker fields are always null now.
   const rank = useMemo(
     () => deriveRank(mmr?.mmr ?? null, playlist),
     [mmr?.mmr, playlist],
@@ -44,8 +43,6 @@ export const PlayerCard = memo(function PlayerCard({
   const details = mmr?.warning ?? mmr?.error ?? null;
   const isUnavailable = !hasMmr && Boolean(mmr?.error);
 
-  // Provenance used to be four separate uppercase chips on every card.
-  // It's supporting detail, so it lives in the tooltip now.
   const provenance = [
     mmr?.source,
     mmr?.estimated ? "estimated" : null,
@@ -57,122 +54,104 @@ export const PlayerCard = memo(function PlayerCard({
 
   return (
     <>
-      <div
-        className={cn(
-          "rounded-md border p-2 transition-colors duration-150",
-          isCurrentUser
-            ? "border-[color-mix(in_oklab,var(--accent)_35%,transparent)] bg-accent-primary-muted"
-            : "border-border-subtle bg-bg-surface hover:border-border-default",
+      <div className="relative px-4 py-3 transition-colors hover:bg-bg-hover">
+        {isCurrentUser && (
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-0 left-0 w-0.5 bg-accent-primary"
+          />
         )}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span
-              aria-hidden="true"
-              className={cn(
-                "flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-semibold",
-                isBlue
-                  ? "bg-team-blue-bg text-team-blue"
-                  : "bg-team-orange-bg text-team-orange",
+
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "grid h-7 w-7 shrink-0 place-items-center rounded-md text-[11px] font-bold",
+              isBlue ? "bg-team-blue-bg text-team-blue" : "bg-team-orange-bg text-team-orange",
+            )}
+          >
+            {(player.name || "?").charAt(0).toUpperCase()}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-[13px] font-medium leading-tight text-text-primary">
+              <PlayerLink player={player.id} name={player.name} className="truncate" />
+              {rank && <RankInsignia rank={rank} size={14} />}
+              {isCurrentUser && (
+                <span className="shrink-0 text-[10px] font-semibold text-accent-primary">
+                  {t("live:players.you")}
+                </span>
               )}
+              {isFriend && !isCurrentUser && (
+                <span className="shrink-0 text-[10px] text-text-tertiary">
+                  {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
+                </span>
+              )}
+            </p>
+            <p
+              className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] leading-tight text-text-tertiary"
+              title={provenance || undefined}
             >
-              {(player.name || "?").charAt(0).toUpperCase()}
-            </span>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <PlayerLink
-                  player={player.id}
-                  name={player.name}
-                  className="text-[13px] font-medium leading-tight text-text-primary"
-                />
-
-                {rank && <RankInsignia rank={rank} size={15} />}
-
-                {isCurrentUser && (
-                  <span className="shrink-0 text-[10px] font-medium text-accent-primary">
-                    {t("live:players.you")}
-                  </span>
-                )}
-                {isFriend && !isCurrentUser && (
-                  <span className="shrink-0 text-[10px] text-text-tertiary">
-                    {t("players:directory.badgeFriend", { defaultValue: "Amigo" })}
-                  </span>
-                )}
-              </div>
-
-              <div
-                className="flex flex-wrap items-center gap-x-2 text-[11px] leading-tight text-text-tertiary"
-                title={provenance || undefined}
-              >
-                {mmrLoading && !hasMmr && <span>{t("live:mmr.searching")}</span>}
-                {!mmrLoading && !hasMmr && <span className="tabular">MMR —</span>}
-                {hasMmr && (
-                  <span className="tabular text-text-secondary">
-                    {mmr?.estimated ? "≈" : ""}
-                    {mmr?.mmr}
-                    {rank && <span className="ml-1">{rank.label}</span>}
-                  </span>
-                )}
-                {headToHead && (
-                  <span>
-                    {headToHead.wins_together}-{headToHead.losses_together} ·{" "}
-                    {headToHead.wins_against}-{headToHead.losses_against}
-                  </span>
-                )}
-                {details && (
-                  <button
-                    type="button"
-                    onClick={() => setDetailsModalOpen(true)}
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded px-1 py-px transition-colors",
-                      isUnavailable
-                        ? "text-accent-danger hover:bg-accent-danger-subtle"
-                        : "text-text-tertiary hover:bg-surface-hover hover:text-text-secondary",
-                    )}
-                    aria-label={
-                      isUnavailable
-                        ? t("live:mmr.unavailableDetails")
-                        : t("live:mmr.estimateDetails")
-                    }
-                  >
-                    {isUnavailable ? (
-                      <AlertTriangle size={11} aria-hidden="true" />
-                    ) : (
-                      <Info size={11} aria-hidden="true" />
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
+              {mmrLoading && !hasMmr && <span>{t("live:mmr.searching")}</span>}
+              {!mmrLoading && !hasMmr && <span className="tabular">MMR —</span>}
+              {hasMmr && (
+                <span className="tabular text-text-secondary">
+                  {mmr?.estimated ? "≈" : ""}
+                  {mmr?.mmr}
+                  {rank && <span className="text-text-tertiary"> · {rank.label}</span>}
+                </span>
+              )}
+              {headToHead && (
+                <span className="tabular">
+                  {headToHead.wins_together}-{headToHead.losses_together} ·{" "}
+                  {headToHead.wins_against}-{headToHead.losses_against}
+                </span>
+              )}
+              {details && (
+                <button
+                  type="button"
+                  onClick={() => setDetailsModalOpen(true)}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded px-1 py-px transition-colors",
+                    isUnavailable
+                      ? "text-accent-danger hover:bg-accent-danger-subtle"
+                      : "text-text-tertiary hover:bg-surface-hover hover:text-text-secondary",
+                  )}
+                  aria-label={
+                    isUnavailable
+                      ? t("live:mmr.unavailableDetails")
+                      : t("live:mmr.estimateDetails")
+                  }
+                >
+                  {isUnavailable ? (
+                    <AlertTriangle size={11} aria-hidden="true" />
+                  ) : (
+                    <Info size={11} aria-hidden="true" />
+                  )}
+                </button>
+              )}
+            </p>
           </div>
 
-          <span className="numeral shrink-0 text-sm text-text-primary">
-            {player.score}
-          </span>
+          <div className="shrink-0 text-right">
+            <p className="numeral text-lg leading-none text-text-primary">{player.score}</p>
+            <p className="micro-label mt-0.5">{t("live:stats.pts")}</p>
+          </div>
         </div>
 
-        <div className="mt-2 grid grid-cols-8 gap-1 text-center">
+        <dl className="mt-2.5 grid grid-cols-8 divide-x divide-border-subtle/60 text-center">
           <Stat label={t("live:stats.goals")} value={player.goals} />
           <Stat label={t("live:stats.assists")} value={player.assists} />
           <Stat label={t("live:stats.shots")} value={player.shots} />
           <Stat label={t("live:stats.saves")} value={player.saves} />
           <Stat label={t("live:stats.touches")} value={player.touches} />
           <Stat label={t("live:stats.demos")} value={player.demos} />
-          <Stat
-            label={t("live:stats.speed")}
-            value={player.speed}
-            displayValue={formatSpeed(player.speed)}
-          />
-          <Stat
-            label={t("live:stats.boost")}
-            value={player.boostAmount}
-            displayValue={formatBoost(player.boostAmount)}
-          />
-        </div>
+          <Stat label={t("live:stats.speed")} value={player.speed} displayValue={formatSpeed(player.speed)} />
+          <Stat label={t("live:stats.boost")} value={player.boostAmount} displayValue={formatBoost(player.boostAmount)} />
+        </dl>
 
         <div
-          className="mt-2 h-1 w-full overflow-hidden rounded-full bg-bg-secondary"
+          className="mt-2.5 h-0.5 w-full overflow-hidden rounded-full bg-bg-secondary"
           role="progressbar"
           aria-valuenow={Math.round(player.boostAmount)}
           aria-valuemin={0}
@@ -181,7 +160,7 @@ export const PlayerCard = memo(function PlayerCard({
         >
           <div
             className={cn(
-              "h-full rounded-full transition-[width] duration-300 ease-out",
+              "h-full rounded-full transition-[width] duration-500 ease-out",
               player.boostAmount > 60
                 ? "bg-boost-full"
                 : player.boostAmount > 30
@@ -229,11 +208,11 @@ function Stat({
   displayValue?: string;
 }) {
   return (
-    <div>
-      <p className="text-[10px] leading-none text-text-tertiary">{label}</p>
-      <p className="numeral mt-1 text-[12px] leading-none text-text-primary">
+    <div className="px-0.5">
+      <dt className="micro-label">{label}</dt>
+      <dd className="numeral mt-0.5 text-[12px] leading-none text-text-primary">
         {displayValue ?? value}
-      </p>
+      </dd>
     </div>
   );
 }

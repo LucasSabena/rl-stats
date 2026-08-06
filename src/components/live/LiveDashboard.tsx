@@ -6,7 +6,6 @@ import { EventFeed } from "./EventFeed";
 import { ScoreDisplay } from "./ScoreDisplay";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { RankWidget } from "@/components/tracker/RankWidget";
 import { useLiveMmr } from "@/hooks/useLiveMmr";
 import { useSettings } from "@/hooks/useSettings";
 import { useLiveHeadToHead } from "@/hooks/useLiveHeadToHead";
@@ -71,20 +70,18 @@ function MatchEndBanner() {
   const { score_blue, score_orange, winner, local_team_num, duration_seconds, players } = lastMatchSummary;
 
   let label = "";
-  let bgClass = "";
+  let toneClass = "text-text-secondary";
 
   if (winner === null) {
     label = t("live:result.draw", { scoreBlue: score_blue, scoreOrange: score_orange });
-    bgClass = "border-border-subtle bg-bg-surface";
   } else if (local_team_num !== null && winner === local_team_num) {
     label = t("live:result.win", { scoreBlue: score_blue, scoreOrange: score_orange });
-    bgClass = "border-accent-success/30 bg-accent-success-subtle";
+    toneClass = "text-accent-success";
   } else if (local_team_num !== null) {
     label = t("live:result.loss", { scoreBlue: score_blue, scoreOrange: score_orange });
-    bgClass = "border-accent-danger/30 bg-accent-danger-subtle";
+    toneClass = "text-accent-danger";
   } else {
     label = t("live:result.final", { scoreBlue: score_blue, scoreOrange: score_orange });
-    bgClass = "border-border-subtle bg-bg-surface";
   }
 
   const mins = Math.floor(duration_seconds / 60);
@@ -93,18 +90,15 @@ function MatchEndBanner() {
 
   return (
     <div
-      className={cn(
-        "animate-slide-down relative flex items-center justify-between rounded-md border px-2.5 py-1.5",
-        bgClass
-      )}
+      className="animate-slide-down flex items-center justify-between rounded-md border border-border-subtle bg-bg-surface px-4 py-2"
       role="alert"
     >
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-bold text-text-primary">{label}</span>
-        <span className="text-[10px] text-text-tertiary">
+      <p className="flex items-baseline gap-2 text-xs">
+        <span className={cn("font-bold", toneClass)}>{label}</span>
+        <span className="text-[11px] text-text-tertiary">
           {t("live:matchEnd.summary", { duration: durationStr, count: players.length })}
         </span>
-      </div>
+      </p>
       <button
         onClick={handleDismiss}
         className="flex h-5 w-5 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
@@ -133,7 +127,7 @@ export function LiveDashboard() {
 
   if (!currentMatch) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <div className="flex justify-end">
           <ConnectionStatus status={connectionStatus} />
         </div>
@@ -158,8 +152,18 @@ export function LiveDashboard() {
   const showInfoBar = Boolean(liveMmr) || connectionStatus !== "connected";
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <MatchEndBanner />
+
+      <ScoreDisplay
+        blueScore={currentMatch.teamBlueScore}
+        orangeScore={currentMatch.teamOrangeScore}
+        arena={currentMatch.gameState.arena ?? undefined}
+        timeRemaining={currentMatch.gameState.timeRemaining}
+        isOvertime={currentMatch.gameState.isOvertime}
+        matchTypeLabel={matchTypeLabel}
+        matchSizeLabel={matchSizeLabel}
+      />
 
       {showInfoBar && (
         <div className="flex items-center justify-between gap-2">
@@ -212,19 +216,7 @@ export function LiveDashboard() {
         </div>
       )}
 
-      <ScoreDisplay
-        blueScore={currentMatch.teamBlueScore}
-        orangeScore={currentMatch.teamOrangeScore}
-        arena={currentMatch.gameState.arena ?? undefined}
-        timeRemaining={currentMatch.gameState.timeRemaining}
-        isOvertime={currentMatch.gameState.isOvertime}
-        matchTypeLabel={matchTypeLabel}
-        matchSizeLabel={matchSizeLabel}
-      />
-
-      <RankWidget />
-
-      <div className="grid gap-3 lg:grid-cols-2">
+      <section className="grid divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-bg-surface lg:grid-cols-2 lg:divide-x lg:divide-y-0">
         <TeamPanel
           team="blue"
           players={bluePlayers}
@@ -245,17 +237,14 @@ export function LiveDashboard() {
           isLocalMatch={currentMatch.matchType === "local"}
           playlist={liveMmr?.playlist ?? null}
         />
-      </div>
+      </section>
 
       {otherPlayers.length > 0 && (
-        <div className="rounded-lg border border-border-subtle bg-bg-surface/60 p-2">
-          <div className="mb-1 flex items-center gap-1.5">
-            <div className="h-2 w-2 rounded-full bg-text-muted" />
-            <h3 className="font-display text-[10px] font-bold tracking-wide text-text-secondary">
-              {t("live:players.other")}
-            </h3>
-          </div>
-          <div className="space-y-1">
+        <section className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
+          <header className="border-b border-border-subtle px-4 py-2">
+            <h3 className="micro-label">{t("live:players.other")}</h3>
+          </header>
+          <div className="divide-y divide-border-subtle">
             {otherPlayers.map((player) => (
               <PlayerCard
                 key={player.id}
@@ -267,7 +256,7 @@ export function LiveDashboard() {
               />
             ))}
           </div>
-        </div>
+        </section>
       )}
 
       <EventFeed />

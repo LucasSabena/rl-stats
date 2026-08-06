@@ -149,8 +149,25 @@ export function HistoryPage() {
 
   return (
     <PageContainer>
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-text-primary">{t("history:pageTitle")}</h2>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-text-primary">
+            {t("history:pageTitle")}
+          </h2>
+          {data && data.length > 0 && (
+            <p className="mt-1 text-xs text-text-tertiary">
+              {t("history:summary.count", { count: data.length })}
+              {" · "}
+              <span className="text-accent-success">
+                {t("history:summary.wins", { count: data.filter((m) => m.localTeamNum !== null && m.winnerTeamNum === m.localTeamNum).length })}
+              </span>
+              {" – "}
+              <span className="text-accent-danger">
+                {t("history:summary.losses", { count: data.filter((m) => m.localTeamNum !== null && m.winnerTeamNum !== null && m.winnerTeamNum !== m.localTeamNum).length })}
+              </span>
+            </p>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -162,7 +179,9 @@ export function HistoryPage() {
         </Button>
       </div>
 
-      <FilterBar filters={filters} onChange={handleFiltersChange} />
+      <div className="border-b border-border-subtle pb-4">
+        <FilterBar filters={filters} onChange={handleFiltersChange} />
+      </div>
 
       {isLoading && (
         <div className="space-y-3">

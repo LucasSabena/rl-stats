@@ -75,5 +75,15 @@
     },
     "dateFrom": "From",
     "dateTo": "To"
+  },
+  "day": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "record": "{{wins}}W – {{losses}}L"
+  },
+  "summary": {
+    "count": "{{count}} matches",
+    "wins": "{{count}}W",
+    "losses": "{{count}}L"
   }
 }

@@ -1,7 +1,6 @@
 import { memo } from "react";
 import { useLiveStore } from "@/stores/liveStore";
-import { cn } from "@/lib/utils";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import type { RlEvent, RlEventType } from "@/lib/types";
 import { Goal, Swords, CircleDot, Timer, Pause, Play, RotateCcw, FastForward, Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -65,25 +64,27 @@ export const EventFeed = memo(function EventFeed() {
   const { t } = useTranslation(["live", "common"]);
 
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-surface/60">
-      <div className="flex items-center justify-between border-b border-border-subtle/50 px-2.5 py-1">
-        <h3 className="font-display text-[10px] font-semibold text-text-secondary">{t("live:events.title")}</h3>
+    <section className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
+      <header className="flex items-center justify-between border-b border-border-subtle px-4 py-2">
+        <h3 className="micro-label">{t("live:events.title")}</h3>
         {events.length > 0 && (
           <span className="font-mono text-[10px] text-text-muted">{events.length}</span>
         )}
-      </div>
-      <div className="h-24 overflow-y-auto p-1">
+      </header>
+      <div className="h-28 overflow-y-auto">
         {events.length === 0 ? (
-          <p className="py-4 text-center text-[10px] text-text-tertiary">{t("live:events.empty")}</p>
+          <p className="px-4 py-6 text-center text-[11px] text-text-tertiary">
+            {t("live:events.empty")}
+          </p>
         ) : (
-          <div className="space-y-px">
+          <div className="divide-y divide-border-subtle/50">
             {events.slice(0, 50).map((event) => (
               <EventItem key={event.id} event={event} />
             ))}
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 });
 
@@ -91,10 +92,14 @@ function EventItem({ event }: { event: RlEvent }) {
   const { t } = useTranslation(["live", "common"]);
   const Icon = eventIcons[event.type] ?? CircleDot;
   return (
-    <div className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-surface-hover/50">
+    <div className="animate-slide-down flex items-center gap-2 px-4 py-1.5 text-[11px]">
       <Icon size={11} className={cn("shrink-0", eventColors[event.type] ?? "text-text-tertiary")} />
-      <span className="truncate text-text-secondary">{t(eventTranslationKeys[event.type] ?? `live:events.${event.type}`) ?? event.type}</span>
-      <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">{formatDateTime(event.timestamp * 1000)}</span>
+      <span className="truncate text-text-secondary">
+        {t(eventTranslationKeys[event.type] ?? `live:events.${event.type}`) ?? event.type}
+      </span>
+      <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">
+        {formatDateTime(event.timestamp * 1000)}
+      </span>
     </div>
   );
 }

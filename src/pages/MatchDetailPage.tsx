@@ -135,14 +135,12 @@ export function MatchDetailPage() {
       />
 
       {/* Scoreboard first — it is what the page is about. */}
-      <div className="mt-4">
+      <div className="animate-rise-in">
         <MatchHeader match={data} />
       </div>
 
-      {/* Then the two rosters side by side, with per-player MMR and rank.
-          The full stats table used to sit at the very bottom of the page,
-          below the timeline, which buried the numbers people come here for. */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      {/* The two rosters share one flat surface, split by a hairline. */}
+      <section className="grid divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-bg-surface lg:grid-cols-2 lg:divide-x lg:divide-y-0">
         <TeamRoster
           players={data.players}
           teamNum={0}
@@ -157,34 +155,26 @@ export function MatchDetailPage() {
           teamColorClass="orange"
           playlist={data.playlist}
         />
-      </div>
+      </section>
 
-      {/* Full comparison table, promoted above the narrative sections. */}
-      <div className="mt-6">
+      {/* Full comparison table. */}
+      <div>
         <PlayerStatsTable players={data.players} />
       </div>
 
       {/* Then the story of the match: goals, then the timeline. */}
-      {hasGoals && (
-        <div className="mt-6">
-          <GoalDetail goals={data.goals} />
-        </div>
-      )}
+      {hasGoals && <GoalDetail goals={data.goals} />}
 
       {goalsExist && (
-        <div className="mt-6">
-          <ScoreTimeline
-            events={data.events}
-            team0Name={t("matchDetail:teams.blue")}
-            team1Name={t("matchDetail:teams.orange")}
-          />
-        </div>
+        <ScoreTimeline
+          events={data.events}
+          team0Name={t("matchDetail:teams.blue")}
+          team1Name={t("matchDetail:teams.orange")}
+        />
       )}
 
       {/* Match metadata last — reference detail, not headline. */}
-      <div className="mt-6">
-        <MatchInfoPanel match={data} />
-      </div>
+      <MatchInfoPanel match={data} />
 
     </PageContainer>
   );

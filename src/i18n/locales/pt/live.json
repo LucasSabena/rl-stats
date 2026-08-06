@@ -76,7 +76,8 @@
     "touches": "Toq",
     "demos": "Dem",
     "speed": "Vel",
-    "boost": "Bst"
+    "boost": "Bst",
+    "pts": "Pts"
   },
   "boostAriaLabel": "Boost de {{name}}",
   "events": {
@@ -104,5 +105,8 @@
     "connecting": "Conectando...",
     "disconnected": "Desconectado",
     "gameNotRunning": "Jogo fechado"
+  },
+  "scoreboard": {
+    "live": "Ao vivo"
   }
 }

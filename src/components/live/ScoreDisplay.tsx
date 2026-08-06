@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { cn, formatDuration } from "@/lib/utils";
-import { getArenaDisplayName, getArenaImagePath } from "@/lib/arenaMap";
+import { getArenaDisplayName } from "@/lib/arenaMap";
 import { useTranslation } from "react-i18next";
 
 interface ScoreDisplayProps {
@@ -24,95 +24,83 @@ export const ScoreDisplay = memo(function ScoreDisplay({
 }: ScoreDisplayProps) {
   const { t } = useTranslation(["live", "common"]);
   const displayName = arena ? getArenaDisplayName(arena) : null;
-  const imagePath = arena ? getArenaImagePath(arena) : null;
+
+  const blueLeads = blueScore > orangeScore;
+  const orangeLeads = orangeScore > blueScore;
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
-      <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-team-blue-bg)] via-transparent to-[var(--color-team-orange-bg)] opacity-50" />
-
-      <div className="relative flex items-center px-3 py-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {imagePath && (
-            <img
-              src={imagePath}
-              alt={displayName ?? ""}
-              className="h-4 w-4 shrink-0 rounded border border-border-subtle bg-bg-panel object-cover"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-            />
-          )}
-          {displayName && (
-            <span className="hidden truncate text-[10px] font-semibold text-text-tertiary sm:inline">
-              {displayName}
-            </span>
-          )}
-          {matchSizeLabel && (
-            <span className="shrink-0 rounded border border-accent-primary/20 bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-accent-primary">
-              {matchSizeLabel}
-            </span>
-          )}
-          {matchTypeLabel && (
-            <span className="shrink-0 rounded border border-border-subtle bg-bg-panel/80 px-1.5 py-0.5 text-[10px] font-bold text-text-secondary">
-              {matchTypeLabel}
-            </span>
-          )}
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2.5">
-          <div className="flex flex-col items-center">
-            <span
+    <section className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-5 py-5 sm:gap-8 sm:px-8">
+        <div className="flex items-center gap-4 justify-self-start">
+          <span aria-hidden="true" className="h-12 w-1 rounded-full bg-team-blue" />
+          <div>
+            <p className="micro-label text-team-blue">{t("live:teams.blueShort")}</p>
+            <p
+              key={blueScore}
               className={cn(
-                "numeral text-3xl font-bold leading-none tracking-tight transition-colors duration-300",
-                blueScore > orangeScore
-                  ? "text-team-blue drop-shadow-[0_0_12px_var(--color-team-blue-glow)]"
-                  : "text-text-primary"
+                "numeral animate-score-pop text-5xl leading-none sm:text-6xl",
+                blueLeads ? "text-team-blue" : "text-text-primary",
               )}
             >
               {blueScore}
-            </span>
-            <span className="text-[10px] font-semibold text-team-blue/60">
-              {t("live:teams.blueShort")}
-            </span>
+            </p>
           </div>
+        </div>
 
-          <span className="-mt-1 text-lg font-bold text-text-muted">:</span>
-
-          <div className="flex flex-col items-center">
+        <div className="text-center">
+          <p className="flex items-center justify-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                isOvertime ? "bg-accent-warning" : "animate-live-pulse bg-accent-success",
+              )}
+            />
             <span
               className={cn(
-                "numeral text-3xl font-bold leading-none tracking-tight transition-colors duration-300",
-                orangeScore > blueScore
-                  ? "text-team-orange drop-shadow-[0_0_12px_var(--color-team-orange-glow)]"
-                  : "text-text-primary"
+                "micro-label",
+                isOvertime ? "animate-overtime text-accent-warning" : "text-accent-success",
+              )}
+            >
+              {isOvertime ? t("live:overtime") : t("live:scoreboard.live")}
+            </span>
+          </p>
+          <p className="mt-1.5 font-mono text-3xl font-bold tabular-nums tracking-tight text-text-primary">
+            {timeRemaining !== undefined
+              ? isOvertime
+                ? `+${formatDuration(timeRemaining)}`
+                : formatDuration(timeRemaining)
+              : "--:--"}
+          </p>
+          <p className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] text-text-tertiary">
+            {displayName && <span className="truncate">{displayName}</span>}
+            {displayName && matchSizeLabel && <span aria-hidden="true">·</span>}
+            {matchSizeLabel && <span className="shrink-0">{matchSizeLabel}</span>}
+            {matchTypeLabel && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="shrink-0">{matchTypeLabel}</span>
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 justify-self-end">
+          <div className="text-right">
+            <p className="micro-label text-team-orange">{t("live:teams.orangeShort")}</p>
+            <p
+              key={orangeScore}
+              className={cn(
+                "numeral animate-score-pop text-5xl leading-none sm:text-6xl",
+                orangeLeads ? "text-team-orange" : "text-text-primary",
               )}
             >
               {orangeScore}
-            </span>
-            <span className="text-[10px] font-semibold text-team-orange/60">
-              {t("live:teams.orangeShort")}
-            </span>
+            </p>
           </div>
-        </div>
-
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-          {isOvertime && (
-            <span className="animate-overtime rounded border border-accent-warning/20 bg-accent-warning-subtle px-1.5 py-0.5 text-[10px] font-bold text-accent-warning">
-              {t("live:overtime")}
-            </span>
-          )}
-          {timeRemaining !== undefined && (
-            <span
-              className={cn(
-                "rounded px-2 py-0.5 font-mono text-sm font-bold",
-                isOvertime
-                  ? "border border-accent-warning/30 bg-accent-warning-subtle text-accent-warning"
-                  : "border border-border-subtle bg-bg-panel/60 text-text-secondary"
-              )}
-            >
-              {isOvertime ? `+${formatDuration(timeRemaining)}` : formatDuration(timeRemaining)}
-            </span>
-          )}
+          <span aria-hidden="true" className="h-12 w-1 rounded-full bg-team-orange" />
         </div>
       </div>
-    </div>
+    </section>
   );
 });

@@ -75,5 +75,15 @@
     },
     "dateFrom": "De",
     "dateTo": "Até"
+  },
+  "day": {
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "record": "{{wins}}V – {{losses}}D"
+  },
+  "summary": {
+    "count": "{{count}} partidas",
+    "wins": "{{count}}V",
+    "losses": "{{count}}D"
   }
 }

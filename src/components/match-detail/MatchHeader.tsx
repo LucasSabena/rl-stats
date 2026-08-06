@@ -1,9 +1,6 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
-import { formatDateTime, formatDuration } from "@/lib/utils";
-import { Badge } from "@/components/ui/Badge";
-import { Globe, Monitor, Swords } from "lucide-react";
+import { cn, formatDateTime, formatDuration } from "@/lib/utils";
 import { getArenaDisplayName, getArenaImagePath } from "@/lib/arenaMap";
 import type { MatchDetail, MatchType } from "@/lib/types";
 
@@ -22,169 +19,137 @@ export const MatchHeader = memo(function MatchHeader({ match }: MatchHeaderProps
     other: t("matchType.other"),
   };
 
-  const MATCH_TYPE_VARIANTS: Record<MatchType, "ranked" | "default"> = {
-    ranked: "ranked",
-    casual: "default",
-    tournament: "default",
-    training: "default",
-    other: "default",
-  };
-
   const isDraw = match.winnerTeamNum === null;
   const blueWon = match.winnerTeamNum === 0;
   const orangeWon = match.winnerTeamNum === 1;
+
+  const hasLocalTeam = match.localTeamNum !== null && match.localTeamNum !== undefined;
+  const isWin = hasLocalTeam && match.winnerTeamNum === match.localTeamNum;
+  const isLoss = hasLocalTeam && match.winnerTeamNum !== null && match.winnerTeamNum !== match.localTeamNum;
+
+  const resultLabel = isWin
+    ? t("infoPanel.win")
+    : isLoss
+      ? t("infoPanel.loss")
+      : isDraw
+        ? t("infoPanel.draw")
+        : blueWon
+          ? t("infoPanel.blueWon")
+          : t("infoPanel.orangeWon");
+
+  const resultTone = isWin
+    ? "text-accent-success"
+    : isLoss
+      ? "text-accent-danger"
+      : "text-text-secondary";
 
   const arenaName = match.arena ? getArenaDisplayName(match.arena) : null;
   const arenaImage = match.arena ? getArenaImagePath(match.arena) : null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border-subtle shadow-level-2">
-      {/* Arena background image */}
-      {arenaImage && (
-        <img
-          src={arenaImage}
-          alt={arenaName ?? ""}
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      )}
-
-      {/* Dark overlay for readability */}
-      <div
-        className={cn(
-          "absolute inset-0",
-          arenaImage
-            ? "bg-gradient-to-b from-bg-surface/85 via-bg-surface/70 to-bg-surface/90 backdrop-blur-[2px]"
-            : "bg-bg-surface"
+    <section className="overflow-hidden rounded-lg border border-border-subtle bg-bg-surface">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-5 py-2.5">
+        {match.matchType && (
+          <span
+            className={cn(
+              "micro-label",
+              match.matchType === "ranked" ? "text-accent-primary" : "text-text-tertiary",
+            )}
+          >
+            {MATCH_TYPE_LABELS[match.matchType]}
+          </span>
         )}
-      />
+        {match.playlist && (
+          <>
+            <span aria-hidden="true" className="text-text-muted">·</span>
+            <span className="text-[11px] text-text-secondary">{match.playlist}</span>
+          </>
+        )}
+        <span aria-hidden="true" className="text-text-muted">·</span>
+        <span className="text-[11px] text-text-secondary">
+          {match.isOnline ? t("mode.online") : t("mode.local")}
+        </span>
 
-      {/* Team color gradient overlay (subtle) */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-team-blue-bg)] via-transparent to-[var(--color-team-orange-bg)] opacity-20" />
-
-      <div className="relative p-6">
-        {/* Top row */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {match.matchType && (
-              <Badge variant={MATCH_TYPE_VARIANTS[match.matchType]}>
-                {MATCH_TYPE_LABELS[match.matchType]}
-              </Badge>
-            )}
-            {match.playlist && (
-              <span className="text-xs text-text-secondary">{match.playlist}</span>
-            )}
-            <Badge
-              className={cn(
-                match.isOnline
-                  ? "bg-accent-success-subtle text-accent-success border border-accent-success/20"
-                  : "bg-bg-panel text-text-muted border border-border-subtle"
-              )}
-            >
-              {match.isOnline ? (
-                <Globe size={12} className="mr-1" />
-              ) : (
-                <Monitor size={12} className="mr-1" />
-              )}
-              {match.isOnline ? t("mode.online") : t("mode.local")}
-            </Badge>
-          </div>
-
-          {arenaName && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-text-secondary">
+        {arenaName && (
+          <span className="ml-auto flex min-w-0 items-center gap-1.5 text-[11px] text-text-secondary">
+            {arenaImage && (
               <img
-                src={arenaImage ?? ""}
-                alt={arenaName}
-                className="h-6 w-6 rounded object-cover border border-border-subtle bg-bg-panel"
+                src={arenaImage}
+                alt=""
+                className="h-4 w-4 rounded border border-border-subtle bg-bg-panel object-cover"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
               />
-              <Swords size={14} className="text-text-tertiary" />
-              {arenaName}
-            </span>
-          )}
-        </div>
+            )}
+            <span className="truncate">{arenaName}</span>
+          </span>
+        )}
+      </div>
 
-        {/* Score */}
-        <div className="mt-8 flex items-center justify-center gap-8 sm:gap-12">
-          <div className="flex flex-col items-center">
-            <div
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-6 py-6 sm:gap-10">
+        <div className="flex items-center justify-self-start gap-4">
+          <span
+            aria-hidden="true"
+            className={cn("h-12 w-1 rounded-full", blueWon ? "bg-team-blue" : "bg-team-blue/40")}
+          />
+          <div>
+            <p className="micro-label text-team-blue">{t("teams.blue")}</p>
+            <p
               className={cn(
-                "h-6 w-6 rounded-lg",
-                blueWon
-                  ? "bg-team-blue shadow-[0_0_12px_var(--color-team-blue-glow)]"
-                  : "bg-team-blue/60"
-              )}
-            />
-            <span className="mt-2 text-xs font-bold text-team-blue">
-              {t("teams.blue")}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4 sm:gap-6">
-            <span
-              className={cn(
-                "font-mono text-7xl font-extrabold tracking-tight transition-all sm:text-8xl",
-                blueWon
-                  ? "text-team-blue drop-shadow-[0_0_20px_var(--color-team-blue-glow)]"
-                  : isDraw
-                  ? "text-text-primary"
-                  : "text-text-tertiary"
+                "numeral animate-score-pop text-6xl leading-none sm:text-7xl",
+                blueWon ? "text-team-blue" : isDraw ? "text-text-primary" : "text-text-tertiary",
               )}
             >
               {match.teamBlueScore}
-            </span>
-            <span className="text-4xl font-bold text-text-muted">:</span>
-            <span
+            </p>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <p className={cn("text-sm font-bold uppercase tracking-[0.14em]", resultTone)}>
+            {resultLabel}
+          </p>
+          <p className="mt-1.5 text-[11px] text-text-tertiary">
+            {formatDateTime(match.startTime * 1000)}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-self-end gap-4">
+          <div className="text-right">
+            <p className="micro-label text-team-orange">{t("teams.orange")}</p>
+            <p
               className={cn(
-                "font-mono text-7xl font-extrabold tracking-tight transition-all sm:text-8xl",
-                orangeWon
-                  ? "text-team-orange drop-shadow-[0_0_20px_var(--color-team-orange-glow)]"
-                  : isDraw
-                  ? "text-text-primary"
-                  : "text-text-tertiary"
+                "numeral animate-score-pop text-6xl leading-none sm:text-7xl",
+                orangeWon ? "text-team-orange" : isDraw ? "text-text-primary" : "text-text-tertiary",
               )}
             >
               {match.teamOrangeScore}
-            </span>
+            </p>
           </div>
-
-          <div className="flex flex-col items-center">
-            <div
-              className={cn(
-                "h-6 w-6 rounded-lg",
-                orangeWon
-                  ? "bg-team-orange shadow-[0_0_12px_var(--color-team-orange-glow)]"
-                  : "bg-team-orange/60"
-              )}
-            />
-            <span className="mt-2 text-xs font-bold text-team-orange">
-              {t("teams.orange")}
-            </span>
-          </div>
-        </div>
-
-        {/* Metadata grid */}
-        <div className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          <MetaItem label={t("header.duration")} value={match.durationSeconds ? formatDuration(match.durationSeconds) : "---"} />
-          <MetaItem label={t("header.start")} value={formatDateTime(match.startTime * 1000)} />
-          {match.endTime && <MetaItem label={t("header.end")} value={formatDateTime(match.endTime * 1000)} />}
-          <MetaItem label={t("header.overtime")} value={match.isOvertime ? t("overtime.yes") : t("overtime.no")} />
-          <MetaItem label={t("header.arena")} value={arenaName ?? "---"} />
+          <span
+            aria-hidden="true"
+            className={cn("h-12 w-1 rounded-full", orangeWon ? "bg-team-orange" : "bg-team-orange/40")}
+          />
         </div>
       </div>
-    </div>
+
+      <dl className="grid grid-cols-2 divide-x divide-border-subtle border-t border-border-subtle sm:grid-cols-4">
+        <Fact label={t("header.duration")} value={match.durationSeconds ? formatDuration(match.durationSeconds) : "—"} />
+        <Fact label={t("header.overtime")} value={match.isOvertime ? t("overtime.yes") : t("overtime.no")} />
+        <Fact label={t("header.start")} value={formatDateTime(match.startTime * 1000)} />
+        <Fact
+          label={t("header.end")}
+          value={match.endTime ? formatDateTime(match.endTime * 1000) : "—"}
+        />
+      </dl>
+    </section>
   );
 });
 
-function MetaItem({ label, value }: { label: string; value: string }) {
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-bg-panel/70 backdrop-blur-sm p-3 text-center">
-      <p className="text-[10px] font-semibold text-text-tertiary">
-        {label}
-      </p>
-      <p className="mt-0.5 text-sm font-medium text-text-primary">{value}</p>
+    <div className="px-5 py-2.5">
+      <dt className="micro-label">{label}</dt>
+      <dd className="tabular mt-0.5 text-[13px] font-medium text-text-primary">{value}</dd>
     </div>
   );
 }

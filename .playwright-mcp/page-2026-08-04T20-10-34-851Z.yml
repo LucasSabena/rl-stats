@@ -1,0 +1,359 @@
+- generic [ref=f18e3]:
+  - complementary [ref=f18e4]:
+    - generic [ref=f18e5]:
+      - img "RL Stats" [ref=f18e6]
+      - generic [ref=f18e7]: RL Stats
+    - navigation [ref=f18e8]:
+      - link "En directo" [ref=f18e11] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f18e21]:
+        - paragraph [ref=f18e22]: Tus datos
+        - generic [ref=f18e23]:
+          - link "Historial" [ref=f18e24] [cursor=pointer]:
+            - /url: /history
+          - link "Analisis" [ref=f18e28] [cursor=pointer]:
+            - /url: /analytics
+          - link "Jugadores" [ref=f18e33] [cursor=pointer]:
+            - /url: /players
+      - generic [ref=f18e41]:
+        - paragraph [ref=f18e42]: Mejorar
+        - generic [ref=f18e43]:
+          - link "Entrenamientos" [ref=f18e44] [cursor=pointer]:
+            - /url: /training-packs
+          - link "Pro Configs" [ref=f18e53] [cursor=pointer]:
+            - /url: /pro-configs
+    - generic [ref=f18e58]:
+      - link "Perfil" [ref=f18e59] [cursor=pointer]:
+        - /url: /profile
+      - link "Ajustes" [ref=f18e65] [cursor=pointer]:
+        - /url: /settings
+      - button "Cambiar a tema oscuro" [ref=f18e71]:
+        - generic [ref=f18e74]: Tema oscuro
+      - button "Colapsar sidebar" [ref=f18e75]
+  - generic [ref=f18e80]:
+    - banner [ref=f18e81]:
+      - generic [ref=f18e82]:
+        - heading "Live Dashboard" [level=1] [ref=f18e83]
+        - generic [ref=f18e84]: En directo
+      - generic [ref=f18e86]:
+        - combobox [ref=f18e88]:
+          - generic [ref=f18e89]: Principal
+        - button "+ Nuevo" [ref=f18e92]
+    - main [ref=f18e94]:
+      - generic [ref=f18e97]:
+        - generic [ref=f18e99]:
+          - generic [ref=f18e102]:
+            - paragraph [ref=f18e103]: Azul
+            - paragraph [ref=f18e104]: "0"
+          - generic [ref=f18e105]:
+            - paragraph [ref=f18e106]:
+              - generic [ref=f18e108]: En vivo
+            - paragraph [ref=f18e109]: 4:48
+            - paragraph [ref=f18e110]:
+              - generic [ref=f18e111]: Beckwith Park
+              - generic [ref=f18e112]: ·
+              - generic [ref=f18e113]: 3v3
+          - generic [ref=f18e115]:
+            - paragraph [ref=f18e116]: Naranja
+            - paragraph [ref=f18e117]: "1"
+        - generic "Los datos históricos y estimados se identifican por separado; nunca se presentan como el MMR actual exacto." [ref=f18e120]:
+          - generic [ref=f18e124]: 6 exactos
+          - generic [ref=f18e125]: Ranked Standard
+          - button "Actualizar MMR" [ref=f18e126]
+        - generic [ref=f18e132]:
+          - generic [ref=f18e133]:
+            - generic [ref=f18e134]:
+              - heading "Equipo Azul" [level=3] [ref=f18e136]
+              - generic [ref=f18e137]: MMR promedio 1455
+              - generic [ref=f18e138]: "73"
+            - generic [ref=f18e139]:
+              - generic [ref=f18e140]:
+                - generic [ref=f18e142]:
+                  - generic [ref=f18e143]: K
+                  - generic [ref=f18e144]:
+                    - paragraph [ref=f18e145]:
+                      - link "Kaelis" [ref=f18e146] [cursor=pointer]:
+                        - /url: /players/76561198012345601
+                      - generic "Champion III" [ref=f18e147]
+                      - generic [ref=f18e150]: Tu
+                    - paragraph [ref=f18e151]:
+                      - generic [ref=f18e152]:
+                        - text: "1400"
+                        - generic [ref=f18e153]: · Champion III
+                  - generic [ref=f18e154]:
+                    - paragraph [ref=f18e155]: "11"
+                    - paragraph [ref=f18e156]: Pts
+                - generic [ref=f18e157]:
+                  - generic [ref=f18e158]:
+                    - term [ref=f18e159]: Gol
+                    - definition [ref=f18e160]: "0"
+                  - generic [ref=f18e161]:
+                    - term [ref=f18e162]: Ast
+                    - definition [ref=f18e163]: "0"
+                  - generic [ref=f18e164]:
+                    - term [ref=f18e165]: Tiro
+                    - definition [ref=f18e166]: "1"
+                  - generic [ref=f18e167]:
+                    - term [ref=f18e168]: Par
+                    - definition [ref=f18e169]: "0"
+                  - generic [ref=f18e170]:
+                    - term [ref=f18e171]: Toq
+                    - definition [ref=f18e172]: "2"
+                  - generic [ref=f18e173]:
+                    - term [ref=f18e174]: Dem
+                    - definition [ref=f18e175]: "0"
+                  - generic [ref=f18e176]:
+                    - term [ref=f18e177]: Vel
+                    - definition [ref=f18e178]: 8611 uu/s
+                  - generic [ref=f18e179]:
+                    - term [ref=f18e180]: Bst
+                    - definition [ref=f18e181]: 23%
+                - progressbar "Boost de Kaelis" [ref=f18e182]
+              - generic [ref=f18e184]:
+                - generic [ref=f18e185]:
+                  - generic [ref=f18e186]: "N"
+                  - generic [ref=f18e187]:
+                    - paragraph [ref=f18e188]:
+                      - link "NyxShadow" [ref=f18e189] [cursor=pointer]:
+                        - /url: /players/76561198012345602
+                      - generic "Grand Champion I" [ref=f18e190]
+                    - paragraph [ref=f18e193]:
+                      - generic [ref=f18e194]:
+                        - text: "1520"
+                        - generic [ref=f18e195]: · Grand Champion I
+                  - generic [ref=f18e196]:
+                    - paragraph [ref=f18e197]: "28"
+                    - paragraph [ref=f18e198]: Pts
+                - generic [ref=f18e199]:
+                  - generic [ref=f18e200]:
+                    - term [ref=f18e201]: Gol
+                    - definition [ref=f18e202]: "0"
+                  - generic [ref=f18e203]:
+                    - term [ref=f18e204]: Ast
+                    - definition [ref=f18e205]: "0"
+                  - generic [ref=f18e206]:
+                    - term [ref=f18e207]: Tiro
+                    - definition [ref=f18e208]: "3"
+                  - generic [ref=f18e209]:
+                    - term [ref=f18e210]: Par
+                    - definition [ref=f18e211]: "1"
+                  - generic [ref=f18e212]:
+                    - term [ref=f18e213]: Toq
+                    - definition [ref=f18e214]: "5"
+                  - generic [ref=f18e215]:
+                    - term [ref=f18e216]: Dem
+                    - definition [ref=f18e217]: "0"
+                  - generic [ref=f18e218]:
+                    - term [ref=f18e219]: Vel
+                    - definition [ref=f18e220]: 12299 uu/s
+                  - generic [ref=f18e221]:
+                    - term [ref=f18e222]: Bst
+                    - definition [ref=f18e223]: 37%
+                - progressbar "Boost de NyxShadow" [ref=f18e224]
+              - generic [ref=f18e226]:
+                - generic [ref=f18e227]:
+                  - generic [ref=f18e228]: V
+                  - generic [ref=f18e229]:
+                    - paragraph [ref=f18e230]:
+                      - link "Voltari" [ref=f18e231] [cursor=pointer]:
+                        - /url: /players/76561198012345603
+                      - generic "Grand Champion I" [ref=f18e232]
+                    - paragraph [ref=f18e235]:
+                      - generic [ref=f18e236]:
+                        - text: "1445"
+                        - generic [ref=f18e237]: · Grand Champion I
+                  - generic [ref=f18e238]:
+                    - paragraph [ref=f18e239]: "34"
+                    - paragraph [ref=f18e240]: Pts
+                - generic [ref=f18e241]:
+                  - generic [ref=f18e242]:
+                    - term [ref=f18e243]: Gol
+                    - definition [ref=f18e244]: "0"
+                  - generic [ref=f18e245]:
+                    - term [ref=f18e246]: Ast
+                    - definition [ref=f18e247]: "0"
+                  - generic [ref=f18e248]:
+                    - term [ref=f18e249]: Tiro
+                    - definition [ref=f18e250]: "0"
+                  - generic [ref=f18e251]:
+                    - term [ref=f18e252]: Par
+                    - definition [ref=f18e253]: "1"
+                  - generic [ref=f18e254]:
+                    - term [ref=f18e255]: Toq
+                    - definition [ref=f18e256]: "4"
+                  - generic [ref=f18e257]:
+                    - term [ref=f18e258]: Dem
+                    - definition [ref=f18e259]: "0"
+                  - generic [ref=f18e260]:
+                    - term [ref=f18e261]: Vel
+                    - definition [ref=f18e262]: 9976 uu/s
+                  - generic [ref=f18e263]:
+                    - term [ref=f18e264]: Bst
+                    - definition [ref=f18e265]: 91%
+                - progressbar "Boost de Voltari" [ref=f18e266]
+          - generic [ref=f18e268]:
+            - generic [ref=f18e269]:
+              - heading "Equipo Naranja" [level=3] [ref=f18e271]
+              - generic [ref=f18e272]: MMR promedio 1413
+              - generic [ref=f18e273]: "141"
+            - generic [ref=f18e274]:
+              - generic [ref=f18e275]:
+                - generic [ref=f18e276]:
+                  - generic [ref=f18e277]: R
+                  - generic [ref=f18e278]:
+                    - paragraph [ref=f18e279]:
+                      - link "Riptide" [ref=f18e280] [cursor=pointer]:
+                        - /url: /players/76561198012345604
+                      - generic "Grand Champion II" [ref=f18e281]
+                      - generic [ref=f18e284]: Amigo
+                    - paragraph [ref=f18e285]:
+                      - generic [ref=f18e286]:
+                        - text: "1610"
+                        - generic [ref=f18e287]: · Grand Champion II
+                      - generic [ref=f18e288]: 14-8 · 9-6
+                  - generic [ref=f18e289]:
+                    - paragraph [ref=f18e290]: "20"
+                    - paragraph [ref=f18e291]: Pts
+                - generic [ref=f18e292]:
+                  - generic [ref=f18e293]:
+                    - term [ref=f18e294]: Gol
+                    - definition [ref=f18e295]: "0"
+                  - generic [ref=f18e296]:
+                    - term [ref=f18e297]: Ast
+                    - definition [ref=f18e298]: "1"
+                  - generic [ref=f18e299]:
+                    - term [ref=f18e300]: Tiro
+                    - definition [ref=f18e301]: "0"
+                  - generic [ref=f18e302]:
+                    - term [ref=f18e303]: Par
+                    - definition [ref=f18e304]: "0"
+                  - generic [ref=f18e305]:
+                    - term [ref=f18e306]: Toq
+                    - definition [ref=f18e307]: "3"
+                  - generic [ref=f18e308]:
+                    - term [ref=f18e309]: Dem
+                    - definition [ref=f18e310]: "0"
+                  - generic [ref=f18e311]:
+                    - term [ref=f18e312]: Vel
+                    - definition [ref=f18e313]: 6593 uu/s
+                  - generic [ref=f18e314]:
+                    - term [ref=f18e315]: Bst
+                    - definition [ref=f18e316]: 82%
+                - progressbar "Boost de Riptide" [ref=f18e317]
+              - generic [ref=f18e319]:
+                - generic [ref=f18e320]:
+                  - generic [ref=f18e321]: M
+                  - generic [ref=f18e322]:
+                    - paragraph [ref=f18e323]:
+                      - link "Momo" [ref=f18e324] [cursor=pointer]:
+                        - /url: /players/76561198012345605
+                      - generic "Champion III" [ref=f18e325]
+                    - paragraph [ref=f18e328]:
+                      - generic [ref=f18e329]:
+                        - text: "1350"
+                        - generic [ref=f18e330]: · Champion III
+                  - generic [ref=f18e331]:
+                    - paragraph [ref=f18e332]: "89"
+                    - paragraph [ref=f18e333]: Pts
+                - generic [ref=f18e334]:
+                  - generic [ref=f18e335]:
+                    - term [ref=f18e336]: Gol
+                    - definition [ref=f18e337]: "1"
+                  - generic [ref=f18e338]:
+                    - term [ref=f18e339]: Ast
+                    - definition [ref=f18e340]: "0"
+                  - generic [ref=f18e341]:
+                    - term [ref=f18e342]: Tiro
+                    - definition [ref=f18e343]: "1"
+                  - generic [ref=f18e344]:
+                    - term [ref=f18e345]: Par
+                    - definition [ref=f18e346]: "1"
+                  - generic [ref=f18e347]:
+                    - term [ref=f18e348]: Toq
+                    - definition [ref=f18e349]: "4"
+                  - generic [ref=f18e350]:
+                    - term [ref=f18e351]: Dem
+                    - definition [ref=f18e352]: "0"
+                  - generic [ref=f18e353]:
+                    - term [ref=f18e354]: Vel
+                    - definition [ref=f18e355]: 13068 uu/s
+                  - generic [ref=f18e356]:
+                    - term [ref=f18e357]: Bst
+                    - definition [ref=f18e358]: 77%
+                - progressbar "Boost de Momo" [ref=f18e359]
+              - generic [ref=f18e361]:
+                - generic [ref=f18e362]:
+                  - generic [ref=f18e363]: Z
+                  - generic [ref=f18e364]:
+                    - paragraph [ref=f18e365]:
+                      - link "Zephyr.exe" [ref=f18e366] [cursor=pointer]:
+                        - /url: /players/76561198012345606
+                      - generic "Champion II" [ref=f18e367]
+                    - paragraph [ref=f18e370]:
+                      - generic [ref=f18e371]:
+                        - text: "1280"
+                        - generic [ref=f18e372]: · Champion II
+                  - generic [ref=f18e373]:
+                    - paragraph [ref=f18e374]: "32"
+                    - paragraph [ref=f18e375]: Pts
+                - generic [ref=f18e376]:
+                  - generic [ref=f18e377]:
+                    - term [ref=f18e378]: Gol
+                    - definition [ref=f18e379]: "0"
+                  - generic [ref=f18e380]:
+                    - term [ref=f18e381]: Ast
+                    - definition [ref=f18e382]: "0"
+                  - generic [ref=f18e383]:
+                    - term [ref=f18e384]: Tiro
+                    - definition [ref=f18e385]: "0"
+                  - generic [ref=f18e386]:
+                    - term [ref=f18e387]: Par
+                    - definition [ref=f18e388]: "0"
+                  - generic [ref=f18e389]:
+                    - term [ref=f18e390]: Toq
+                    - definition [ref=f18e391]: "4"
+                  - generic [ref=f18e392]:
+                    - term [ref=f18e393]: Dem
+                    - definition [ref=f18e394]: "1"
+                  - generic [ref=f18e395]:
+                    - term [ref=f18e396]: Vel
+                    - definition [ref=f18e397]: 7780 uu/s
+                  - generic [ref=f18e398]:
+                    - term [ref=f18e399]: Bst
+                    - definition [ref=f18e400]: 73%
+                - progressbar "Boost de Zephyr.exe" [ref=f18e401]
+        - generic [ref=f18e403]:
+          - generic [ref=f18e404]:
+            - heading "Eventos recientes" [level=3] [ref=f18e405]
+            - generic [ref=f18e406]: "10"
+          - generic [ref=f18e408]:
+            - generic [ref=f18e409]:
+              - generic [ref=f18e419]: Estadistica
+              - generic [ref=f18e420]: 04 ago 2026, 20:10
+            - generic [ref=f18e421]:
+              - generic [ref=f18e431]: Estadistica
+              - generic [ref=f18e432]: 04 ago 2026, 20:10
+            - generic [ref=f18e433]:
+              - generic [ref=f18e443]: Estadistica
+              - generic [ref=f18e444]: 04 ago 2026, 20:10
+            - generic [ref=f18e445]:
+              - generic [ref=f18e455]: Estadistica
+              - generic [ref=f18e456]: 04 ago 2026, 20:10
+            - generic [ref=f18e457]:
+              - generic [ref=f18e467]: Estadistica
+              - generic [ref=f18e468]: 04 ago 2026, 20:10
+            - generic [ref=f18e469]:
+              - generic [ref=f18e479]: Estadistica
+              - generic [ref=f18e480]: 04 ago 2026, 20:10
+            - generic [ref=f18e481]:
+              - generic [ref=f18e491]: Estadistica
+              - generic [ref=f18e492]: 04 ago 2026, 20:10
+            - generic [ref=f18e493]:
+              - generic [ref=f18e498]: Gol!
+              - generic [ref=f18e499]: 04 ago 2026, 20:10
+            - generic [ref=f18e500]:
+              - generic [ref=f18e510]: Estadistica
+              - generic [ref=f18e511]: 04 ago 2026, 20:10
+            - generic [ref=f18e512]:
+              - generic [ref=f18e522]: Estadistica
+              - generic [ref=f18e523]: 04 ago 2026, 20:10

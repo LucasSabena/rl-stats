@@ -173,18 +173,18 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-display text-sm font-semibold text-text-primary">
+        <h3 className="micro-label">
           {t("stats.title")}
         </h3>
 
-        <div className="flex rounded-lg border border-border-subtle bg-bg-panel p-0.5">
+        <div className="flex gap-4">
           <button
             onClick={() => setTab("table")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200",
+              "-mb-px border-b-2 pb-1 text-xs font-medium transition-colors",
               tab === "table"
-                ? "bg-accent-primary text-white shadow-sm"
-                : "text-text-secondary hover:text-text-primary"
+                ? "border-accent-primary text-text-primary"
+                : "border-transparent text-text-tertiary hover:text-text-secondary"
             )}
           >
             {t("stats.tabTable")}
@@ -192,10 +192,10 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
           <button
             onClick={() => setTab("compare")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200",
+              "-mb-px border-b-2 pb-1 text-xs font-medium transition-colors",
               tab === "compare"
-                ? "bg-accent-primary text-white shadow-sm"
-                : "text-text-secondary hover:text-text-primary"
+                ? "border-accent-primary text-text-primary"
+                : "border-transparent text-text-tertiary hover:text-text-secondary"
             )}
           >
             {t("stats.tabCompare")}
@@ -222,7 +222,7 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
             emptyMessage={t("stats.emptyData")}
           />
 
-          <div className="mt-6 rounded-xl border border-border-subtle bg-bg-surface p-4">
+          <div className="mt-6">
             {selectedPlayers.length >= 2 ? (
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
