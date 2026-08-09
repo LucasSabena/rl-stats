@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.4.0 — Correct ranks per mode & manual MMR
+
+### Added
+
+- **Manual MMR entry.** You can now enter your real MMR per playlist (1v1,
+  2v2, 3v3, Hoops, Rumble, Dropshot, Snow Day, Chaos) from Settings. The value
+  is stored as a trusted reference and used for your rank when auto-detection
+  fails or returns a wrong number.
+
+### Fixed
+
+- **Ranks were derived on the wrong ladder.** The live view derived each
+  player's rank using the lobby's global playlist instead of the playlist the
+  player's MMR was actually resolved from. When a player's MMR came from a
+  different mode (e.g. 1v1, where Supersonic Legend starts at 1341), the rank
+  was mislabeled — e.g. 1363 in 3v3 or 1425 in doubles showing as Supersonic
+  Legend. Rank is now derived on the per-player playlist with a fallback to
+  the lobby playlist.
+
 ## v2.3.2 — Bug fixes: share preview, MMR, kickoff goals, timeline
 
 ### Fixes
