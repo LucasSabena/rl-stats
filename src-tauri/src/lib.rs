@@ -118,6 +118,7 @@ pub fn run() {
             commands::live::get_connection_status,
             commands::mmr::fetch_live_mmr_snapshot,
             commands::mmr::set_session_mmr_snapshot,
+            commands::mmr::set_local_mmr,
             commands::history::get_matches,
             commands::history::get_match_detail,
             commands::history::delete_match_cmd,

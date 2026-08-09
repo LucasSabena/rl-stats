@@ -1059,6 +1059,13 @@ export async function setSessionMmrSnapshot(
   return invokeCommand<void>("set_session_mmr_snapshot", { mmrByPrimaryId });
 }
 
+export async function setLocalMmr(
+  playlist: string,
+  mmr: number,
+): Promise<void> {
+  return invokeCommand<void>("set_local_mmr", { playlist, mmr });
+}
+
 // ─── RLStats Profile ─────────────────────────────────────────────────────────
 
 export async function fetchRlstatsProfile(): Promise<TrackerProfile> {

@@ -1,4 +1,4 @@
-use crate::core::mmr::{resolve_lobby_mmr, LiveMmrSnapshot};
+use crate::core::mmr::{resolve_lobby_mmr, set_local_mmr_manual, LiveMmrSnapshot};
 use crate::core::settings::get_settings;
 use crate::core::storage::MatchMmrSnapshot;
 use crate::AppState;
@@ -64,4 +64,28 @@ pub async fn set_session_mmr_snapshot(
     let mut session = state.session_manager.write().await;
     session.set_mmr_snapshot(MatchMmrSnapshot { mmr_by_primary_id });
     Ok(())
+}
+
+/// Persist a manually-entered MMR for the local player on a given playlist.
+/// The playlist key is one of "duel", "doubles", "standard", "hoops",
+/// "rumble", "dropshot", "snowday", "quads".
+#[tauri::command]
+pub async fn set_local_mmr(
+    state: State<'_, AppState>,
+    playlist: String,
+    mmr: i32,
+) -> Result<(), String> {
+    let settings = get_settings(&state.db_pool).map_err(|e| e.to_string())?;
+    let local_primary_id = settings
+        .local_primary_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| "No hay un perfil local configurado para guardar MMR.".to_string())?;
+
+    if mmr < 0 || mmr > 3000 {
+        return Err("El MMR debe estar entre 0 y 3000.".into());
+    }
+
+    set_local_mmr_manual(&state.db_pool, local_primary_id, &playlist, mmr)
+        .map_err(|e| e.to_string())
 }

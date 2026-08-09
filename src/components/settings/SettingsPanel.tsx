@@ -13,6 +13,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, FolderSearch, MonitorUp, Sparkles } from "lucide-react";
 import { LanguageSelector } from "./LanguageSelector";
+import { ManualMmr } from "./ManualMmr";
 import {
   settingsSchema,
   type SettingsFormInput,
@@ -321,6 +322,8 @@ export function SettingsPanel() {
           </div>
         </div>
       </section>
+
+      <ManualMmr />
 
       <section className="group rounded-xl border border-border-subtle bg-bg-surface/60 p-5 transition-all duration-200 hover:border-border-default hover:bg-bg-surface/80">
         <div className="mb-5 flex items-center gap-2.5">

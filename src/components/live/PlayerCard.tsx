@@ -36,8 +36,8 @@ export const PlayerCard = memo(function PlayerCard({
   const isFriend = friends?.some((f) => f.primary_id === player.id) ?? false;
 
   const rank = useMemo(
-    () => deriveRank(mmr?.mmr ?? null, playlist),
-    [mmr?.mmr, playlist],
+    () => deriveRank(mmr?.mmr ?? null, mmr?.playlist ?? playlist),
+    [mmr?.mmr, mmr?.playlist, playlist],
   );
 
   const details = mmr?.warning ?? mmr?.error ?? null;

@@ -1705,6 +1705,29 @@ fn resolve_local_estimate(
     }))
 }
 
+/// Persist a manually-entered MMR for the local player on a given playlist.
+/// This writes a trusted (non-estimated) local estimate so the live view and
+/// rank derivation use the value the user knows to be correct instead of a
+/// scraped or estimated one.
+pub fn set_local_mmr_manual(
+    db_pool: &DbPool,
+    local_primary_id: &str,
+    playlist: &str,
+    mmr: i32,
+) -> AppResult<()> {
+    let mut state = read_local_mmr_state(db_pool, local_primary_id)?;
+    state.playlists.insert(
+        playlist.to_string(),
+        LocalMmrEstimate {
+            mmr,
+            matches_since_refresh: 0,
+            estimated: false,
+            updated_at: Utc::now().to_rfc3339(),
+        },
+    );
+    write_local_mmr_state(db_pool, local_primary_id, &state)
+}
+
 fn sync_local_trusted_mmr(
     db_pool: &DbPool,
     local_primary_id: &str,

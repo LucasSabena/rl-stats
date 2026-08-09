@@ -32,6 +32,28 @@
     "kickoffGoalThreshold": "Segundos para gol de saque",
     "kickoffGoalThresholdHelper": "Segundos tras el saque para considerar un gol como gol de saque (1-20, por defecto 7)."
   },
+  "manualMmr": {
+    "title": "MMR manual",
+    "description": "Cargá tu MMR real por modo cuando la detección automática falle o muestre un valor incorrecto. Se usa como referencia confiable para tu rango.",
+    "playlist": "Modo",
+    "mmr": "MMR",
+    "save": "Guardar MMR",
+    "saved": "MMR guardado",
+    "savedMessage": "Tu MMR de {{playlist}} se actualizó a {{mmr}}.",
+    "error": "Error al guardar",
+    "errorMessage": "No se pudo guardar el MMR.",
+    "noProfile": "Configurá tu perfil local (nombre o PrimaryId) para poder guardar MMR manual."
+  },
+  "playlistNames": {
+    "duel": "1v1 Duel",
+    "doubles": "2v2 Doubles",
+    "standard": "3v3 Standard",
+    "hoops": "Hoops",
+    "rumble": "Rumble",
+    "dropshot": "Dropshot",
+    "snowday": "Snow Day",
+    "quads": "Chaos 4v4"
+  },
   "matchTypes": {
     "ranked": "Ranked",
     "casual": "Casual",

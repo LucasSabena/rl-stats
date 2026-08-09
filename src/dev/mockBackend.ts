@@ -414,6 +414,8 @@ export function installMockBackend() {
         return liveMmrSnapshot();
       case "set_session_mmr_snapshot":
         return null;
+      case "set_local_mmr":
+        return null;
       case "get_matches":
         return { matches: applyFilters(args as Record<string, unknown> | undefined).map(rawSummary) };
       case "get_match_detail": {
