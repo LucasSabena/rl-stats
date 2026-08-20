@@ -181,6 +181,23 @@ The Rocket League Stats API must be enabled before the app can capture data. The
 
 > The app will show a connection status indicator on the Live Dashboard page. If the API isn't enabled or the game isn't running, you will see a "Waiting for match..." state.
 
+### Multiple installs (Steam + Epic Games)
+
+Rocket League can be installed twice — once via Steam and once via Epic Games.
+RL Stats handles this automatically:
+
+- **Detection**: all installs are detected from Steam libraries, Epic
+  manifests and common paths, and listed under **Settings → Rocket League**
+  (`rl_paths`). Each install gets its own Stats API config.
+- **Auto-configuration**: on startup and on every settings save, the app
+  writes `<RL install>\TAGame\Config\DefaultStatsAPI.ini` (port + packet rate)
+  into **every** configured install, so the API works no matter which platform
+  launches the game.
+- **Active platform**: the running install's platform (Steam/Epic) is derived
+  from the `RocketLeague.exe` path and stored in `active_platform`. Player
+  identity resolution prefers the in-match `PrimaryId` matching the active
+  platform, so stats are attributed to the right account per platform.
+
 ---
 
 ## Project Structure

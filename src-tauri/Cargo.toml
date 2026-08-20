@@ -1,6 +1,6 @@
 [package]
 name = "rl-stats"
-version = "2.4.0"
+version = "2.5.0"
 description = "Local-first desktop companion for Rocket League Stats API"
 authors = ["Lucas Sabena"]
 edition = "2021"
@@ -33,7 +33,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 dirs = "6"
-sysinfo = "0.39"
+sysinfo = "0.38"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies"], default-features = false }
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"

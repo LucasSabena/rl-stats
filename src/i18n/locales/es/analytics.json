@@ -65,6 +65,10 @@
     "bestHourDetail": "{{hour}}:00hs — WR ",
     "situational": "Rend. situacional",
     "overtime": "Overtime ({{count}}j)",
+    "wonCount": "{{count}} ganadas",
+    "lostCount": "{{count}} perdidas",
+    "comebacks": "Remontadas ({{count}}j)",
+    "collapses": "Colapso ({{count}}j)",
     "closeGames": "Partidos cerrados (±1 gol, {{count}}j)",
     "blowouts": "Palizas (+4 goles, {{count}}j)",
     "contribution": "Contribución al equipo",
@@ -98,8 +102,7 @@
   },
   "matchDetail": {
     "loading": "Cargando partidas...",
-    "win": "V",
-    "loss": "D",
+    "win": "V",    "loss": "D",
     "overtime": "OT",
     "points": "pts",
     "goals": "goles",
@@ -119,7 +122,19 @@
       "description": "No se pudieron cargar los datos de rendimiento."
     }
   },
+  "player": {
+    "matchesTitle": "Partidas de {{name}}",
+    "noMatches": {
+      "title": "Sin partidas",
+      "description": "Este jugador no tiene partidas registradas en el período seleccionado."
+    },
+    "comebackTag": "Remontada",
+    "collapseTag": "Colapso"
+  },
   "filters": {
+    "player": {
+      "me": "Mi perfil"
+    },
     "scope": {
       "me": "Solo yo",
       "team": "Mi equipo"

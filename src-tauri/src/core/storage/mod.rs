@@ -2893,7 +2893,7 @@ pub fn get_analytics_summary_for_identity(
 /// UI is showing. Wiring it up would not change a single number.
 pub fn get_insights(
     pool: &DbPool,
-    local_primary_id: &str,
+    player_primary_id: &str,
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -2903,7 +2903,7 @@ pub fn get_insights(
     let conn = get_conn(pool)?;
 
     let mut sql = String::from(
-        "SELECT m.winner, mp.team_num, m.playlist, m.start_time,
+        "SELECT m.id, m.winner, mp.team_num, m.playlist, m.start_time,
                 m.is_overtime, m.score_blue, m.score_orange,
                 mp.score, mp.goals, mp.assists, mp.saves, mp.shots, mp.demos
          FROM matches m
@@ -2915,7 +2915,7 @@ pub fn get_insights(
            AND m.start_time < date(?3, '+1 day')",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(local_primary_id.to_string()));
+    args.push(Box::new(player_primary_id.to_string()));
     args.push(Box::new(start_date.to_string()));
     args.push(Box::new(end_date.to_string()));
 
@@ -2935,6 +2935,7 @@ pub fn get_insights(
     let mut stmt = conn.prepare(&sql)?;
 
     type MatchPlayerRow = (
+        i64,
         Option<i32>,
         i32,
         Option<String>,
@@ -2965,6 +2966,7 @@ pub fn get_insights(
                 row.get(10)?,
                 row.get(11)?,
                 row.get(12)?,
+                row.get(13)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -2972,6 +2974,11 @@ pub fn get_insights(
     if rows.is_empty() {
         return Ok(serde_json::json!({ "available": false, "totalMatches": 0 }));
     }
+
+    // Load every GoalScored event for the relevant matches so comebacks and
+    // collapses can be reconstructed from the running score.
+    let match_ids: Vec<i64> = rows.iter().map(|row| row.0).collect();
+    let goal_timelines = load_goal_timelines(&conn, &match_ids)?;
 
     let mut by_playlist: std::collections::HashMap<String, (i32, i32)> =
         std::collections::HashMap::new();
@@ -2982,6 +2989,8 @@ pub fn get_insights(
     let mut close_wins = 0i32;
     let mut blowout_games = 0i32;
     let mut blowout_wins = 0i32;
+    let mut comeback_wins = 0i32;
+    let mut collapse_losses = 0i32;
     let mut total_team_goals = 0i32;
     let mut total_my_goals = 0i32;
     let mut total_my_assists = 0i32;
@@ -2991,8 +3000,9 @@ pub fn get_insights(
 
     for row in &rows {
         let (
-            _winner,
-            _team,
+            match_id,
+            winner,
+            team,
             playlist,
             start_time,
             is_overtime,
@@ -3009,7 +3019,7 @@ pub fn get_insights(
         let entry = by_playlist.entry(playlist_key).or_insert((0, 0));
         entry.0 += 1;
 
-        if let (Some(winner), team) = (_winner, _team) {
+        if let (Some(winner), team) = (winner, team) {
             let is_win = *winner == *team;
             if is_win {
                 entry.1 += 1;
@@ -3054,9 +3064,21 @@ pub fn get_insights(
                     blowout_wins += 1;
                 }
             }
+
+            // Comeback / collapse: reconstruct the running score from the goal
+            // timeline of the match. A comeback is a win after trailing at
+            // some point; a collapse is a loss after leading at some point.
+            if let Some((ever_behind, ever_ahead)) = goal_timelines.get(match_id) {
+                if is_win && *ever_behind {
+                    comeback_wins += 1;
+                }
+                if !is_win && *ever_ahead {
+                    collapse_losses += 1;
+                }
+            }
         }
 
-        total_team_goals += if *_team == 0 {
+        total_team_goals += if *team == 0 {
             *score_blue
         } else {
             *score_orange
@@ -3164,11 +3186,17 @@ pub fn get_insights(
         "bestHour": best_hour,
         "bestHourWR": best_hour_wr.round() as i32,
         "otGames": ot_games,
+        "otWins": ot_wins,
+        "otLosses": ot_games - ot_wins,
         "otWinRate": if ot_games > 0 { ((ot_wins as f64 / ot_games as f64) * 100.0).round() as i32 } else { 0 },
         "closeGames": close_games,
         "closeWinRate": if close_games > 0 { ((close_wins as f64 / close_games as f64) * 100.0).round() as i32 } else { 0 },
         "blowoutGames": blowout_games,
+        "blowoutWins": blowout_wins,
+        "blowoutLosses": blowout_games - blowout_wins,
         "blowoutWinRate": if blowout_games > 0 { ((blowout_wins as f64 / blowout_games as f64) * 100.0).round() as i32 } else { 0 },
+        "comebackWins": comeback_wins,
+        "collapseLosses": collapse_losses,
         "contrib": {
             "goalsPct": if total_team_goals > 0 { ((total_my_goals as f64 / total_team_goals as f64) * 100.0).round() as i32 } else { 0 },
             "assistsPct": if total_team_assists > 0 { ((total_my_assists as f64 / total_team_assists as f64) * 100.0).round() as i32 } else { 0 },
@@ -3177,6 +3205,235 @@ pub fn get_insights(
             "demosPct": if total_team_demos > 0 { ((total_my_demos as f64 / total_team_demos as f64) * 100.0).round() as i32 } else { 0 },
         },
     }))
+}
+
+/// Reconstructs, for every match, whether the "home" perspective ever trailed
+/// and ever led during the match, based on the GoalScored timeline persisted
+/// in `match_events`.
+///
+/// The running score is rebuilt from each goal's `scorer.teamNum`:
+/// - `ever_behind` → the perspective was losing at some point (used for
+///   comeback wins: was losing → won).
+/// - `ever_ahead`  → the perspective was winning at some point (used for
+///   collapse losses: was winning → lost).
+///
+/// Matches without goal events simply yield `(false, false)`, so they never
+/// count as comebacks or collapses — no timeline, no claim.
+fn load_goal_timelines(
+    conn: &rusqlite::Connection,
+    match_ids: &[i64],
+) -> AppResult<HashMap<i64, (bool, bool)>> {
+    if match_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = vec!["?"; match_ids.len()].join(", ");
+    let sql = format!(
+        "SELECT match_id, event_data
+         FROM match_events
+         WHERE event_type = 'GoalScored' AND match_id IN ({placeholders})
+         ORDER BY occurred_at ASC, id ASC"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let iter = stmt.query_map(
+        rusqlite::params_from_iter(match_ids.iter().copied()),
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+    )?;
+
+    let mut running: HashMap<i64, (i32, i32)> = HashMap::new();
+    let mut flags: HashMap<i64, (bool, bool)> = HashMap::new();
+
+    for entry in iter {
+        let (match_id, event_data) = entry.map_err(|e| AppError::StorageError(e.to_string()))?;
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&event_data) else {
+            continue;
+        };
+        let Some(team_num) = value
+            .get("scorer")
+            .or_else(|| value.get("Scorer"))
+            .and_then(|scorer| scorer.get("teamNum").or_else(|| scorer.get("TeamNum")))
+            .and_then(|team| team.as_i64())
+        else {
+            continue;
+        };
+
+        let scores = running.entry(match_id).or_insert((0, 0));
+        if team_num == 0 {
+            scores.0 += 1;
+        } else {
+            scores.1 += 1;
+        }
+
+        let flag = flags.entry(match_id).or_insert((false, false));
+        if scores.0 > scores.1 {
+            flag.1 = true; // blue ahead
+        } else if scores.1 > scores.0 {
+            flag.0 = true; // orange ahead
+        }
+    }
+
+    Ok(flags)
+}
+
+/// Matches played by a given player (any platform identity), with the match
+/// outcome, score, overtime and situation flags (comeback / collapse) from
+/// the perspective of that player's team. Used by the per-profile analytics
+/// view on the Analytics page.
+pub fn get_player_analytics_matches(
+    pool: &DbPool,
+    player_primary_id: &str,
+    start_date: &str,
+    end_date: &str,
+    playlist: Option<&str>,
+    match_type: Option<&str>,
+    limit: i64,
+) -> AppResult<Vec<serde_json::Value>> {
+    let conn = get_conn(pool)?;
+
+    let mut sql = String::from(
+        "SELECT m.id, m.guid, m.start_time, m.end_time, m.arena,
+                m.score_blue, m.score_orange, m.winner,
+                m.is_online, m.is_overtime, m.duration_seconds,
+                m.match_type, m.playlist,
+                mp.team_num, mp.goals, mp.assists, mp.saves, mp.shots, mp.score, mp.demos,
+                mp.kickoff_goals
+         FROM matches m
+         JOIN match_players mp ON m.id = mp.match_id
+         JOIN players p ON mp.player_id = p.id
+         WHERE p.primary_id = ?1
+           AND m.winner IS NOT NULL
+           AND m.start_time >= ?2
+           AND m.start_time < date(?3, '+1 day')
+           AND m.match_type != 'training'",
+    );
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    args.push(Box::new(player_primary_id.to_string()));
+    args.push(Box::new(start_date.to_string()));
+    args.push(Box::new(end_date.to_string()));
+
+    if let Some(mt) = match_type {
+        sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
+        args.push(Box::new(mt.to_string()));
+    }
+    if let Some(pl) = playlist {
+        sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
+        args.push(Box::new(pl.to_string()));
+    }
+
+    sql.push_str(" ORDER BY m.start_time DESC LIMIT ?4");
+
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = args;
+    params.push(Box::new(limit.max(1)));
+    let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|a| a.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql)?;
+    let iter = stmt.query_map(&*params_refs, |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, i32>(5)?,
+            row.get::<_, i32>(6)?,
+            row.get::<_, Option<i32>>(7)?,
+            row.get::<_, i32>(8)?,
+            row.get::<_, i32>(9)?,
+            row.get::<_, i32>(10)?,
+            row.get::<_, Option<String>>(11)?,
+            row.get::<_, Option<String>>(12)?,
+            row.get::<_, i32>(13)?,
+            row.get::<_, i32>(14)?,
+            row.get::<_, i32>(15)?,
+            row.get::<_, i32>(16)?,
+            row.get::<_, i32>(17)?,
+            row.get::<_, i32>(18)?,
+            row.get::<_, i32>(19)?,
+            row.get::<_, i32>(20)?,
+        ))
+    })?;
+
+    let mut match_ids = Vec::new();
+    let mut rows = Vec::new();
+    for entry in iter {
+        let row = entry.map_err(|e| AppError::StorageError(e.to_string()))?;
+        match_ids.push(row.0);
+        rows.push(row);
+    }
+
+    let timelines = load_goal_timelines(&conn, &match_ids)?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        let (
+            match_id,
+            guid,
+            start_time,
+            end_time,
+            arena,
+            score_blue,
+            score_orange,
+            winner,
+            is_online,
+            is_overtime,
+            duration_seconds,
+            match_type,
+            playlist,
+            team_num,
+            goals,
+            assists,
+            saves,
+            shots,
+            score,
+            demos,
+            kickoff_goals,
+        ) = row;
+
+        let is_win = winner == Some(team_num);
+        let my_score = if team_num == 0 {
+            score_blue
+        } else {
+            score_orange
+        };
+        let their_score = if team_num == 0 {
+            score_orange
+        } else {
+            score_blue
+        };
+        let (ever_behind, ever_ahead) = timelines.get(&match_id).copied().unwrap_or((false, false));
+        let was_comeback = is_win && ever_behind;
+        let was_collapse = !is_win && ever_ahead;
+
+        result.push(serde_json::json!({
+            "id": match_id,
+            "guid": guid,
+            "start_time": start_time,
+            "end_time": end_time,
+            "arena": arena,
+            "score_blue": score_blue,
+            "score_orange": score_orange,
+            "winner": winner,
+            "is_online": is_online != 0,
+            "is_overtime": is_overtime != 0,
+            "duration_seconds": duration_seconds,
+            "match_type": match_type,
+            "playlist": playlist,
+            "team_num": team_num,
+            "is_win": is_win,
+            "goal_diff": my_score - their_score,
+            "goals": goals,
+            "assists": assists,
+            "saves": saves,
+            "shots": shots,
+            "score": score,
+            "demos": demos,
+            "kickoff_goals": kickoff_goals,
+            "was_comeback": was_comeback,
+            "was_collapse": was_collapse,
+        }));
+    }
+
+    Ok(result)
 }
 
 pub(crate) fn compute_head_to_head_conn(

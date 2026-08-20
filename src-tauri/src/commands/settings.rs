@@ -1,6 +1,9 @@
 use crate::core::autostart::configure_autostart;
 use crate::core::models::PlayerStats;
-use crate::core::settings::{configure_rl_ini, get_settings, set_settings, AppSettings};
+use crate::core::settings::{
+    configure_rl_ini, configure_rl_ini_for_all, get_settings, set_settings, sync_rl_installations,
+    AppSettings, InstallSyncResult,
+};
 use crate::core::storage::{self, clear_all_data, MatchPlayerRow, MatchQuery, MatchUpsert};
 use crate::AppState;
 use std::fs;
@@ -74,6 +77,39 @@ pub async fn configure_rl_ini_cmd(path: String, port: u16) -> Result<(), String>
         Ok(()) => Ok(()),
         Err(e) => {
             error!(error = %e, "Failed to configure RL INI");
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn configure_rl_ini_all_cmd(
+    paths: Vec<String>,
+    port: u16,
+) -> Result<Vec<String>, String> {
+    let failures = configure_rl_ini_for_all(&paths, port);
+    if !failures.is_empty() {
+        warn!(
+            failures = failures.len(),
+            "Some RL INI configurations failed"
+        );
+    }
+    Ok(failures)
+}
+
+#[tauri::command]
+pub async fn sync_rl_installations_cmd(
+    state: State<'_, AppState>,
+) -> Result<InstallSyncResult, String> {
+    let pool = &state.db_pool;
+    let port = get_settings(pool).map(|s| s.port).unwrap_or(49123);
+    match sync_rl_installations(pool, port) {
+        Ok(result) => {
+            info!(installs = result.paths.len(), "Install sync completed");
+            Ok(result)
+        }
+        Err(e) => {
+            error!(error = %e, "Failed to sync RL installations");
             Err(e.to_string())
         }
     }

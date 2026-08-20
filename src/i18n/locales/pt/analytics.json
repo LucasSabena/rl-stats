@@ -65,6 +65,10 @@
     "bestHourDetail": "{{hour}}:00 — TV ",
     "situational": "Desempenho situacional",
     "overtime": "Prorrogação ({{count}}p)",
+    "wonCount": "{{count}} ganhas",
+    "lostCount": "{{count}} perdidas",
+    "comebacks": "Viradas ({{count}}p)",
+    "collapses": "Colapsos ({{count}}p)",
     "closeGames": "Jogos equilibrados (±1 gol, {{count}}p)",
     "blowouts": "Goledas (+4 gols, {{count}}p)",
     "contribution": "Contribuição no time",
@@ -119,7 +123,19 @@
       "description": "Não foi possível carregar os dados de desempenho."
     }
   },
+  "player": {
+    "matchesTitle": "Partidas de {{name}}",
+    "noMatches": {
+      "title": "Sem partidas",
+      "description": "Este jogador não tem partidas registradas no período selecionado."
+    },
+    "comebackTag": "Virada",
+    "collapseTag": "Colapso"
+  },
   "filters": {
+    "player": {
+      "me": "Meu perfil"
+    },
     "scope": {
       "me": "Só eu",
       "team": "Meu time"

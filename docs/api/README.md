@@ -85,6 +85,21 @@ PacketSendRate=10
 - `PacketSendRate`: updates per second (1–120). `0` disables.
 - `Port`: TCP port (default 49123).
 
+### Multiple installs (Steam + Epic Games)
+
+A user can own Rocket League on both Steam and Epic, with separate installs.
+RL Stats supports this natively:
+
+- All detected installs are listed in **Settings → Rocket League** (`rl_paths`).
+- On app startup, and whenever settings are saved, the app auto-writes
+  `DefaultStatsAPI.ini` into **every** configured install, so the Stats API
+  works no matter which platform launches the game.
+- The active platform is derived from the running `RocketLeague.exe` path
+  (`game-status-changed` event payload) and stored in `active_platform`.
+  The local player identity resolution prefers the in-match `PrimaryId` whose
+  platform prefix matches the active platform before falling back to name
+  matching, so stats land on the right account per platform.
+
 ## References
 
 - [xentrick/rlstatsapi](https://github.com/xentrick/rlstatsapi) — Rust client (reference implementation)

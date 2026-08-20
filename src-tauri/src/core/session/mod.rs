@@ -218,6 +218,26 @@ impl SessionManager {
                     if self.round_start_game_time.is_none() && game.time > 0 {
                         self.mark_round_start();
                     }
+                    // A score change means a round finished and a new kickoff
+                    // followed. Some streams never emit GoalReplayEnd or
+                    // RoundStarted between goals, leaving the anchor pointing
+                    // at the opening kickoff — which silently stops counting
+                    // kickoff goals after the first one. Re-anchor whenever the
+                    // score moves so every kickoff after a goal is evaluated
+                    // against a fresh anchor.
+                    if let Some(teams) = &game.teams {
+                        if !teams.is_empty() {
+                            let blue = teams[0].score;
+                            let orange = teams.get(1).map(|t| t.score).unwrap_or(0);
+                            let score_changed =
+                                blue != self.score_blue || orange != self.score_orange;
+                            if score_changed && self.round_start_game_time.is_some() {
+                                self.mark_round_start();
+                            }
+                            self.score_blue = blue;
+                            self.score_orange = orange;
+                        }
+                    }
                     self.ball_speed = game.ball.as_ref().map(|ball| ball.speed).unwrap_or(0.0);
                     if let Some(teams) = &game.teams {
                         if !teams.is_empty() {
@@ -272,6 +292,9 @@ impl SessionManager {
                 let json = serde_json::to_string(&data).unwrap_or_default();
                 self.events.push(("GoalScored".into(), json, Utc::now()));
 
+                // Capture the score before the kickoff anchor is re-armed, so
+                // the kickoff-goal window closes and the next kickoff starts
+                // fresh.
                 let is_kickoff_goal = self.is_kickoff_goal();
 
                 if is_kickoff_goal {
@@ -296,6 +319,11 @@ impl SessionManager {
                         }
                     }
                 }
+
+                // Re-anchor after every goal so goals scored off the kickoff
+                // that follows this one are detected even when the stream
+                // never emits GoalReplayEnd / RoundStarted / CountdownBegin.
+                self.mark_round_start();
             }
             RlEvent::StatfeedEvent { data } if self.phase == MatchPhase::Active => {
                 debug!(event = %data.event_name, target = %data.main_target.name, "Statfeed event");
@@ -735,6 +763,23 @@ pub fn resolve_local_player_identity<'a>(
         }
     }
 
+    // When the running install's platform is known (Steam vs Epic), prefer the
+    // in-match player whose PrimaryId belongs to that platform before falling
+    // back to name matching. This prevents a name match from resolving to the
+    // wrong platform account when the same name exists on both.
+    if let Some(platform) = settings.active_platform.as_deref() {
+        let prefix = match platform {
+            "steam" => "Steam|",
+            "epic" => "Epic|",
+            _ => "",
+        };
+        if !prefix.is_empty() {
+            if let Some(player) = players.iter().find(|player| player.id.starts_with(prefix)) {
+                return Some((player.id.clone(), player.team));
+            }
+        }
+    }
+
     for candidate_name in [
         &settings.player_name,
         settings.tracker_username.as_deref().unwrap_or(""),
@@ -1021,5 +1066,30 @@ mod tests {
         session.handle_event(RlEvent::MatchCreated);
         assert!(session.round_start_game_time.is_none());
         assert_eq!(kickoff_goals(&session, "p1"), 0);
+    }
+
+    /// Regression: streams that never emit GoalReplayEnd / RoundStarted /
+    /// CountdownBegin between goals left the anchor pointing at the opening
+    /// kickoff, so every kickoff goal after the first was missed. Goals now
+    /// re-anchor the round, so the goal right after the restart still counts.
+    #[test]
+    fn kickoff_goal_after_previous_goal_counts_without_round_markers() {
+        let mut session = started_session();
+
+        // First goal at 296 (kickoff goal).
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 296 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+
+        // Restart happens but the stream sends only a clock update (no
+        // GoalReplayEnd / RoundStarted / CountdownBegin). Goal right after
+        // the restart must count as a kickoff goal.
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 292 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p2") });
+        assert_eq!(
+            kickoff_goals(&session, "p2"),
+            1,
+            "kickoff goal after a restart without round markers must count"
+        );
     }
 }

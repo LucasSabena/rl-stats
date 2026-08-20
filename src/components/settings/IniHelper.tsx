@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { configureRlIni } from "@/lib/api";
+import { configureRlIniAll } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { useUIStore } from "@/stores/uiStore";
 import { useSettings } from "@/hooks/useSettings";
@@ -28,15 +28,23 @@ export function IniHelper() {
 
   const onSubmit = async (data: IniSettingsFormValues) => {
     try {
-      if (!settings?.rlPath) {
+      const paths = settings?.rlPaths?.length
+        ? settings.rlPaths
+        : settings?.rlPath
+          ? [settings.rlPath]
+          : [];
+      if (paths.length === 0) {
         throw new Error(t("settings:ini.errors.noRlPath"));
       }
 
-      await configureRlIni(settings.rlPath, data.port);
+      await configureRlIniAll(paths, data.port);
       addToast({
         type: "success",
         title: t("settings:ini.toasts.applied.title"),
-        message: t("settings:ini.toasts.applied.message", { port: data.port }),
+        message: t("settings:ini.toasts.applied.message", {
+          port: data.port,
+          count: paths.length,
+        }),
       });
     } catch (error) {
       const message =

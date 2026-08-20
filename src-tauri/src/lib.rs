@@ -30,7 +30,7 @@ use crate::core::rlstats_api::RlstatsClient;
 use crate::core::session::{
     resolve_local_player_identity, MatchPhase, PersistResult, SessionManager,
 };
-use crate::core::settings::{get_settings, set_settings};
+use crate::core::settings::{get_settings, set_settings, sync_rl_installations};
 use crate::core::storage::{init_storage, DbPool};
 use crate::core::tracker_api::TrackerClient;
 
@@ -128,12 +128,16 @@ pub fn run() {
             commands::analytics::get_daily_rollups,
             commands::analytics::get_session_matches,
             commands::analytics::get_insights,
+            commands::analytics::get_player_analytics_summary,
+            commands::analytics::get_player_analytics_matches,
             commands::players::get_player_directory,
             commands::players::get_player_detail,
             commands::players::get_player_detail_by_primary_id,
             commands::settings::get_settings_cmd,
             commands::settings::set_settings_cmd,
             commands::settings::configure_rl_ini_cmd,
+            commands::settings::configure_rl_ini_all_cmd,
+            commands::settings::sync_rl_installations_cmd,
             commands::settings::export_data,
             commands::settings::export_data_json,
             commands::settings::import_data,
@@ -243,6 +247,26 @@ pub fn run() {
 
             let settings = get_settings(&db_pool).unwrap_or_default();
             let port = settings.port;
+
+            // Auto-configure the Stats API INI for every detected install so
+            // the game exports stats no matter which platform it launches from.
+            {
+                let pool = db_pool.clone();
+                tauri::async_runtime::spawn(async move {
+                    match sync_rl_installations(&pool, port) {
+                        Ok(result) => {
+                            info!(
+                                installs = result.paths.len(),
+                                failures = result.failures.len(),
+                                "Stats API INI auto-configured for all installs"
+                            );
+                        }
+                        Err(error) => {
+                            tracing::warn!(error = %error, "Failed to auto-configure Stats API INIs");
+                        }
+                    }
+                });
+            }
 
             // Configure autostart based on current setting
             configure_autostart(settings.auto_start);
@@ -379,13 +403,18 @@ pub fn run() {
                     let _receiver = app_handle_for_listener.listen("game-status-changed", move |event| {
                         let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
                         let game_running = payload.get("running").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let active_platform = payload
+                            .get("platform")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
                         let pool = pool_for_closure.clone();
                         let app_handle = app_handle.clone();
 
                         tauri::async_runtime::spawn(async move {
-                            // Update game_running in settings
+                            // Update game_running + active_platform in settings
                             if let Ok(mut app_settings) = get_settings(&pool) {
                                 app_settings.game_running = game_running;
+                                app_settings.active_platform = active_platform.clone();
                                 let _ = set_settings(&pool, &app_settings);
                             }
 

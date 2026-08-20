@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Search, FolderOpen, Gamepad2, Monitor, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { configureRlIni, detectRlPath } from "@/lib/api";
+import { configureRlIniAll, detectRlPath } from "@/lib/api";
 import { useSettings, useUpdateSettings } from "@/hooks/useSettings";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -28,14 +28,17 @@ export default function Step2({ onNext, onBack }: StepProps) {
       const paths = await detectRlPath();
 
       if (paths.length > 0) {
-        const installation = paths[0];
-        await configureRlIni(installation.path);
+        const validPaths = paths.filter((item) => item.valid);
+        const installation = validPaths[0] ?? paths[0];
+        const allPaths = validPaths.map((item) => item.path);
+        await configureRlIniAll(allPaths.length > 0 ? allPaths : [installation.path]);
         setDetectedPath(installation.path);
         setRlPath(installation.path);
         if (settings) {
           await updateSettings.mutateAsync({
             ...settings,
             rlPath: installation.path,
+            rlPaths: allPaths.length > 0 ? allPaths : [installation.path],
             platform:
               source === "steam" || source === "epic"
                 ? source

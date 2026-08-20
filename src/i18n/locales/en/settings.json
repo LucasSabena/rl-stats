@@ -19,11 +19,17 @@
     "playerName": "In-game name",
     "playerNamePlaceholder": "E.g.: Si Locura",
     "playerNameHelper": "Used to identify you the first time and save your `PrimaryId` automatically.",
-    "installPath": "Install path",
-    "installPathPlaceholder": "Auto-detected...",
+    "installPath": "Install paths",
+    "installPathPlaceholder": "Add path manually...",
     "detectPath": "Search",
+    "addPath": "Add",
+    "removePath": "Remove path",
+    "noPaths": "No paths configured yet. Press Search to detect every install (Steam and Epic Games) automatically.",
+    "installPathsHelper": "All installs are detected automatically. You can add manual paths if the game lives somewhere unusual.",
+    "activePlatform": "Active",
     "platform": "Platform",
     "platformAutoDetect": "Auto-detect",
+    "platformHelper": "The platform in use is detected automatically from the running game (Steam or Epic Games).",
     "defaultMatchType": "Default match type",
     "autoStart": "Start with Windows",
     "autoStartDescription": "Launch RL Stats when the computer starts",
@@ -101,7 +107,7 @@
     "toasts": {
       "applied": {
         "title": "Configuration applied",
-        "message": "The RL file has been configured on port {{port}}."
+        "message": "The RL file has been configured on port {{port}} for {{count}} install(s)."
       },
       "error": {
         "title": "Error",

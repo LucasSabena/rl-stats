@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import {
-  configureRlIni,
+  configureRlIniAll,
   detectLocalAccounts,
   detectRlPath,
   getActiveProfile,
@@ -62,7 +62,7 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
   const [phase, setPhase] = useState<Phase>("welcome");
   const [installations, setInstallations] = useState<RlInstallation[]>([]);
   const [accounts, setAccounts] = useState<DetectedAccount[]>([]);
-  const [selectedPath, setSelectedPath] = useState("");
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [selectedAccount, setSelectedAccount] = useState("");
   const [manualPath, setManualPath] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -129,10 +129,8 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
 
     if (installationResult.status === "fulfilled") {
       setInstallations(installationResult.value);
-      const preferred =
-        installationResult.value.find((item) => item.configured) ??
-        installationResult.value.find((item) => item.valid);
-      if (preferred) setSelectedPath(preferred.path);
+      const preferred = installationResult.value.filter((item) => item.valid);
+      setSelectedPaths(preferred.map((item) => item.path));
     }
     if (accountResult.status === "fulfilled") {
       setAccounts(accountResult.value);
@@ -160,7 +158,11 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
         detected,
         ...current.filter((item) => item.path.toLowerCase() !== detected.path.toLowerCase()),
       ]);
-      setSelectedPath(detected.path);
+      setSelectedPaths((current) =>
+        current.some((path) => path.toLowerCase() === detected.path.toLowerCase())
+          ? current
+          : [...current, detected.path],
+      );
       setManualPath("");
     } catch (error) {
       setSetupError(error instanceof Error ? error.message : t("setup.invalidPath"));
@@ -173,16 +175,20 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
     setSaving(true);
     setSetupError("");
     try {
-      const installation = installations.find((item) => item.path === selectedPath);
+      const selectedInstallations = installations.filter((item) =>
+        selectedPaths.some((path) => path.toLowerCase() === item.path.toLowerCase()),
+      );
       const account = accounts.find((item) => item.primary_id === selectedAccount);
       const currentSettings = await getSettings();
 
-      if (installation) await configureRlIni(installation.path);
+      const paths = selectedInstallations.map((item) => item.path);
+      if (paths.length > 0) await configureRlIniAll(paths);
 
       await setSettings({
         ...currentSettings,
-        rlPath: installation?.path ?? currentSettings.rlPath,
-        platform: installation?.platform ?? currentSettings.platform,
+        rlPath: paths[0] ?? currentSettings.rlPath,
+        rlPaths: paths.length > 0 ? paths : currentSettings.rlPaths,
+        platform: selectedInstallations[0]?.platform ?? currentSettings.platform,
         playerName: account?.display_name || currentSettings.playerName,
         localPrimaryId: account?.primary_id ?? currentSettings.localPrimaryId,
         warnOnProfileMismatch: true,
@@ -197,9 +203,9 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
         );
         setStorePlayerName(account.display_name);
       }
-      if (installation) {
-        setStorePath(installation.path);
-        setStorePlatform(installation.platform);
+      if (paths.length > 0) {
+        setStorePath(paths[0]);
+        setStorePlatform(selectedInstallations[0]?.platform ?? null);
       }
 
       setSidebarExpanded(true);
@@ -299,7 +305,9 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
   }
 
   if (phase === "setup") {
-    const selectedInstallation = installations.find((item) => item.path === selectedPath);
+    const selectedInstallations = installations.filter((item) =>
+      selectedPaths.some((path) => path.toLowerCase() === item.path.toLowerCase()),
+    );
     return (
       <div className="fixed inset-0 z-50 overflow-y-auto bg-bg-base/94 p-6 backdrop-blur-xl">
         <section className="mx-auto my-4 w-full max-w-4xl rounded-3xl border border-border-highlight/60 bg-bg-panel shadow-2xl">
@@ -315,21 +323,34 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
           </header>
 
           <div className="grid gap-6 p-8 md:grid-cols-2">
-            <SetupSection icon={Gamepad2} title={t("setup.gameTitle")} status={selectedInstallation ? t("setup.detected") : t("setup.pending")}>
+            <SetupSection icon={Gamepad2} title={t("setup.gameTitle")} status={selectedInstallations.length > 0 ? t("setup.detected") : t("setup.pending")}>
               {detecting && installations.length === 0 ? (
                 <LoadingLine label={t("setup.searchingGame")} />
               ) : installations.length > 0 ? (
                 <div className="space-y-2">
-                  {installations.map((item) => (
-                    <button key={item.path} type="button" onClick={() => setSelectedPath(item.path)} className={cn("w-full rounded-xl border p-3 text-left transition", selectedPath === item.path ? "border-accent-primary bg-accent-primary-subtle" : "border-border-subtle bg-bg-base hover:border-border-highlight")}>
-                      <span className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-semibold capitalize text-text-primary">{item.platform}</span>
-                        {selectedPath === item.path && <Check size={16} className="text-accent-primary" />}
-                      </span>
-                      <span className="mt-1 block truncate font-mono text-[11px] text-text-muted">{item.path}</span>
-                      <span className="mt-2 block text-[10px] text-accent-success">{item.configured ? t("setup.alreadyConfigured") : item.source}</span>
-                    </button>
-                  ))}
+                  {installations.map((item) => {
+                    const checked = selectedPaths.some((path) => path.toLowerCase() === item.path.toLowerCase());
+                    return (
+                      <button key={item.path} type="button" onClick={() => {
+                        setSelectedPaths((current) =>
+                          checked
+                            ? current.filter((path) => path.toLowerCase() !== item.path.toLowerCase())
+                            : [...current, item.path],
+                        );
+                      }} className={cn("w-full rounded-xl border p-3 text-left transition", checked ? "border-accent-primary bg-accent-primary-subtle" : "border-border-subtle bg-bg-base hover:border-border-highlight")}>
+                        <span className="flex items-center justify-between gap-3">
+                          <span className="flex items-center gap-2">
+                            <span className={cn("flex h-4 w-4 items-center justify-center rounded border", checked ? "border-accent-primary bg-accent-primary" : "border-border-highlight")}>
+                              {checked && <Check size={11} className="text-white" />}
+                            </span>
+                            <span className="text-sm font-semibold capitalize text-text-primary">{item.platform}</span>
+                          </span>
+                          {item.configured && <span className="rounded-full bg-accent-success/15 px-2 py-1 text-[10px] font-bold text-accent-success">{t("setup.alreadyConfigured")}</span>}
+                        </span>
+                        <span className="mt-1 block truncate pl-6 font-mono text-[11px] text-text-muted">{item.path}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="rounded-xl border border-border-subtle bg-bg-base p-3 text-sm text-text-muted">{t("setup.noGame")}</p>

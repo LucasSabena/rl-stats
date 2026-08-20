@@ -259,11 +259,17 @@ export interface InsightsData {
   bestHour?: number;
   bestHourWR?: number;
   otGames?: number;
+  otWins?: number;
+  otLosses?: number;
   otWinRate?: number;
   closeGames?: number;
   closeWinRate?: number;
   blowoutGames?: number;
+  blowoutWins?: number;
+  blowoutLosses?: number;
   blowoutWinRate?: number;
+  comebackWins?: number;
+  collapseLosses?: number;
   contrib?: {
     goalsPct: number;
     assistsPct: number;
@@ -271,6 +277,34 @@ export interface InsightsData {
     shotsPct: number;
     demosPct: number;
   };
+}
+
+export interface PlayerAnalyticsMatch {
+  id: number;
+  guid: string;
+  start_time: string;
+  end_time: string | null;
+  arena: string | null;
+  score_blue: number;
+  score_orange: number;
+  winner: number | null;
+  is_online: boolean;
+  is_overtime: boolean;
+  duration_seconds: number;
+  match_type: string | null;
+  playlist: string | null;
+  team_num: number;
+  is_win: boolean;
+  goal_diff: number;
+  goals: number;
+  assists: number;
+  saves: number;
+  shots: number;
+  score: number;
+  demos: number;
+  kickoff_goals: number;
+  was_comeback: boolean;
+  was_collapse: boolean;
 }
 
 export interface OverlayServerStatus {
@@ -362,7 +396,9 @@ export interface AppSettings {
   localPrimaryId?: string | null;
   autoStart: boolean;
   rlPath: string | null;
+  rlPaths?: string[];
   platform: "steam" | "epic" | null;
+  activePlatform?: "steam" | "epic" | null;
   defaultMatchType: MatchType;
   trackerApiKey?: string | null;
   trackerPlatform?: string | null;
@@ -600,6 +636,12 @@ export interface RlInstallation {
   valid: boolean;
   source: string;
   configured: boolean;
+}
+
+export interface InstallSyncResult {
+  paths: string[];
+  configured: string[];
+  failures: string[];
 }
 
 export interface DetectedAccount {

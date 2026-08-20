@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tracing::info;
+use tracing::{info, warn};
 
 /// Application settings persisted in the database.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -17,7 +17,9 @@ pub struct AppSettings {
     pub port: u16,
     pub data_retention_days: i32,
     pub rl_path: Option<String>,
+    pub rl_paths: Vec<String>,
     pub platform: Option<String>,
+    pub active_platform: Option<String>,
     pub theme: String,
     pub language: String,
     pub default_match_type: Option<String>,
@@ -68,7 +70,9 @@ impl Default for AppSettings {
             port: 49123,
             data_retention_days: 90,
             rl_path: None,
+            rl_paths: Vec::new(),
             platform: None,
+            active_platform: None,
             theme: "dark".to_string(),
             language: "es".to_string(),
             default_match_type: Some("ranked".to_string()),
@@ -123,7 +127,15 @@ impl AppSettings {
             ("port", self.port.to_string()),
             ("data_retention_days", self.data_retention_days.to_string()),
             ("rl_path", self.rl_path.clone().unwrap_or_default()),
+            (
+                "rl_paths",
+                serde_json::to_string(&self.rl_paths).unwrap_or_else(|_| "[]".into()),
+            ),
             ("platform", self.platform.clone().unwrap_or_default()),
+            (
+                "active_platform",
+                self.active_platform.clone().unwrap_or_default(),
+            ),
             ("theme", self.theme.clone()),
             ("language", self.language.clone()),
             (
@@ -250,8 +262,16 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
             "rl_path" => {
                 settings.rl_path = if value.is_empty() { None } else { Some(value) };
             }
+            "rl_paths" => {
+                if !value.is_empty() {
+                    settings.rl_paths = serde_json::from_str(&value).unwrap_or_else(|_| Vec::new());
+                }
+            }
             "platform" => {
                 settings.platform = if value.is_empty() { None } else { Some(value) };
+            }
+            "active_platform" => {
+                settings.active_platform = if value.is_empty() { None } else { Some(value) };
             }
             "theme" => settings.theme = value,
             "language" => settings.language = value,
@@ -323,7 +343,42 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
         }
     }
 
-    Ok(settings)
+    Ok(normalize_install_paths(settings))
+}
+
+/// Keeps the legacy single-path fields (`rl_path`) and the multi-install list
+/// (`rl_paths`) in sync. Prefer `rl_paths` as the source of truth going forward:
+///
+/// - Empty list + legacy path → seeds the list with the legacy path.
+/// - Non-empty list + no legacy path → picks the first valid entry as `rl_path`.
+/// - Deduplicates and drops empty entries.
+fn normalize_install_paths(mut settings: AppSettings) -> AppSettings {
+    let mut paths: Vec<String> = settings
+        .rl_paths
+        .iter()
+        .filter(|path| !path.trim().is_empty())
+        .cloned()
+        .collect();
+
+    if paths.is_empty() {
+        if let Some(legacy) = settings
+            .rl_path
+            .clone()
+            .filter(|path| !path.trim().is_empty())
+        {
+            paths.push(legacy);
+        }
+    }
+
+    let mut seen = HashSet::new();
+    paths.retain(|path| seen.insert(path.to_ascii_lowercase()));
+
+    if settings.rl_path.is_none() || settings.rl_path.as_ref().is_none_or(String::is_empty) {
+        settings.rl_path = paths.first().cloned();
+    }
+
+    settings.rl_paths = paths;
+    settings
 }
 
 /// Save settings to the database.
@@ -371,6 +426,29 @@ pub fn configure_rl_ini(game_root: &str, port: u16) -> AppResult<()> {
 
     info!(path = %ini_path.display(), "Wrote Rocket League Stats API INI");
     Ok(())
+}
+
+/// Configures the Stats API INI for every configured install path. Failing
+/// paths are skipped so one broken install never blocks the rest.
+pub fn configure_rl_ini_for_all(paths: &[String], port: u16) -> Vec<String> {
+    let mut failures = Vec::new();
+    let mut seen = HashSet::new();
+
+    for path in paths {
+        let normalized = path.trim().replace('\\', "/");
+        if normalized.is_empty() || !seen.insert(normalized.to_ascii_lowercase()) {
+            continue;
+        }
+        match configure_rl_ini(&normalized, port) {
+            Ok(()) => {}
+            Err(error) => {
+                warn!(path = %normalized, error = %error, "Skipped Stats API INI configuration for install");
+                failures.push(normalized);
+            }
+        }
+    }
+
+    failures
 }
 
 fn merge_stats_api_config(existing: &str, port: u16, packet_rate: u16) -> String {
@@ -775,23 +853,121 @@ pub fn inspect_rl_installation(path: &str, platform: Option<&str>) -> AppResult<
     let root = normalize_game_root(Path::new(path)).ok_or_else(|| {
         AppError::ConfigError("No encontramos RocketLeague.exe dentro de esa carpeta.".into())
     })?;
-    let platform = platform.unwrap_or_else(|| {
-        if root
-            .to_string_lossy()
-            .to_ascii_lowercase()
-            .contains("steam")
-        {
-            "steam"
-        } else {
-            "epic"
-        }
-    });
+    let platform = match platform {
+        Some(platform) => platform.to_string(),
+        None => platform_for_path(&root.to_string_lossy()),
+    };
     Ok(RlInstallation {
         configured: root.join("TAGame/Config/DefaultStatsAPI.ini").exists(),
         path: root.to_string_lossy().replace('\\', "/"),
-        platform: platform.into(),
+        platform,
         valid: true,
         source: "manual".into(),
+    })
+}
+
+/// Best-effort platform inference from a path: Epic installs live under
+/// "Epic Games", Steam installs under a Steam library. Falls back to "unknown".
+pub fn platform_for_path(path: &str) -> String {
+    let lower = path.to_ascii_lowercase().replace('\\', "/");
+    if lower.contains("epic") {
+        "epic".into()
+    } else if lower.contains("steam") {
+        "steam".into()
+    } else {
+        "unknown".into()
+    }
+}
+
+/// Derives the platform of the running installation from its executable path.
+/// Path heuristics come first; if ambiguous, the executable is matched against
+/// every detected install root to pin the exact platform.
+pub fn detect_platform_from_exe(exe_path: &str) -> String {
+    let inferred = platform_for_path(exe_path);
+    if inferred != "unknown" {
+        return inferred;
+    }
+    let lower = exe_path.to_ascii_lowercase().replace('\\', "/");
+    for installation in get_rl_installation_paths(None) {
+        let root = installation.path.to_ascii_lowercase();
+        if lower.starts_with(&root) {
+            return installation.platform;
+        }
+    }
+    "unknown".into()
+}
+
+/// Merges configured install paths with every detected installation, keeping
+/// order and dropping duplicates/invalid entries. Detected installs are added
+/// automatically so the Stats API gets configured everywhere.
+pub fn reconcile_install_paths(paths: &[String], detected: &[RlInstallation]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut merged = Vec::new();
+
+    for path in paths {
+        let normalized = path.trim().replace('\\', "/");
+        if normalized.is_empty() || !seen.insert(normalized.to_ascii_lowercase()) {
+            continue;
+        }
+        merged.push(normalized);
+    }
+
+    for installation in detected {
+        if !installation.valid {
+            continue;
+        }
+        let normalized = installation.path.trim().replace('\\', "/");
+        if seen.insert(normalized.to_ascii_lowercase()) {
+            merged.push(normalized);
+        }
+    }
+
+    merged
+}
+
+/// Result of a full install sync: what is configured now and what failed.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InstallSyncResult {
+    pub paths: Vec<String>,
+    pub configured: Vec<String>,
+    pub failures: Vec<String>,
+}
+
+/// Reconciles `rl_paths` with everything detected on disk, persists the result
+/// (only when something changed, to avoid cloud-sync noise) and writes the
+/// Stats API INI for every install. The INI port comes from settings.
+pub fn sync_rl_installations(pool: &DbPool, port: u16) -> AppResult<InstallSyncResult> {
+    let mut settings = get_settings(pool)?;
+    let detected = get_rl_installation_paths(None);
+    let merged = reconcile_install_paths(&settings.rl_paths, &detected);
+
+    if merged != settings.rl_paths || settings.rl_path.as_ref().is_none_or(String::is_empty) {
+        let changed = merged != settings.rl_paths;
+        settings.rl_paths = merged.clone();
+        if settings.rl_path.is_none() || settings.rl_path.as_ref().is_none_or(String::is_empty) {
+            settings.rl_path = settings.rl_paths.first().cloned();
+        }
+        if changed {
+            set_settings(pool, &settings)?;
+        }
+    }
+
+    let failures = configure_rl_ini_for_all(&settings.rl_paths, port);
+    let configured: Vec<String> = settings
+        .rl_paths
+        .iter()
+        .filter(|path| {
+            !failures
+                .iter()
+                .any(|failure| failure.eq_ignore_ascii_case(path))
+        })
+        .cloned()
+        .collect();
+
+    Ok(InstallSyncResult {
+        paths: settings.rl_paths,
+        configured,
+        failures,
     })
 }
 
@@ -901,7 +1077,10 @@ pub fn detect_local_accounts() -> Vec<DetectedAccount> {
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_stats_api_config, parse_steam_loginusers};
+    use super::{
+        detect_platform_from_exe, merge_stats_api_config, normalize_install_paths,
+        parse_steam_loginusers, platform_for_path, reconcile_install_paths, AppSettings,
+    };
 
     #[test]
     fn merges_stats_config_without_removing_other_values() {
@@ -919,5 +1098,170 @@ mod tests {
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].display_name, "Si Locura");
         assert!(accounts[0].active);
+    }
+
+    #[test]
+    fn seeds_paths_from_legacy_field() {
+        let settings = AppSettings {
+            rl_path: Some("D:/SteamLibrary/steamapps/common/rocketleague".into()),
+            rl_paths: vec![],
+            ..AppSettings::default()
+        };
+        let normalized = normalize_install_paths(settings);
+        assert_eq!(
+            normalized.rl_paths,
+            vec!["D:/SteamLibrary/steamapps/common/rocketleague"]
+        );
+        assert_eq!(
+            normalized.rl_path.as_deref(),
+            Some("D:/SteamLibrary/steamapps/common/rocketleague")
+        );
+    }
+
+    #[test]
+    fn backfills_legacy_path_from_list() {
+        let settings = AppSettings {
+            rl_path: None,
+            rl_paths: vec!["C:/Epic/RocketLeague".into()],
+            ..AppSettings::default()
+        };
+        let normalized = normalize_install_paths(settings);
+        assert_eq!(normalized.rl_path.as_deref(), Some("C:/Epic/RocketLeague"));
+        assert_eq!(normalized.rl_paths.len(), 1);
+    }
+
+    #[test]
+    fn deduplicates_and_drops_empty_paths() {
+        let settings = AppSettings {
+            rl_path: Some("A:/Game".into()),
+            rl_paths: vec![
+                "A:/Game".into(),
+                "a:/game".into(),
+                "".into(),
+                "B:/Game".into(),
+            ],
+            ..AppSettings::default()
+        };
+        let normalized = normalize_install_paths(settings);
+        assert_eq!(normalized.rl_paths.len(), 2);
+    }
+
+    #[test]
+    fn infers_platform_from_path() {
+        assert_eq!(
+            platform_for_path("C:/Program Files/Epic Games/RocketLeague"),
+            "epic"
+        );
+        assert_eq!(
+            platform_for_path("D:/SteamLibrary/steamapps/common/rocketleague"),
+            "steam"
+        );
+        assert_eq!(platform_for_path("C:/Games/Rocket League"), "unknown");
+    }
+
+    #[test]
+    fn reconciles_configured_with_detected_paths() {
+        let configured = vec!["D:/Steam/rocketleague".to_string()];
+        let detected = vec![
+            crate::core::settings::RlInstallation {
+                path: "D:/Steam/rocketleague".into(),
+                platform: "steam".into(),
+                valid: true,
+                source: "steam-manifest".into(),
+                configured: true,
+            },
+            crate::core::settings::RlInstallation {
+                path: "C:/Epic Games/RocketLeague".into(),
+                platform: "epic".into(),
+                valid: true,
+                source: "epic-manifest".into(),
+                configured: false,
+            },
+            crate::core::settings::RlInstallation {
+                path: "C:/Broken/Path".into(),
+                platform: "steam".into(),
+                valid: false,
+                source: "known-path".into(),
+                configured: false,
+            },
+        ];
+        let merged = reconcile_install_paths(&configured, &detected);
+        assert_eq!(
+            merged,
+            vec!["D:/Steam/rocketleague", "C:/Epic Games/RocketLeague"]
+        );
+    }
+
+    #[test]
+    fn detects_platform_from_epic_exe_path() {
+        let platform = detect_platform_from_exe(
+            "C:/Program Files/Epic Games/RocketLeague/Binaries/Win64/RocketLeague.exe",
+        );
+        assert_eq!(platform, "epic");
+    }
+
+    #[test]
+    fn detects_platform_from_steam_exe_path() {
+        let platform = detect_platform_from_exe(
+            "D:/SteamLibrary/steamapps/common/rocketleague/Binaries/Win64/RocketLeague.exe",
+        );
+        assert_eq!(platform, "steam");
+    }
+
+    #[test]
+    fn configures_stats_api_ini_for_every_install() {
+        use std::fs;
+        let temp = std::env::temp_dir().join(format!("rl-stats-test-{}", std::process::id()));
+        let steam_root = temp.join("SteamLibrary/steamapps/common/rocketleague");
+        let epic_root = temp.join("Epic Games/RocketLeague");
+
+        fs::create_dir_all(steam_root.join("Binaries/Win64")).unwrap();
+        fs::create_dir_all(epic_root.join("Binaries/Win64")).unwrap();
+        fs::write(steam_root.join("Binaries/Win64/RocketLeague.exe"), b"fake").unwrap();
+        fs::write(epic_root.join("Binaries/Win64/RocketLeague.exe"), b"fake").unwrap();
+
+        let paths = vec![
+            steam_root.to_string_lossy().to_string(),
+            epic_root.to_string_lossy().to_string(),
+        ];
+        let failures = super::configure_rl_ini_for_all(&paths, 49123);
+
+        assert!(failures.is_empty(), "failures: {failures:?}");
+        let steam_ini = steam_root.join("TAGame/Config/DefaultStatsAPI.ini");
+        let epic_ini = epic_root.join("TAGame/Config/DefaultStatsAPI.ini");
+        assert!(steam_ini.exists(), "Steam INI was not written");
+        assert!(epic_ini.exists(), "Epic INI was not written");
+        for ini in [&steam_ini, &epic_ini] {
+            let content = fs::read_to_string(ini).unwrap();
+            assert!(content.contains("Port=49123"));
+            assert!(content.contains("PacketSendRate=20"));
+        }
+
+        fs::remove_dir_all(&temp).ok();
+    }
+
+    #[test]
+    fn one_broken_install_does_not_block_the_rest() {
+        use std::fs;
+        let temp =
+            std::env::temp_dir().join(format!("rl-stats-test-broken-{}", std::process::id()));
+        let good_root = temp.join("SteamLibrary/steamapps/common/rocketleague");
+        let broken_root = temp.join("Broken/Path");
+
+        fs::create_dir_all(good_root.join("Binaries/Win64")).unwrap();
+        fs::write(good_root.join("Binaries/Win64/RocketLeague.exe"), b"fake").unwrap();
+        fs::create_dir_all(&broken_root).unwrap();
+
+        let paths = vec![
+            good_root.to_string_lossy().to_string(),
+            broken_root.to_string_lossy().to_string(),
+        ];
+        let failures = super::configure_rl_ini_for_all(&paths, 49123);
+
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("Broken"));
+        assert!(good_root.join("TAGame/Config/DefaultStatsAPI.ini").exists());
+
+        fs::remove_dir_all(&temp).ok();
     }
 }

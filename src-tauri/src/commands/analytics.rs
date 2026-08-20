@@ -144,6 +144,80 @@ pub struct SessionMatchesQuery {
     pub end_time: String,
 }
 
+/// Per-profile analytics summary: the same shape as the `summary` object of
+/// `get_analytics`, but computed for an arbitrary recorded player (friends,
+/// teammates, opponents) instead of the local identity.
+#[tauri::command]
+pub async fn get_player_analytics_summary(
+    state: State<'_, AppState>,
+    player_id: String,
+    period: AnalyticsPeriod,
+    playlist: Option<String>,
+    match_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let days = if period.days == 0 {
+        365
+    } else {
+        period.days as i64
+    };
+    let end = chrono::Utc::now();
+    let start = end - chrono::Duration::days(days);
+    let start_str = start.format("%Y-%m-%d").to_string();
+    let end_str = end.format("%Y-%m-%d").to_string();
+
+    let summary = storage::get_analytics_summary_for_identity(
+        pool,
+        &player_id,
+        &start_str,
+        &end_str,
+        playlist.as_deref(),
+        match_type.as_deref(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let streak = metrics::calculate_streaks(
+        pool,
+        &player_id,
+        &start_str,
+        &end_str,
+        playlist.as_deref(),
+        match_type.as_deref(),
+    )
+    .unwrap_or(StreakData {
+        best_streak: 0,
+        current_streak: 0,
+    });
+
+    let total_matches = summary.total_matches;
+    let wins = summary.wins;
+    let losses = summary.losses;
+
+    Ok(serde_json::json!({
+        "period": if period.days == 1 { "day" } else if period.days == 7 { "week" } else { "month" },
+        "totalMatches": total_matches,
+        "wins": wins,
+        "losses": losses,
+        "winRate": if total_matches > 0 { ((wins as f64 / total_matches as f64) * 100.0).round() as i32 } else { 0 },
+        "avgScore": summary.avg_score,
+        "avgGoals": if total_matches > 0 { summary.total_goals as f64 / total_matches as f64 } else { 0.0 },
+        "avgAssists": if total_matches > 0 { summary.total_assists as f64 / total_matches as f64 } else { 0.0 },
+        "avgSaves": if total_matches > 0 { summary.total_saves as f64 / total_matches as f64 } else { 0.0 },
+        "avgShots": if total_matches > 0 { summary.total_shots as f64 / total_matches as f64 } else { 0.0 },
+        "avgBoost": 0.0,
+        "totalGoals": summary.total_goals,
+        "totalAssists": summary.total_assists,
+        "totalSaves": summary.total_saves,
+        "totalShots": summary.total_shots,
+        "totalDemos": summary.total_demos,
+        "totalConceded": summary.total_conceded,
+        "bestStreak": streak.best_streak,
+        "currentStreak": streak.current_streak,
+        "peakSpeed": summary.peak_speed,
+        "avgDuration": summary.avg_duration,
+    }))
+}
+
 #[tauri::command]
 pub async fn get_analytics(
     state: State<'_, AppState>,
@@ -701,12 +775,20 @@ pub async fn get_insights(
     playlist: Option<String>,
     match_type: Option<String>,
     scope: Option<String>,
+    player_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let pool = &state.db_pool;
     let settings = get_settings(pool).unwrap_or_default();
-    let local_id = match settings.local_primary_id {
-        Some(ref id) => id.clone(),
-        None => return Ok(serde_json::json!({ "available": false })),
+
+    // Per-profile analytics: when a player_id (primary id of a friend or any
+    // recorded player) is given, insights are computed for that player instead
+    // of the local identity.
+    let local_id = match player_id {
+        Some(pid) if !pid.trim().is_empty() => pid,
+        _ => match settings.local_primary_id {
+            Some(ref id) => id.clone(),
+            None => return Ok(serde_json::json!({ "available": false })),
+        },
     };
 
     let days = if period.days == 0 {
@@ -733,6 +815,40 @@ pub async fn get_insights(
     .map_err(|e| e.to_string())?;
 
     Ok(insights)
+}
+
+#[tauri::command]
+pub async fn get_player_analytics_matches(
+    state: State<'_, AppState>,
+    player_id: String,
+    period: AnalyticsPeriod,
+    playlist: Option<String>,
+    match_type: Option<String>,
+    limit: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let days = if period.days == 0 {
+        365
+    } else {
+        period.days as i64
+    };
+    let end = chrono::Utc::now();
+    let start = end - chrono::Duration::days(days);
+    let start_str = start.format("%Y-%m-%d").to_string();
+    let end_str = end.format("%Y-%m-%d").to_string();
+
+    let matches = storage::get_player_analytics_matches(
+        pool,
+        &player_id,
+        &start_str,
+        &end_str,
+        playlist.as_deref(),
+        match_type.as_deref(),
+        limit.unwrap_or(50),
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({ "matches": matches }))
 }
 
 async fn get_session_analytics_inner(

@@ -768,11 +768,304 @@ mod storage_crud_tests {
 
         let _ = fs::remove_file(&path);
     }
-}
 
-// ---------------------------------------------------------------------------
-// Task 5: Metrics tests
-// ---------------------------------------------------------------------------
+    /// Seeds a match with the given final score, winner, overtime flag and a
+    /// goal timeline. The timeline drives the comeback/collapse detection.
+    #[allow(clippy::too_many_arguments)]
+    fn seed_match(
+        pool: &DbPool,
+        guid: &str,
+        start: chrono::DateTime<chrono::Utc>,
+        score_blue: i32,
+        score_orange: i32,
+        winner: Option<i32>,
+        is_overtime: bool,
+        match_type: &str,
+        playlist: &str,
+        events: &[(&str, &str, i32)],
+    ) -> i64 {
+        let match_id = storage::insert_match(
+            pool,
+            guid,
+            start,
+            Some("Mannfield"),
+            true,
+            Some(match_type),
+            Some(playlist),
+        )
+        .unwrap();
+        storage::finish_match(
+            pool,
+            match_id,
+            storage::FinishMatchUpdate {
+                end_time: start + chrono::Duration::minutes(7),
+                score_blue,
+                score_orange,
+                winner,
+                is_overtime,
+                duration_seconds: 420,
+            },
+        )
+        .unwrap();
+        for (team, scorer_name, offset_secs) in events {
+            let occurred_at = start + chrono::Duration::seconds(*offset_secs as i64);
+            let data = format!(
+                "{{\"scorer\":{{\"PrimaryId\":\"p{team}\",\"Name\":\"{scorer_name}\",\"TeamNum\":{team}}}}}"
+            );
+            storage::insert_match_event(pool, match_id, "GoalScored", &data, occurred_at).unwrap();
+        }
+        match_id
+    }
+
+    fn seed_player_stats(pool: &DbPool, match_id: i64, primary_id: &str, team: i32) {
+        let player_id = storage::get_or_create_player(pool, primary_id, primary_id).unwrap();
+        storage::insert_match_player(
+            pool,
+            match_id,
+            storage::MatchPlayerRow {
+                player_id,
+                team_num: team,
+                stats: PlayerStats {
+                    goals: 1,
+                    shots: 2,
+                    assists: 0,
+                    saves: 0,
+                    touches: 0,
+                    car_touches: 0,
+                    demos: 0,
+                    score: 120,
+                    speed: 0.0,
+                    boost: 0,
+                    mmr: None,
+                    kickoff_goals: 0,
+                    head_to_head: None,
+                },
+                head_to_head_json: None,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn insights_split_overtime_wins_losses() {
+        let (pool, path) = init_test_pool();
+        let today = chrono::Utc::now().date_naive();
+        let start = today.and_hms_opt(10, 0, 0).unwrap().and_utc();
+
+        // OT win: player "me" on team 0, blue won 3-2 in OT.
+        let m1 = seed_match(
+            &pool,
+            "ot-win",
+            start,
+            3,
+            2,
+            Some(0),
+            true,
+            "ranked",
+            "Doubles",
+            &[("0", "Blue", 40), ("1", "Orange", 90), ("0", "Blue", 150)],
+        );
+        seed_player_stats(&pool, m1, "me", 0);
+
+        // OT loss: team 1 won 1-2 in OT (me on team 0 loses).
+        let m2 = seed_match(
+            &pool,
+            "ot-loss",
+            start - chrono::Duration::days(1),
+            1,
+            2,
+            Some(1),
+            true,
+            "ranked",
+            "Doubles",
+            &[("1", "Orange", 0), ("0", "Blue", 60), ("1", "Orange", 200)],
+        );
+        seed_player_stats(&pool, m2, "me", 0);
+
+        let insights =
+            storage::get_insights(&pool, "me", "2000-01-01", "2100-01-01", None, None, None)
+                .unwrap();
+        assert_eq!(insights["otGames"], 2);
+        assert_eq!(insights["otWins"], 1);
+        assert_eq!(insights["otLosses"], 1);
+        assert_eq!(insights["otWinRate"], 50);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn insights_counts_blowout_wins_and_losses_separately() {
+        let (pool, path) = init_test_pool();
+        let start = Utc::now();
+
+        // Blowout win 5-1 (diff 4).
+        let m1 = seed_match(
+            &pool,
+            "bo-win",
+            start,
+            5,
+            1,
+            Some(0),
+            false,
+            "ranked",
+            "Doubles",
+            &[],
+        );
+        seed_player_stats(&pool, m1, "me", 0);
+        // Blowout loss 1-5 (diff -4).
+        let m2 = seed_match(
+            &pool,
+            "bo-loss",
+            start + chrono::Duration::hours(1),
+            1,
+            5,
+            Some(1),
+            false,
+            "ranked",
+            "Doubles",
+            &[],
+        );
+        seed_player_stats(&pool, m2, "me", 0);
+        // Normal win 2-1 (diff 1) must not count as blowout.
+        let m3 = seed_match(
+            &pool,
+            "close",
+            start + chrono::Duration::hours(2),
+            2,
+            1,
+            Some(0),
+            false,
+            "ranked",
+            "Doubles",
+            &[],
+        );
+        seed_player_stats(&pool, m3, "me", 0);
+
+        let insights =
+            storage::get_insights(&pool, "me", "2000-01-01", "2100-01-01", None, None, None)
+                .unwrap();
+        assert_eq!(insights["blowoutGames"], 2);
+        assert_eq!(insights["blowoutWins"], 1);
+        assert_eq!(insights["blowoutLosses"], 1);
+        assert_eq!(insights["blowoutWinRate"], 50);
+        assert_eq!(insights["closeGames"], 1);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn insights_counts_comebacks_and_collapses() {
+        let (pool, path) = init_test_pool();
+        let start = Utc::now();
+
+        // Comeback: was losing 0-1, won 3-1. Goals: orange first, then three blue.
+        let m1 = seed_match(
+            &pool,
+            "comeback",
+            start,
+            3,
+            1,
+            Some(0),
+            false,
+            "ranked",
+            "Doubles",
+            &[
+                ("1", "Orange", 0),
+                ("0", "Blue", 60),
+                ("0", "Blue", 120),
+                ("0", "Blue", 180),
+            ],
+        );
+        seed_player_stats(&pool, m1, "me", 0);
+
+        // Collapse: was winning 1-0, lost 1-3.
+        let m2 = seed_match(
+            &pool,
+            "collapse",
+            start + chrono::Duration::hours(1),
+            1,
+            3,
+            Some(1),
+            false,
+            "ranked",
+            "Doubles",
+            &[
+                ("0", "Blue", 0),
+                ("1", "Orange", 60),
+                ("1", "Orange", 120),
+                ("1", "Orange", 180),
+            ],
+        );
+        seed_player_stats(&pool, m2, "me", 0);
+
+        // Normal win with no lead change: 2-0.
+        let m3 = seed_match(
+            &pool,
+            "normal",
+            start + chrono::Duration::hours(2),
+            2,
+            0,
+            Some(0),
+            false,
+            "ranked",
+            "Doubles",
+            &[("0", "Blue", 0), ("0", "Blue", 60)],
+        );
+        seed_player_stats(&pool, m3, "me", 0);
+
+        let insights =
+            storage::get_insights(&pool, "me", "2000-01-01", "2100-01-01", None, None, None)
+                .unwrap();
+        assert_eq!(insights["comebackWins"], 1);
+        assert_eq!(insights["collapseLosses"], 1);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn player_analytics_matches_return_outcome_and_flags() {
+        let (pool, path) = init_test_pool();
+        let start = Utc::now();
+
+        let m1 = seed_match(
+            &pool,
+            "friend-comeback",
+            start,
+            3,
+            1,
+            Some(0),
+            false,
+            "ranked",
+            "Doubles",
+            &[
+                ("1", "Orange", 0),
+                ("0", "Blue", 60),
+                ("0", "Blue", 120),
+                ("0", "Blue", 180),
+            ],
+        );
+        seed_player_stats(&pool, m1, "friendA", 0);
+        seed_player_stats(&pool, m1, "friendB", 1);
+
+        let matches = storage::get_player_analytics_matches(
+            &pool,
+            "friendA",
+            "2000-01-01",
+            "2100-01-01",
+            None,
+            None,
+            50,
+        )
+        .unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0]["is_win"], true);
+        assert_eq!(matches[0]["was_comeback"], true);
+        assert_eq!(matches[0]["was_collapse"], false);
+        assert_eq!(matches[0]["goal_diff"], 2);
+
+        let _ = fs::remove_file(&path);
+    }
+}
 
 mod metrics_tests {
     use super::*;

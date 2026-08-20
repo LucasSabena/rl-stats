@@ -18,6 +18,7 @@ import {
   type MatchSession,
   type SessionMatch,
   type InsightsData,
+  type PlayerAnalyticsMatch,
   type OverlayServerStatus,
   type OverlayUrl,
   type OverlayWindowState,
@@ -26,6 +27,7 @@ import {
   type TrackerProfile,
   type LiveMmrSnapshot,
   type RlInstallation,
+  type InstallSyncResult,
   type DetectedAccount,
   type PlayerDirectoryEntry,
   type PlayerDetailRecord,
@@ -161,7 +163,9 @@ interface RawAppSettings {
   port: number;
   data_retention_days: number;
   rl_path?: string | null;
+  rl_paths?: string[];
   platform?: string | null;
+  active_platform?: string | null;
   theme?: string;
   language?: string;
   default_match_type?: string | null;
@@ -467,10 +471,13 @@ const UNBOUNDED_COMMANDS = new Set([
   "refresh_tracker_profile",
   "fetch_rlstats_profile",
   "refresh_rlstats_profile",
+  "get_player_analytics_matches",
   // Filesystem scans
   "detect_rl_path",
   "inspect_rl_path",
   "detect_local_accounts_cmd",
+  "sync_rl_installations_cmd",
+  "configure_rl_ini_all_cmd",
 ]);
 
 export async function invokeCommand<T>(
@@ -754,6 +761,7 @@ export async function getInsights(
     playlist?: PlaylistFilter;
     matchType?: MatchTypeFilter;
     scope?: DataScope;
+    playerId?: string | null;
   },
 ): Promise<InsightsData> {
   const days = periodToDays(period);
@@ -767,7 +775,60 @@ export async function getInsights(
   if (filters?.scope) {
     args.scope = filters.scope;
   }
+  if (filters?.playerId) {
+    args.player_id = filters.playerId;
+  }
   return invokeCommand<InsightsData>("get_insights", args);
+}
+
+export async function getPlayerAnalyticsMatches(
+  playerId: string,
+  period: AnalyticsPeriod,
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    limit?: number;
+  },
+): Promise<PlayerAnalyticsMatch[]> {
+  const days = periodToDays(period);
+  const args: Record<string, unknown> = { playerId, period: { days } };
+  if (filters?.playlist && filters.playlist !== "all") {
+    args.playlist = filters.playlist;
+  }
+  if (filters?.matchType && filters.matchType !== "all") {
+    args.match_type = filters.matchType;
+  }
+  if (filters?.limit) {
+    args.limit = filters.limit;
+  }
+  const response = await invokeCommand<{ matches: PlayerAnalyticsMatch[] }>(
+    "get_player_analytics_matches",
+    args,
+  );
+  return response.matches ?? [];
+}
+
+export async function getPlayerAnalyticsSummary(
+  playerId: string,
+  period: AnalyticsPeriod,
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+  },
+): Promise<AnalyticsData> {
+  const days = periodToDays(period);
+  const args: Record<string, unknown> = { playerId, period: { days } };
+  if (filters?.playlist && filters.playlist !== "all") {
+    args.playlist = filters.playlist;
+  }
+  if (filters?.matchType && filters.matchType !== "all") {
+    args.match_type = filters.matchType;
+  }
+  const summary = await invokeCommand<RawAnalyticsSummary>(
+    "get_player_analytics_summary",
+    args,
+  );
+  return mapSummaryToAnalyticsData(period, summary);
 }
 
 // Settings
@@ -778,10 +839,17 @@ export async function getSettings(): Promise<AppSettings> {
     localPrimaryId: settings.local_primary_id ?? null,
     autoStart: settings.auto_start,
     rlPath: settings.rl_path ?? null,
+    rlPaths: settings.rl_paths ?? (settings.rl_path ? [settings.rl_path] : []),
     platform:
       settings.platform === "epic"
         ? "epic"
         : settings.platform === "steam"
+          ? "steam"
+          : null,
+    activePlatform:
+      settings.active_platform === "epic"
+        ? "epic"
+        : settings.active_platform === "steam"
           ? "steam"
           : null,
     defaultMatchType: (settings.default_match_type as MatchType) ?? "ranked",
@@ -831,7 +899,9 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       port: 49123,
       data_retention_days: 90,
       rl_path: settings.rlPath ?? null,
+      rl_paths: settings.rlPaths ?? [],
       platform: settings.platform ?? null,
+      active_platform: settings.activePlatform ?? null,
       theme: "dark",
       language: "es",
       default_match_type: settings.defaultMatchType,
@@ -879,6 +949,20 @@ export async function configureRlIni(
     path,
     port: port ?? 49123,
   });
+}
+
+export async function configureRlIniAll(
+  paths: string[],
+  port?: number,
+): Promise<string[]> {
+  return invokeCommand<string[]>("configure_rl_ini_all_cmd", {
+    paths,
+    port: port ?? 49123,
+  });
+}
+
+export async function syncRlInstallations(): Promise<InstallSyncResult> {
+  return invokeCommand<InstallSyncResult>("sync_rl_installations_cmd");
 }
 
 export async function detectRlPath(

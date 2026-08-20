@@ -19,11 +19,17 @@
     "playerName": "Nome no jogo",
     "playerNamePlaceholder": "Ex.: Si Locura",
     "playerNameHelper": "Usado para identificá-lo na primeira vez e salvar seu `PrimaryId` automaticamente.",
-    "installPath": "Caminho de instalação",
-    "installPathPlaceholder": "Detectado automaticamente...",
+    "installPath": "Caminhos de instalação",
+    "installPathPlaceholder": "Adicionar caminho manualmente...",
     "detectPath": "Buscar",
+    "addPath": "Adicionar",
+    "removePath": "Remover caminho",
+    "noPaths": "Nenhum caminho configurado ainda. Pressione Buscar para detectar todas as instalações (Steam e Epic Games) automaticamente.",
+    "installPathsHelper": "Todas as instalações são detectadas automaticamente. Você pode adicionar caminhos manuais se o jogo estiver em um lugar incomum.",
+    "activePlatform": "Ativa",
     "platform": "Plataforma",
     "platformAutoDetect": "Detecção automática",
+    "platformHelper": "A plataforma em uso é detectada automaticamente pelo jogo em execução (Steam ou Epic Games).",
     "defaultMatchType": "Tipo de partida padrão",
     "autoStart": "Iniciar com o Windows",
     "autoStartDescription": "Abrir o RL Stats quando o computador ligar",
@@ -101,7 +107,7 @@
     "toasts": {
       "applied": {
         "title": "Configuração aplicada",
-        "message": "O arquivo RL foi configurado na porta {{port}}."
+        "message": "O arquivo RL foi configurado na porta {{port}} para {{count}} instalação(ões)."
       },
       "error": {
         "title": "Erro",

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
-import { useAnalytics, useSessionMatches, useInsights } from "@/hooks/useAnalytics";
+import { useAnalytics, useSessionMatches, useInsights, usePlayerAnalyticsMatches, usePlayerAnalyticsSummary } from "@/hooks/useAnalytics";
 import { useFriends } from "@/hooks/useFriends";
 import { useSettings } from "@/hooks/useSettings";
 import { PrimaryStatsRow, SecondaryStatsRow } from "@/components/analytics/StatsGrid";
@@ -16,7 +16,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildDayShareContext, buildWeekShareContext, buildSessionShareContext, buildSummaryShareContext } from "@/lib/shareContext";
-import type { AnalyticsPeriod, MatchSession, SessionMatch, PlaylistFilter, MatchTypeFilter, DataScope, AnalyticsData, InsightsData, ShareContext } from "@/lib/types";
+import type { AnalyticsPeriod, MatchSession, SessionMatch, PlaylistFilter, MatchTypeFilter, DataScope, AnalyticsData, InsightsData, ShareContext, PlayerAnalyticsMatch } from "@/lib/types";
 import {
   BarChart3,
   Clock,
@@ -32,6 +32,9 @@ import {
   Sparkles,
   Share2,
   Users,
+  TrendingUp,
+  TrendingDown,
+  UserRound,
 } from "lucide-react";
 
 function SessionCard({
@@ -270,6 +273,105 @@ function SessionMatchDetail({
   );
 }
 
+function PlayerMatchesPanel({
+  matches,
+  isLoading,
+  playerName,
+}: {
+  matches: PlayerAnalyticsMatch[];
+  isLoading: boolean;
+  playerName: string;
+}) {
+  const { t } = useTranslation(["analytics", "common"]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+        <UserRound size={15} className="text-accent-primary" />
+        {t("analytics:player.matchesTitle", { name: playerName })}
+      </h3>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+      ) : matches.length === 0 ? (
+        <p className="rounded-lg border border-border-subtle bg-bg-surface/60 px-4 py-3 text-xs text-text-muted">
+          {t("analytics:player.noMatches.description", {
+            defaultValue: "Este jugador no tiene partidas registradas en el período seleccionado.",
+          })}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {matches.map((m) => {
+            const startDate = new Date(m.start_time);
+            const timeStr = startDate.toLocaleDateString(i18n.language, {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            return (
+              <div
+                key={m.id}
+                className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+                  m.is_win
+                    ? "border-accent-success/20 bg-accent-success/5"
+                    : "border-accent-danger/20 bg-accent-danger/5"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs font-bold ${
+                      m.is_win
+                        ? "bg-accent-success/20 text-accent-success"
+                        : "bg-accent-danger/20 text-accent-danger"
+                    }`}
+                  >
+                    {m.is_win
+                      ? t("analytics:matchDetail.win")
+                      : t("analytics:matchDetail.loss")}
+                  </span>
+                  <span className="text-sm font-mono font-semibold text-text-primary">
+                    {m.score_blue} - {m.score_orange}
+                  </span>
+                  <span className="text-[10px] text-text-tertiary">{timeStr}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] text-text-tertiary">
+                  {m.is_overtime && (
+                    <span className="rounded bg-accent-warning/20 px-1.5 py-0.5 font-semibold text-accent-warning">
+                      {t("analytics:matchDetail.overtime")}
+                    </span>
+                  )}
+                  {m.was_comeback && (
+                    <span className="flex items-center gap-0.5 rounded bg-accent-success/15 px-1.5 py-0.5 font-semibold text-accent-success">
+                      <TrendingUp size={10} />
+                      {t("analytics:player.comebackTag")}
+                    </span>
+                  )}
+                  {m.was_collapse && (
+                    <span className="flex items-center gap-0.5 rounded bg-accent-danger/15 px-1.5 py-0.5 font-semibold text-accent-danger">
+                      <TrendingDown size={10} />
+                      {t("analytics:player.collapseTag")}
+                    </span>
+                  )}
+                  <span>
+                    {m.goals} {t("analytics:matchDetail.goals")} · {m.assists}{" "}
+                    {t("analytics:matchDetail.assists")} · {m.saves}{" "}
+                    {t("analytics:matchDetail.saves")}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InsightsPanel({
   insights,
   isLoading,
@@ -351,11 +453,20 @@ function InsightsPanel({
           </h4>
           <div className="space-y-3 text-xs">
             {insights.otGames && insights.otGames > 0 ? (
-              <div className="flex justify-between">
-                <span className="text-text-secondary">{t("analytics:insights.overtime", { count: insights.otGames })}</span>
-                <span className={(insights.otWinRate ?? 0) >= 50 ? "text-accent-success" : "text-accent-danger"}>
-                  {insights.otWinRate ?? 0}%
-                </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1.5 text-text-secondary">
+                    <Clock size={12} className="text-accent-warning" />
+                    {t("analytics:insights.overtime", { count: insights.otGames })}
+                  </span>
+                  <span className={(insights.otWinRate ?? 0) >= 50 ? "text-accent-success" : "text-accent-danger"}>
+                    {insights.otWinRate ?? 0}%
+                  </span>
+                </div>
+                <div className="flex gap-3 pl-5 text-[10px] text-text-tertiary">
+                  <span className="text-accent-success">{t("analytics:insights.wonCount", { count: insights.otWins ?? 0 })}</span>
+                  <span className="text-accent-danger">{t("analytics:insights.lostCount", { count: insights.otLosses ?? 0 })}</span>
+                </div>
               </div>
             ) : null}
             {insights.closeGames && insights.closeGames > 0 ? (
@@ -367,11 +478,39 @@ function InsightsPanel({
               </div>
             ) : null}
             {insights.blowoutGames && insights.blowoutGames > 0 ? (
-              <div className="flex justify-between">
-                <span className="text-text-secondary">{t("analytics:insights.blowouts", { count: insights.blowoutGames })}</span>
-                <span className={(insights.blowoutWinRate ?? 0) >= 50 ? "text-accent-success" : "text-accent-danger"}>
-                  {insights.blowoutWinRate ?? 0}%
+              <div className="space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">{t("analytics:insights.blowouts", { count: insights.blowoutGames })}</span>
+                  <span className={(insights.blowoutWinRate ?? 0) >= 50 ? "text-accent-success" : "text-accent-danger"}>
+                    {insights.blowoutWinRate ?? 0}%
+                  </span>
+                </div>
+                <div className="flex gap-3 pl-0 text-[10px] text-text-tertiary">
+                  <span className="flex items-center gap-1 text-accent-success">
+                    <TrendingUp size={11} /> {t("analytics:insights.wonCount", { count: insights.blowoutWins ?? 0 })}
+                  </span>
+                  <span className="flex items-center gap-1 text-accent-danger">
+                    <TrendingDown size={11} /> {t("analytics:insights.lostCount", { count: insights.blowoutLosses ?? 0 })}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+            {insights.comebackWins && insights.comebackWins > 0 ? (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-text-secondary">
+                  <TrendingUp size={12} className="text-accent-success" />
+                  {t("analytics:insights.comebacks", { count: insights.comebackWins })}
                 </span>
+                <span className="text-accent-success">{t("analytics:insights.wonCount", { count: insights.comebackWins })}</span>
+              </div>
+            ) : null}
+            {insights.collapseLosses && insights.collapseLosses > 0 ? (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-text-secondary">
+                  <TrendingDown size={12} className="text-accent-danger" />
+                  {t("analytics:insights.collapses", { count: insights.collapseLosses })}
+                </span>
+                <span className="text-accent-danger">{t("analytics:insights.lostCount", { count: insights.collapseLosses })}</span>
               </div>
             ) : null}
           </div>
@@ -432,19 +571,31 @@ export function AnalyticsPage() {
   const [playlist, setPlaylist] = useState<PlaylistFilter>("all");
   const [matchType, setMatchType] = useState<MatchTypeFilter>("all");
   const [scope, setScope] = useState<DataScope>("me");
+  const [playerId, setPlayerId] = useState<string | null>(null);
   const [selectedSession, setSelectedSession] = useState<MatchSession | null>(null);
   const [sessionShareOpen, setSessionShareOpen] = useState(false);
   const [sessionShareContext, setSessionShareContext] = useState<ShareContext | null>(null);
 
   const filters = useMemo(
-    () => ({ playlist, matchType, scope }),
-    [playlist, matchType, scope]
+    () => ({ playlist, matchType, scope, playerId }),
+    [playlist, matchType, scope, playerId]
   );
 
-  const hasActiveFilters = playlist !== "all" || matchType !== "all" || scope !== "me";
+  const hasActiveFilters = playlist !== "all" || matchType !== "all" || scope !== "me" || !!playerId;
 
   const { data: result, isLoading, isError } = useAnalytics(period, filters);
   const { data: insights, isLoading: insightsLoading } = useInsights(period, filters);
+
+  // Per-profile analytics: when a friend/player profile is selected, show
+  // their summary, insights and match history instead of the local data.
+  const {
+    data: playerSummary,
+    isLoading: playerSummaryLoading,
+  } = usePlayerAnalyticsSummary(playerId, period, filters);
+  const {
+    data: playerMatches,
+    isLoading: playerMatchesLoading,
+  } = usePlayerAnalyticsMatches(playerId, period, filters);
 
   const {
     data: sessionMatches,
@@ -463,6 +614,21 @@ export function AnalyticsPage() {
 
   const friendsPresent = useMemo(() => friends?.map((f) => f.name) ?? [], [friends]);
 
+  const playerOptions = useMemo(
+    () =>
+      (friends ?? [])
+        .filter((f) => f.primary_id)
+        .map((f) => ({ primary_id: f.primary_id, name: f.name })),
+    [friends],
+  );
+
+  const selectedPlayerName = useMemo(
+    () =>
+      playerOptions.find((p) => p.primary_id === playerId)?.name ??
+      username,
+    [playerOptions, playerId, username],
+  );
+
   const handleShareSession = useCallback(() => {
     if (!selectedSession) return;
     const ctx = buildSessionShareContext(selectedSession, [], username, i18n.language);
@@ -474,6 +640,7 @@ export function AnalyticsPage() {
     setPlaylist("all");
     setMatchType("all");
     setScope("me");
+    setPlayerId(null);
   }, []);
 
   const [shareOpen, setShareOpen] = useState(false);
@@ -544,6 +711,9 @@ export function AnalyticsPage() {
             onMatchTypeChange={setMatchType}
             scope={scope}
             onScopeChange={setScope}
+            playerId={playerId}
+            onPlayerChange={setPlayerId}
+            playerOptions={playerOptions}
             isLoading={isLoading}
           />
         </div>
@@ -574,7 +744,7 @@ export function AnalyticsPage() {
         />
       )}
 
-      {!isLoading && !isError && result && (
+      {!isLoading && !isError && result && !playerId && (
         <div className="flex flex-col gap-6">
           {result.data.totalMatches === 0 ? (
             <EmptyState
@@ -626,6 +796,46 @@ export function AnalyticsPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {playerId && (
+        <div className="flex flex-col gap-6">
+          {playerSummaryLoading ? (
+            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-28 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : playerSummary && playerSummary.totalMatches > 0 ? (
+            <>
+              <PrimaryStatsRow data={playerSummary} scope="me" />
+              <SecondaryStatsRow
+                data={playerSummary}
+                scope="me"
+                streak={{ best: playerSummary.bestStreak, current: playerSummary.currentStreak }}
+              />
+              <InsightsPanel
+                insights={insights}
+                isLoading={insightsLoading}
+                summary={playerSummary}
+              />
+            </>
+          ) : (
+            <EmptyState
+              icon={BarChart3}
+              title={t("analytics:player.noMatches.title", { defaultValue: "Sin partidas" })}
+              description={t("analytics:player.noMatches.description", {
+                defaultValue: "Este jugador no tiene partidas registradas en el período seleccionado.",
+              })}
+            />
+          )}
+
+          <PlayerMatchesPanel
+            matches={playerMatches ?? []}
+            isLoading={playerMatchesLoading}
+            playerName={selectedPlayerName}
+          />
         </div>
       )}
 

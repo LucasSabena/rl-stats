@@ -1,5 +1,48 @@
 # Changelog
 
+## v2.5.0 — Per-profile analytics, overtime & comeback stats
+
+### Added
+
+- **Multiple Rocket League installs (Steam + Epic Games).** The app now
+  detects every install on the machine and stores them in `rl_paths`. The
+  Stats API config (`DefaultStatsAPI.ini`) is written into **all** installs
+  automatically on startup and whenever settings are saved, so stats work no
+  matter which platform launches the game.
+- **Automatic active-platform detection.** The platform of the running
+  install (Steam/Epic) is derived from the `RocketLeague.exe` path and
+  broadcast in the `game-status-changed` event. The live identity resolver
+  prefers the in-match `PrimaryId` matching the active platform, so stats and
+  profiles resolve to the correct account per platform without any manual
+  switch.
+- **Settings UI: install paths list.** Every detected install is listed with
+  its platform badge and the active one is highlighted; manual paths can be
+  added and removed. Game Config → Stats API now configures every path at
+  once.
+- `sync_rl_installations` command: reconciles configured paths with detected
+  installs and (re)writes all INI files.
+- **Per-profile analytics (friends & players).** On the Analytics page you can
+  now pick any recorded player (friends, teammates, opponents) from the
+  profile selector and see their own summary, insights and match list with
+  results — win/loss, score, overtime, comeback and collapse tags.
+- **Overtime win/loss breakdown.** Insights now report how many overtime
+  games were won vs lost (`otWins` / `otLosses`), not just a win rate.
+- **Blowout wins vs losses.** Palizas (matches decided by 4+ goals) are now
+  counted separately: `blowoutWins` / `blowoutLosses`.
+- **Comebacks & collapses.** New stats reconstructed from the goal timeline
+  of every match: `comebackWins` (was losing → won) and `collapseLosses`
+  (was winning → lost).
+
+### Fixed
+
+- A user with both Steam and Epic installs only had the API configured on one
+  of them; launching the game from the other produced no data.
+- Legacy single-path settings are seamlessly migrated into the install list.
+- Kickoff-goal detection could silently stop counting after the first goal of
+  a match on streams without round markers (the kickoff anchor is now re-armed
+  after every goal and on every score change).
+- Insights mixed blowout wins and losses into a single "paliza" counter.
+
 ## v2.4.0 — Correct ranks per mode & manual MMR
 
 ### Added

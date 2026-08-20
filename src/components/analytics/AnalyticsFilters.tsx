@@ -12,6 +12,9 @@ interface AnalyticsFiltersProps {
   onMatchTypeChange: (matchType: MatchTypeFilter) => void;
   scope: DataScope;
   onScopeChange: (scope: DataScope) => void;
+  playerId: string | null;
+  onPlayerChange: (playerId: string | null) => void;
+  playerOptions: { primary_id: string; name: string }[];
   isLoading?: boolean;
 }
 
@@ -46,6 +49,9 @@ export function AnalyticsFilters({
   onMatchTypeChange,
   scope,
   onScopeChange,
+  playerId,
+  onPlayerChange,
+  playerOptions,
   isLoading,
 }: AnalyticsFiltersProps) {
   const { t } = useTranslation(["analytics", "common"]);
@@ -58,6 +64,23 @@ export function AnalyticsFilters({
 
       <div className="relative w-full sm:w-auto min-w-[140px]">
         <Select
+          value={playerId ?? ""}
+          onChange={(val) => onPlayerChange(val || null)}
+          options={[
+            { value: "", label: t("analytics:filters.player.me") },
+            ...playerOptions.map((p) => ({
+              value: p.primary_id,
+              label: p.name,
+            })),
+          ]}
+          aria-label={t("analytics:filters.player.me")}
+          disabled={isLoading}
+          className="w-full"
+        />
+      </div>
+
+      <div className="relative w-full sm:w-auto min-w-[140px]">
+        <Select
           value={scope}
           onChange={(val) => onScopeChange(val as DataScope)}
           options={[
@@ -65,7 +88,7 @@ export function AnalyticsFilters({
             { value: "team", label: t("analytics:filters.scope.team") }
           ]}
           aria-label={t("analytics:filters.scope.team")}
-          disabled={isLoading}
+          disabled={isLoading || !!playerId}
           className="w-full"
         />
       </div>

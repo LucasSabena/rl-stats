@@ -12,10 +12,16 @@ export const settingsSchema = z.object({
   playerName: z.string(),
   autoStart: z.boolean(),
   rlPath: z.preprocess(emptyStringToNull, z.string().nullable()),
+  rlPaths: z.array(z.string()),
   platform: z.preprocess(
     emptyStringToNull,
     z.enum(["steam", "epic"]).nullable(),
   ),
+  activePlatform: z
+    .enum(["steam", "epic"])
+    .nullable()
+    .default(null)
+    .transform((value) => value ?? null),
   defaultMatchType: z.enum([
     "ranked",
     "casual",

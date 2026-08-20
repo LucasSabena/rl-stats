@@ -82,7 +82,7 @@ pub async fn set_local_mmr(
         .filter(|id| !id.is_empty())
         .ok_or_else(|| "No hay un perfil local configurado para guardar MMR.".to_string())?;
 
-    if mmr < 0 || mmr > 3000 {
+    if !(0..=3000).contains(&mmr) {
         return Err("El MMR debe estar entre 0 y 3000.".into());
     }
 

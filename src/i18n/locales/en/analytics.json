@@ -65,6 +65,10 @@
     "bestHourDetail": "{{hour}}:00 — WR ",
     "situational": "Situational perf.",
     "overtime": "Overtime ({{count}}g)",
+    "wonCount": "{{count}} won",
+    "lostCount": "{{count}} lost",
+    "comebacks": "Comebacks ({{count}}g)",
+    "collapses": "Collapses ({{count}}g)",
     "closeGames": "Close games (±1 goal, {{count}}g)",
     "blowouts": "Blowouts (+4 goals, {{count}}g)",
     "contribution": "Team contribution",
@@ -119,7 +123,19 @@
       "description": "Could not load performance data."
     }
   },
+  "player": {
+    "matchesTitle": "Matches of {{name}}",
+    "noMatches": {
+      "title": "No matches",
+      "description": "This player has no recorded matches in the selected period."
+    },
+    "comebackTag": "Comeback",
+    "collapseTag": "Collapse"
+  },
   "filters": {
+    "player": {
+      "me": "My profile"
+    },
     "scope": {
       "me": "Just me",
       "team": "My team"
