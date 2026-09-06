@@ -17,6 +17,11 @@ pub struct Match {
     pub duration_seconds: i32,
     pub match_type: Option<String>,
     pub playlist: Option<String>,
+    /// Post-match self-reported mood (`very_happy` | `happy` | `neutral` |
+    /// `angry` | `very_angry`), `None` when the player never rated the match.
+    /// Added in migration v22; defaults to `None` for old rows.
+    #[serde(default)]
+    pub mood: Option<String>,
 }
 
 /// Represents a player in a match.

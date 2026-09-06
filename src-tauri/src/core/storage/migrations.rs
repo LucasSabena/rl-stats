@@ -259,6 +259,16 @@ pub static MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON sync_outbox(entity_type, entity_key);
         CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at);",
     },
+    Migration {
+        version: 21,
+        name: "add_game_clock_to_match_events",
+        sql: "ALTER TABLE match_events ADD COLUMN game_time_remaining REAL;",
+    },
+    Migration {
+        version: 22,
+        name: "add_mood_to_matches",
+        sql: "ALTER TABLE matches ADD COLUMN mood TEXT;",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

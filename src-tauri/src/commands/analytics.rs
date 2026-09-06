@@ -586,7 +586,7 @@ pub async fn get_session_matches(
             "SELECT m.id, m.guid, m.start_time, m.end_time, m.arena,
                 m.score_blue, m.score_orange, m.winner,
                 m.is_online, m.is_overtime, m.duration_seconds,
-                m.match_type, m.playlist
+                m.match_type, m.playlist, m.mood
          FROM matches m
          WHERE m.start_time >= ?1 AND m.start_time <= ?2
          ORDER BY m.start_time ASC",
@@ -610,6 +610,7 @@ pub async fn get_session_matches(
                 let duration_seconds: i32 = row.get(10)?;
                 let match_type: Option<String> = row.get(11)?;
                 let playlist: Option<String> = row.get(12)?;
+                let mood: Option<String> = row.get(13).unwrap_or(None);
 
                 Ok(serde_json::json!({
                     "id": match_id,
@@ -625,6 +626,7 @@ pub async fn get_session_matches(
                     "duration_seconds": duration_seconds,
                     "match_type": match_type,
                     "playlist": playlist,
+                    "mood": mood,
                 }))
             },
         )
@@ -756,6 +758,7 @@ pub async fn get_session_matches(
             "duration_seconds": m["duration_seconds"],
             "match_type": m["match_type"],
             "playlist": m["playlist"],
+            "mood": m["mood"],
             "players": players,
             "local_team": local_team,
             "is_win": is_win,
@@ -1051,4 +1054,166 @@ fn get_player_period_stats(
         })
         .map_err(|e| e.to_string())?;
     Ok((avg_score, total_assists, peak_speed))
+}
+
+// ─── Session-pattern analytics (fatigue, chemistry, custom builder) ─────────
+
+/// Shared date window + identity resolution for the pattern endpoints.
+/// `period.days == 0` (the "session" view) falls back to a year of history,
+/// mirroring `get_insights`.
+fn pattern_window(
+    pool: &crate::core::storage::DbPool,
+    period_days: i32,
+    player_id: Option<String>,
+) -> Result<(String, String, String), String> {
+    let settings = get_settings(pool).unwrap_or_default();
+    let identity = match player_id {
+        Some(pid) if !pid.trim().is_empty() => pid,
+        _ => settings.local_primary_id.clone().unwrap_or_default(),
+    };
+    if identity.trim().is_empty() {
+        return Err("no identity".into());
+    }
+    let days = if period_days == 0 {
+        365
+    } else {
+        period_days as i64
+    };
+    let end = chrono::Utc::now();
+    let start = end - chrono::Duration::days(days);
+    Ok((
+        identity,
+        start.format("%Y-%m-%d").to_string(),
+        end.format("%Y-%m-%d").to_string(),
+    ))
+}
+
+fn unavailable() -> serde_json::Value {
+    serde_json::json!({ "available": false })
+}
+
+/// Fatigue curve: win rate by game number inside the session, by 15-minute
+/// buckets, momentum splits and the detected drop-off points.
+#[tauri::command]
+pub async fn get_session_curve(
+    state: State<'_, AppState>,
+    period: AnalyticsPeriod,
+    playlist: Option<String>,
+    match_type: Option<String>,
+    player_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let (identity, start_str, end_str) = match pattern_window(pool, period.days, player_id) {
+        Ok(window) => window,
+        Err(_) => return Ok(unavailable()),
+    };
+    let settings = get_settings(pool).unwrap_or_default();
+    crate::core::patterns::get_session_curve(
+        pool,
+        &identity,
+        &start_str,
+        &end_str,
+        playlist.as_deref(),
+        match_type.as_deref(),
+        settings.session_gap_minutes,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Teammate chemistry: win rate with every player who shared the local
+/// player's team, plus results by team size.
+#[tauri::command]
+pub async fn get_teammate_stats(
+    state: State<'_, AppState>,
+    period: AnalyticsPeriod,
+    playlist: Option<String>,
+    match_type: Option<String>,
+    player_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let (identity, start_str, end_str) = match pattern_window(pool, period.days, player_id) {
+        Ok(window) => window,
+        Err(_) => return Ok(unavailable()),
+    };
+    crate::core::patterns::get_teammate_stats(
+        pool,
+        &identity,
+        &start_str,
+        &end_str,
+        playlist.as_deref(),
+        match_type.as_deref(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Generic breakdown for the custom-analysis builder: bucket matches by
+/// `dimension` (`hour`, `weekday`, `playlist`, `arena`, `match_type`, `mood`,
+/// `game_number`, `minute_bucket`, `prev_result`).
+#[tauri::command]
+pub async fn get_custom_breakdown(
+    state: State<'_, AppState>,
+    period: AnalyticsPeriod,
+    dimension: String,
+    playlist: Option<String>,
+    match_type: Option<String>,
+    player_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    const DIMENSIONS: &[&str] = &[
+        "hour",
+        "weekday",
+        "playlist",
+        "arena",
+        "match_type",
+        "mood",
+        "game_number",
+        "minute_bucket",
+        "prev_result",
+    ];
+    if !DIMENSIONS.contains(&dimension.as_str()) {
+        return Err(format!("Unknown dimension: {dimension}"));
+    }
+    let pool = &state.db_pool;
+    let (identity, start_str, end_str) = match pattern_window(pool, period.days, player_id) {
+        Ok(window) => window,
+        Err(_) => return Ok(unavailable()),
+    };
+    let settings = get_settings(pool).unwrap_or_default();
+    crate::core::patterns::get_custom_breakdown(
+        pool,
+        &identity,
+        &start_str,
+        &end_str,
+        playlist.as_deref(),
+        match_type.as_deref(),
+        settings.session_gap_minutes,
+        &dimension,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// One-shot kickoff-goal recount from the persisted goal timeline.
+/// Refreshes the daily rollups afterwards so the summary cards pick up the
+/// corrected totals.
+#[tauri::command]
+pub async fn recompute_kickoff_goals(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let settings = get_settings(pool).unwrap_or_default();
+    let mut report = crate::core::patterns::recompute_kickoff_goals(
+        pool,
+        settings.kickoff_goal_threshold_seconds,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let player_names = storage::identity_candidate_names(&settings);
+    match storage::rebuild_daily_rollups_for_identity(
+        pool,
+        settings.local_primary_id.as_deref(),
+        &player_names,
+    ) {
+        Ok(()) => report["rollupsRebuilt"] = serde_json::json!(true),
+        Err(e) => report["rollupsRebuilt"] = serde_json::json!(format!("failed: {e}")),
+    }
+    Ok(report)
 }

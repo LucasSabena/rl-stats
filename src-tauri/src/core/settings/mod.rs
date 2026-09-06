@@ -870,9 +870,13 @@ pub fn inspect_rl_installation(path: &str, platform: Option<&str>) -> AppResult<
 /// "Epic Games", Steam installs under a Steam library. Falls back to "unknown".
 pub fn platform_for_path(path: &str) -> String {
     let lower = path.to_ascii_lowercase().replace('\\', "/");
-    if lower.contains("epic") {
+    if lower.contains("epic") || lower.contains("epicgameslauncher") || lower.contains("heroic") {
         "epic".into()
-    } else if lower.contains("steam") {
+    } else if lower.contains("steam")
+        || lower.contains("steamapps")
+        || lower.contains("steamlibrary")
+        || lower.contains("252950")
+    {
         "steam".into()
     } else {
         "unknown".into()
@@ -1157,6 +1161,19 @@ mod tests {
             "steam"
         );
         assert_eq!(platform_for_path("C:/Games/Rocket League"), "unknown");
+        // Launcher-adjacent spellings and Steam app-id layouts
+        assert_eq!(
+            platform_for_path("C:/ProgramData/Epic/EpicGamesLauncher/Data/Manifests"),
+            "epic"
+        );
+        assert_eq!(
+            platform_for_path("E:/SteamLibrary/steamapps/common/rocketleague/Binaries/Win64"),
+            "steam"
+        );
+        assert_eq!(
+            platform_for_path("D:/Games/steamapps/common/rocketleague"),
+            "steam"
+        );
     }
 
     #[test]

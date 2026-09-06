@@ -81,7 +81,8 @@
       "saves": "Paradas",
       "shots": "Tiros",
       "demos": "Demos"
-    }
+    },
+    "byArena": "Por arena"
   },
   "sessions": {
     "title": "Historial de sesiones",
@@ -102,7 +103,8 @@
   },
   "matchDetail": {
     "loading": "Cargando partidas...",
-    "win": "V",    "loss": "D",
+    "win": "V",
+    "loss": "D",
     "overtime": "OT",
     "points": "pts",
     "goals": "goles",
@@ -161,5 +163,95 @@
       "training": "Entrenamiento",
       "other": "Otras"
     }
+  },
+  "heatmap": {
+    "title": "Mapa semanal",
+    "subtitle": "Tu win rate por hora y día de la semana, en tu horario local.",
+    "weekdays": {
+      "mon": "lun",
+      "tue": "mar",
+      "wed": "mié",
+      "thu": "jue",
+      "fri": "vie",
+      "sat": "sáb",
+      "sun": "dom"
+    },
+    "cellTooltip": "{{day}} {{hour}}h: {{played}}j, {{winRate}}% WR",
+    "cellEmpty": "Sin partidos",
+    "legendBad": "Mal",
+    "legendEven": "Parejo",
+    "legendGood": "Bien",
+    "sampleNote": "Celdas con menos de {{count}} partidos se atenúan."
+  },
+  "fatigue": {
+    "title": "Curva de sesión",
+    "tabs": {
+      "game": "Por partido",
+      "minutes": "Por minutos"
+    },
+    "subtitle": "{{matches}} partidos en {{sessions}} sesiones",
+    "played": "Partidos",
+    "breakpointTag": "quiebre",
+    "breakpointTitle": "Punto de quiebre:",
+    "breakpointGameDetail": "tu WR cae de {{before}}% a {{after}}% a partir del partido {{n}}. Conviene cortar o pausar ahí.",
+    "breakpointMinuteDetail": "tu WR cae de {{before}}% a {{after}}% después de {{minutes}} min de sesión. Conviene pausar ahí.",
+    "momentum": {
+      "afterWin": "Tras victoria",
+      "afterLoss": "Tras derrota",
+      "firstOfDay": "1° del día",
+      "restOfDay": "Resto del día"
+    },
+    "sampleNote": "{{count}} partidos"
+  },
+  "chemistry": {
+    "title": "Química con compañeros",
+    "friendTag": "Amigo",
+    "soloq": "SoloQ",
+    "teamSize": "Equipo {{count}}"
+  },
+  "mood": {
+    "title": "El ánimo juega",
+    "subtitle": "{{rated}} de {{total}} partidos calificados"
+  },
+  "builder": {
+    "title": "Análisis personalizado",
+    "dimension": "Dimensión",
+    "metric": "Métrica",
+    "chartType": "Gráfico",
+    "dimensions": {
+      "hour": "Hora del día",
+      "weekday": "Día de semana",
+      "playlist": "Playlist",
+      "arena": "Arena",
+      "match_type": "Tipo de partida",
+      "mood": "Ánimo",
+      "game_number": "N° en sesión",
+      "minute_bucket": "Minuto de sesión",
+      "prev_result": "Resultado previo"
+    },
+    "metrics": {
+      "winRate": "Win Rate %",
+      "played": "Partidos",
+      "avgGoals": "Goles prom.",
+      "avgSaves": "Paradas prom.",
+      "avgShots": "Tiros prom.",
+      "avgAssists": "Asist. prom.",
+      "avgDemos": "Demos prom.",
+      "avgScore": "Puntaje prom."
+    },
+    "kinds": {
+      "bars": "Barras",
+      "line": "Línea",
+      "area": "Área"
+    },
+    "noData": "No hay datos para esta combinación.",
+    "save": "Guardar",
+    "savePlaceholder": "Nombre de esta vista…"
+  },
+  "kickoff": {
+    "recount": "Recalcular goles de saque",
+    "recounting": "Recalculando…",
+    "recountDone": "Listo: {{found}} goles en {{updated}} partidos.",
+    "recountError": "No se pudo recalcular."
   }
 }

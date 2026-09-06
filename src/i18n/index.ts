@@ -17,6 +17,7 @@ import proConfigs from "./locales/es/pro-configs.json";
 import share from "./locales/es/share.json";
 import presets from "./locales/es/presets.json";
 import trainingPacks from "./locales/es/training-packs.json";
+import mood from "./locales/es/mood.json";
 
 import commonEn from "./locales/en/common.json";
 import liveEn from "./locales/en/live.json";
@@ -33,6 +34,7 @@ import proConfigsEn from "./locales/en/pro-configs.json";
 import shareEn from "./locales/en/share.json";
 import presetsEn from "./locales/en/presets.json";
 import trainingPacksEn from "./locales/en/training-packs.json";
+import moodEn from "./locales/en/mood.json";
 
 import commonPt from "./locales/pt/common.json";
 import livePt from "./locales/pt/live.json";
@@ -49,6 +51,7 @@ import proConfigsPt from "./locales/pt/pro-configs.json";
 import sharePt from "./locales/pt/share.json";
 import presetsPt from "./locales/pt/presets.json";
 import trainingPacksPt from "./locales/pt/training-packs.json";
+import moodPt from "./locales/pt/mood.json";
 
 i18n
   .use(LanguageDetector)
@@ -71,6 +74,7 @@ i18n
         share,
         presets,
         trainingPacks,
+        mood,
       },
       en: {
         common: commonEn,
@@ -88,6 +92,7 @@ i18n
         share: shareEn,
         presets: presetsEn,
         trainingPacks: trainingPacksEn,
+        mood: moodEn,
       },
       pt: {
         common: commonPt,
@@ -105,6 +110,7 @@ i18n
         share: sharePt,
         presets: presetsPt,
         trainingPacks: trainingPacksPt,
+        mood: moodPt,
       },
     },
     fallbackLng: "es",
@@ -125,6 +131,7 @@ i18n
       "share",
       "presets",
       "trainingPacks",
+      "mood",
     ],
     defaultNS: "common",
     interpolation: {

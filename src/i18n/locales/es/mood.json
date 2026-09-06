@@ -1,0 +1,18 @@
+{
+  "pickerLabel": "Ánimo del partido",
+  "editLabel": "Ánimo",
+  "unrated": "Sin calificar",
+  "modal": {
+    "title": "¿Cómo te sentiste este partido?",
+    "description": "Registrá tu ánimo para descubrir cómo afecta tu rendimiento.",
+    "skip": "Ahora no",
+    "error": "No se pudo guardar. Probá de nuevo."
+  },
+  "options": {
+    "very_happy": "Genial",
+    "happy": "Feliz",
+    "neutral": "Neutro",
+    "angry": "Enojado",
+    "very_angry": "Furioso"
+  }
+}

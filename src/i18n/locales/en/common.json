@@ -72,7 +72,8 @@
   },
   "accessibility": {
     "close": "Close",
-    "loading": "Loading"
+    "loading": "Loading",
+    "dialog": "Dialog"
   },
   "brand": {
     "name": "RL Stats",

@@ -288,3 +288,20 @@ pub async fn update_match_cmd(
         }
     }
 }
+
+/// Set (or clear, passing null/empty) the self-reported post-match mood.
+#[tauri::command]
+pub async fn set_match_mood_cmd(
+    state: State<'_, AppState>,
+    match_id: i64,
+    mood: Option<String>,
+) -> Result<(), String> {
+    let pool = &state.db_pool;
+    match storage::set_match_mood(pool, match_id, mood.as_deref()) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            error!(error = %e, match_id, "Failed to set match mood");
+            Err(e.to_string())
+        }
+    }
+}

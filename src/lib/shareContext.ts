@@ -338,3 +338,130 @@ export function buildSummaryShareContext(
   };
 }
 
+
+/* ─── Session-pattern share builders ─── */
+
+export function buildFatigueShareContext(
+  curve: {
+    totalMatches: number;
+    byGameNumber: { label: string; played: number; winRate: number }[];
+    breakpointGame?: { splitAfter?: number; beforeWr: number; afterWr: number } | null;
+    breakpointMinute?: { splitAfterMinutes?: number; beforeWr: number; afterWr: number } | null;
+  },
+  friends: string[],
+  username: string,
+  dateLabel: string,
+): ShareContext {
+  const early = curve.byGameNumber.slice(0, 3);
+  const earlyPlayed = early.reduce((acc, p) => acc + p.played, 0);
+  const earlyWon = early.reduce((acc, p) => acc + Math.round((p.winRate / 100) * p.played), 0);
+  const earlyWr = earlyPlayed > 0 ? Math.round((earlyWon / earlyPlayed) * 100) : 0;
+
+  const bp = curve.breakpointGame ?? null;
+  const stats: ShareStat[] = [
+    { label: "WR ARRANQUE", value: `${earlyWr}%`, highlight: true },
+    { label: "PARTIDOS", value: String(curve.totalMatches) },
+  ];
+  if (bp && bp.splitAfter !== undefined) {
+    stats.push({ label: `HASTA PARTIDO ${bp.splitAfter}`, value: `${bp.beforeWr}%` });
+    stats.push({ label: "DESPUÉS", value: `${bp.afterWr}%` });
+  }
+  const bpm = curve.breakpointMinute;
+  if (bpm && bpm.splitAfterMinutes !== undefined) {
+    stats.push({ label: `PUNTO QUIEBRE`, value: `${bpm.splitAfterMinutes} min` });
+  }
+
+  return {
+    type: "week",
+    title: bp ? "Mi curva de fatiga" : "¿Cuándo rindo más?",
+    stats,
+    friendsPresent: friends,
+    username,
+    win: (bp?.beforeWr ?? earlyWr) >= 50,
+    dateLabel,
+  };
+}
+
+export function buildChemistryShareContext(
+  best: { name: string; played: number; winRate: number } | null,
+  totalTeammates: number,
+  friends: string[],
+  username: string,
+  dateLabel: string,
+): ShareContext {
+  const stats: ShareStat[] = best
+    ? [
+        { label: "MEJOR DUO", value: best.name.toUpperCase().slice(0, 14), highlight: true },
+        { label: "WR JUNTOS", value: `${best.winRate}%`, highlight: true },
+        { label: "PARTIDOS", value: String(best.played) },
+        { label: "COMPAÑEROS", value: String(totalTeammates) },
+      ]
+    : [{ label: "COMPAÑEROS", value: String(totalTeammates), highlight: true }];
+
+  return {
+    type: "week",
+    title: "Química con compañeros",
+    stats,
+    friendsPresent: friends,
+    username,
+    win: (best?.winRate ?? 0) >= 50,
+    dateLabel,
+  };
+}
+
+export function buildMoodShareContext(
+  best: { label: string; played: number; winRate: number } | null,
+  worst: { label: string; played: number; winRate: number } | null,
+  rated: number,
+  total: number,
+  friends: string[],
+  username: string,
+  dateLabel: string,
+): ShareContext {
+  const stats: ShareStat[] = [
+    {
+      label: "ÁnIMO TOP",
+      value: best ? `${best.winRate}%` : "—",
+      highlight: true,
+    },
+  ];
+  if (best) stats.push({ label: best.label.toUpperCase().slice(0, 14), value: `${best.played}j` });
+  if (worst && worst.label !== best?.label) {
+    stats.push({ label: worst.label.toUpperCase().slice(0, 14), value: `${worst.winRate}%` });
+  }
+  stats.push({ label: "CALIFICADOS", value: `${rated}/${total}` });
+
+  return {
+    type: "week",
+    title: "¿Cómo juega mi ánimo?",
+    stats,
+    friendsPresent: friends,
+    username,
+    win: (best?.winRate ?? 0) >= 50,
+    dateLabel,
+  };
+}
+
+export function buildCustomShareContext(
+  title: string,
+  top: { label: string; played: number; winRate: number }[],
+  friends: string[],
+  username: string,
+  dateLabel: string,
+): ShareContext {
+  const stats: ShareStat[] = top.slice(0, 4).map((b, i) => ({
+    label: b.label.toUpperCase().slice(0, 14),
+    value: `${b.winRate}%`,
+    highlight: i === 0,
+  }));
+
+  return {
+    type: "week",
+    title,
+    stats,
+    friendsPresent: friends,
+    username,
+    win: (top[0]?.winRate ?? 0) >= 50,
+    dateLabel,
+  };
+}

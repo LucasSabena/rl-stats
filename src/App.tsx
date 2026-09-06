@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "@/components/layout/AppShell";
 import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
+import { MatchMoodModal } from "@/components/mood/MatchMoodModal";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { CURRENT_ONBOARDING_VERSION } from "@/stores/settingsStore";
 import { useAutoUpdateCheck } from "@/hooks/useAutoUpdateCheck";
@@ -190,6 +191,7 @@ function AppContent() {
         )}
 
         <AccountMismatchDialog />
+        <MatchMoodModal />
       </>
     </BrowserRouter>
   );

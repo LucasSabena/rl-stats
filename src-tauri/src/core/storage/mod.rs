@@ -3,7 +3,7 @@ use crate::core::models::{
     HeadToHeadRecord, Match, MatchEvent, Player, SessionSummary, UserPreset,
 };
 use crate::error::{AppError, AppResult};
-use chrono::{DateTime, Timelike, Utc};
+use chrono::{DateTime, Datelike, Local, Timelike, Utc};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
@@ -127,6 +127,40 @@ pub fn get_conn(pool: &DbPool) -> AppResult<PooledConnection<SqliteConnectionMan
 
 fn normalize_player_name(name: &str) -> String {
     name.trim().to_ascii_lowercase()
+}
+
+// ─── Local-time analytics helpers ────────────────────────────────────────────
+// Match timestamps are persisted in UTC (`Utc::now().to_rfc3339()`), but every
+// user-facing time bucket (best hour, heatmaps, daily rollups) must be
+// computed in the machine's local timezone. Bucketing on the raw UTC hour is
+// what made "best hour" show apparently random hours (e.g. a 21:00 session in
+// UTC-3 showed up as 00:00).
+
+/// Minimum matches in a bucket before it can be highlighted as "best".
+/// Backend and frontend share this value; hours/days below it are still
+/// listed, just never picked as the headline.
+pub const MIN_INSIGHT_SAMPLE: i32 = 3;
+
+/// Hour of day (0-23) of an RFC3339 timestamp in local time.
+pub fn local_hour(start_time: &str) -> Option<u32> {
+    DateTime::parse_from_rfc3339(start_time)
+        .ok()
+        .map(|dt| dt.with_timezone(&Local).hour())
+}
+
+/// Local weekday of an RFC3339 timestamp, Monday = 0 … Sunday = 6.
+pub fn local_weekday(start_time: &str) -> Option<u32> {
+    DateTime::parse_from_rfc3339(start_time)
+        .ok()
+        .map(|dt| dt.with_timezone(&Local).weekday().num_days_from_monday())
+}
+
+/// Calendar date (`YYYY-MM-DD`) of an RFC3339 timestamp in local time.
+/// Falls back to today's local date when the timestamp cannot be parsed.
+pub fn local_date_string(start_time: &str) -> String {
+    DateTime::parse_from_rfc3339(start_time)
+        .map(|dt| dt.with_timezone(&Local).format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|_| Local::now().format("%Y-%m-%d").to_string())
 }
 
 fn weighted_avg_duration_sql() -> &'static str {
@@ -353,12 +387,26 @@ pub(crate) fn insert_match_event_conn(
     event_type: &str,
     event_data: &str,
     occurred_at: DateTime<Utc>,
+    game_time_remaining: Option<i32>,
 ) -> AppResult<()> {
-    conn.execute(
-        "INSERT INTO match_events (match_id, event_type, event_data, occurred_at) VALUES (?1, ?2, ?3, ?4)",
-        params![match_id, event_type, event_data, occurred_at.to_rfc3339()],
-    )
-    .map_err(|e| AppError::StorageError(e.to_string()))?;
+    // `game_time_remaining` was added in migration v21; older databases (or a
+    // partially applied migration state in tests) may not have the column yet.
+    let has_clock_col = conn
+        .prepare("SELECT game_time_remaining FROM match_events LIMIT 0")
+        .is_ok();
+    if has_clock_col {
+        conn.execute(
+            "INSERT INTO match_events (match_id, event_type, event_data, occurred_at, game_time_remaining) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![match_id, event_type, event_data, occurred_at.to_rfc3339(), game_time_remaining],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    } else {
+        conn.execute(
+            "INSERT INTO match_events (match_id, event_type, event_data, occurred_at) VALUES (?1, ?2, ?3, ?4)",
+            params![match_id, event_type, event_data, occurred_at.to_rfc3339()],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    }
 
     let id = conn.last_insert_rowid();
     sync::enqueue_upsert_conn(
@@ -494,7 +542,55 @@ pub fn insert_match_event(
     occurred_at: DateTime<Utc>,
 ) -> AppResult<()> {
     let conn = get_conn(pool)?;
-    insert_match_event_conn(&conn, match_id, event_type, event_data, occurred_at)
+    insert_match_event_conn(&conn, match_id, event_type, event_data, occurred_at, None)
+}
+
+/// Insert a match event with the game-clock reading attached (v21+).
+pub fn insert_match_event_with_clock(
+    pool: &DbPool,
+    match_id: i64,
+    event_type: &str,
+    event_data: &str,
+    occurred_at: DateTime<Utc>,
+    game_time_remaining: Option<i32>,
+) -> AppResult<()> {
+    let conn = get_conn(pool)?;
+    insert_match_event_conn(
+        &conn,
+        match_id,
+        event_type,
+        event_data,
+        occurred_at,
+        game_time_remaining,
+    )
+}
+
+/// Tiny key/value flag store on top of `app_settings` for one-off data
+/// repairs (migration side-effects that need Rust code, not just SQL).
+pub fn get_kv_flag(pool: &DbPool, key: &str) -> bool {
+    let conn = match get_conn(pool) {
+        Ok(conn) => conn,
+        Err(_) => return false,
+    };
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        params![key],
+        |row| row.get::<_, String>(0),
+    )
+    .map(|value| value == "1")
+    .unwrap_or(false)
+}
+
+/// Mark a one-off repair flag as done.
+pub fn set_kv_flag(pool: &DbPool, key: &str) -> AppResult<()> {
+    let conn = get_conn(pool)?;
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, '1')
+         ON CONFLICT(key) DO UPDATE SET value = '1'",
+        params![key],
+    )
+    .map_err(|e| AppError::StorageError(e.to_string()))?;
+    Ok(())
 }
 
 /// Insert a session summary.
@@ -529,6 +625,8 @@ fn map_match_row(row: &rusqlite::Row) -> rusqlite::Result<Match> {
         duration_seconds: row.get(10)?,
         match_type: row.get(11)?,
         playlist: row.get(12)?,
+        // `mood` (v22) may be missing on very old snapshots; fall back to None.
+        mood: row.get::<_, Option<String>>(13).unwrap_or(None),
     })
 }
 
@@ -538,7 +636,7 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
     let mut matches = Vec::new();
 
     let mut sql = String::from(
-        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist FROM matches WHERE 1=1"
+        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood FROM matches WHERE 1=1"
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -602,7 +700,7 @@ pub fn get_match_detail(pool: &DbPool, match_id: i64) -> AppResult<(Match, Vec<P
     let conn = get_conn(pool)?;
 
     let m: Match = conn.query_row(
-        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist FROM matches WHERE id = ?1",
+        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood FROM matches WHERE id = ?1",
         params![match_id],
         |row| {
             Ok(Match {
@@ -619,6 +717,7 @@ pub fn get_match_detail(pool: &DbPool, match_id: i64) -> AppResult<(Match, Vec<P
                 duration_seconds: row.get(10)?,
                 match_type: row.get(11)?,
                 playlist: row.get(12)?,
+                mood: row.get::<_, Option<String>>(13).unwrap_or(None),
             })
         },
     ).map_err(|e| AppError::StorageError(e.to_string()))?;
@@ -735,6 +834,46 @@ pub fn update_match(
         params![match_type, playlist, match_id],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    enqueue_match_upsert_conn(&conn, match_id)?;
+    Ok(())
+}
+
+/// Valid post-match mood values, ordered from most positive to most negative.
+pub const MATCH_MOODS: &[&str] = &["very_happy", "happy", "neutral", "angry", "very_angry"];
+
+/// Validate a mood value coming from the UI. `None`/empty clears the rating.
+pub fn normalize_mood(mood: Option<&str>) -> AppResult<Option<String>> {
+    match mood {
+        None => Ok(None),
+        Some(raw) => {
+            let value = raw.trim().to_ascii_lowercase();
+            if value.is_empty() {
+                return Ok(None);
+            }
+            if MATCH_MOODS.contains(&value.as_str()) {
+                Ok(Some(value))
+            } else {
+                Err(AppError::StorageError(format!("Unknown mood: {raw}")))
+            }
+        }
+    }
+}
+
+/// Set (or clear) the self-reported mood of a match.
+pub fn set_match_mood(pool: &DbPool, match_id: i64, mood: Option<&str>) -> AppResult<()> {
+    let mood = normalize_mood(mood)?;
+    let conn = get_conn(pool)?;
+    let updated = conn
+        .execute(
+            "UPDATE matches SET mood = ?1 WHERE id = ?2",
+            params![mood, match_id],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    if updated == 0 {
+        return Err(AppError::StorageError(format!(
+            "Match {match_id} not found"
+        )));
+    }
     enqueue_match_upsert_conn(&conn, match_id)?;
     Ok(())
 }
@@ -877,10 +1016,7 @@ pub fn get_daily_rollups_filtered(
             continue;
         };
 
-        let date = start_time
-            .parse::<DateTime<Utc>>()
-            .map(|date| date.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|_| Utc::now().format("%Y-%m-%d").to_string());
+        let date = local_date_string(&start_time);
 
         let rollup = rollups_by_date.entry(date.clone()).or_insert(DailyRollup {
             date,
@@ -1146,10 +1282,7 @@ pub fn rebuild_daily_rollups_for_identity(
             )
             .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-        let date = start_time
-            .parse::<DateTime<Utc>>()
-            .map(|date| date.format("%Y-%m-%d").to_string())
-            .unwrap_or_else(|_| Utc::now().format("%Y-%m-%d").to_string());
+        let date = local_date_string(&start_time);
 
         let rollup = DailyRollup {
             date,
@@ -2905,7 +3038,8 @@ pub fn get_insights(
     let mut sql = String::from(
         "SELECT m.id, m.winner, mp.team_num, m.playlist, m.start_time,
                 m.is_overtime, m.score_blue, m.score_orange,
-                mp.score, mp.goals, mp.assists, mp.saves, mp.shots, mp.demos
+                mp.score, mp.goals, mp.assists, mp.saves, mp.shots, mp.demos,
+                m.arena
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
@@ -2949,6 +3083,7 @@ pub fn get_insights(
         i32,
         i32,
         i32,
+        Option<String>,
     );
     let rows: Vec<MatchPlayerRow> = stmt
         .query_map(&*params_refs, |row| {
@@ -2967,6 +3102,7 @@ pub fn get_insights(
                 row.get(11)?,
                 row.get(12)?,
                 row.get(13)?,
+                row.get(14)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -2983,6 +3119,12 @@ pub fn get_insights(
     let mut by_playlist: std::collections::HashMap<String, (i32, i32)> =
         std::collections::HashMap::new();
     let mut by_hour: std::collections::HashMap<u32, (i32, i32)> = std::collections::HashMap::new();
+    let mut by_weekday: std::collections::HashMap<u32, (i32, i32)> =
+        std::collections::HashMap::new();
+    let mut heatmap: std::collections::HashMap<(u32, u32), (i32, i32)> =
+        std::collections::HashMap::new();
+    let mut by_arena: std::collections::HashMap<String, (i32, i32)> =
+        std::collections::HashMap::new();
     let mut ot_games = 0i32;
     let mut ot_wins = 0i32;
     let mut close_games = 0i32;
@@ -3014,6 +3156,7 @@ pub fn get_insights(
             saves,
             shots,
             demos,
+            arena,
         ) = row;
         let playlist_key = playlist.clone().unwrap_or_else(|| "Desconocido".into());
         let entry = by_playlist.entry(playlist_key).or_insert((0, 0));
@@ -3025,13 +3168,34 @@ pub fn get_insights(
                 entry.1 += 1;
             }
 
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(start_time) {
-                let hour = dt.hour();
+            // All time buckets use the machine's local timezone: the stored
+            // timestamps are UTC, so bucketing on the raw hour produced the
+            // "random hours" best-hour bug.
+            if let Some(hour) = local_hour(start_time) {
                 let he = by_hour.entry(hour).or_insert((0, 0));
                 he.0 += 1;
                 if is_win {
                     he.1 += 1;
                 }
+                if let Some(weekday) = local_weekday(start_time) {
+                    let we = by_weekday.entry(weekday).or_insert((0, 0));
+                    we.0 += 1;
+                    if is_win {
+                        we.1 += 1;
+                    }
+                    let cell = heatmap.entry((weekday, hour)).or_insert((0, 0));
+                    cell.0 += 1;
+                    if is_win {
+                        cell.1 += 1;
+                    }
+                }
+            }
+
+            let arena_key = arena.clone().unwrap_or_else(|| "Desconocida".into());
+            let ae = by_arena.entry(arena_key).or_insert((0, 0));
+            ae.0 += 1;
+            if is_win {
+                ae.1 += 1;
             }
 
             if *is_overtime != 0 {
@@ -3066,13 +3230,16 @@ pub fn get_insights(
             }
 
             // Comeback / collapse: reconstruct the running score from the goal
-            // timeline of the match. A comeback is a win after trailing at
-            // some point; a collapse is a loss after leading at some point.
-            if let Some((ever_behind, ever_ahead)) = goal_timelines.get(match_id) {
-                if is_win && *ever_behind {
+            // timeline of the match, translated into *my* team's perspective.
+            // A comeback is a win after trailing at some point; a collapse is
+            // a loss after leading at some point.
+            if let Some((blue_ahead, orange_ahead)) = goal_timelines.get(match_id) {
+                let (ever_behind, ever_ahead) =
+                    relative_timeline_flags(*blue_ahead, *orange_ahead, *team);
+                if is_win && ever_behind {
                     comeback_wins += 1;
                 }
-                if !is_win && *ever_ahead {
+                if !is_win && ever_ahead {
                     collapse_losses += 1;
                 }
             }
@@ -3163,7 +3330,7 @@ pub fn get_insights(
         } else {
             0.0
         };
-        if *played >= 2 && wr > best_hour_wr {
+        if *played >= MIN_INSIGHT_SAMPLE && wr > best_hour_wr {
             best_hour_wr = wr;
             best_hour = hour;
         }
@@ -3173,6 +3340,63 @@ pub fn get_insights(
         }));
     }
     hour_stats.sort_by_key(|h| h["hour"].as_u64().unwrap());
+
+    let mut best_weekday = 0u32;
+    let mut best_weekday_wr = 0f64;
+    let mut weekday_stats = Vec::new();
+    for (&weekday, (played, won)) in &by_weekday {
+        let wr = if *played > 0 {
+            (*won as f64 / *played as f64) * 100.0
+        } else {
+            0.0
+        };
+        if *played >= MIN_INSIGHT_SAMPLE && wr > best_weekday_wr {
+            best_weekday_wr = wr;
+            best_weekday = weekday;
+        }
+        weekday_stats.push(serde_json::json!({
+            "weekday": weekday, "played": played, "won": won,
+            "winRate": wr.round() as i32,
+        }));
+    }
+    weekday_stats.sort_by_key(|w| w["weekday"].as_u64().unwrap());
+
+    let mut heatmap_stats = Vec::new();
+    for (&(weekday, hour), (played, won)) in &heatmap {
+        let wr = if *played > 0 {
+            (*won as f64 / *played as f64) * 100.0
+        } else {
+            0.0
+        };
+        heatmap_stats.push(serde_json::json!({
+            "weekday": weekday, "hour": hour,
+            "played": played, "won": won,
+            "winRate": wr.round() as i32,
+        }));
+    }
+    heatmap_stats.sort_by(|a, b| {
+        (a["weekday"].as_u64().unwrap(), a["hour"].as_u64().unwrap())
+            .cmp(&(b["weekday"].as_u64().unwrap(), b["hour"].as_u64().unwrap()))
+    });
+
+    let mut arena_stats = Vec::new();
+    for (name, (played, won)) in &by_arena {
+        let wr = if *played > 0 {
+            (*won as f64 / *played as f64) * 100.0
+        } else {
+            0.0
+        };
+        arena_stats.push(serde_json::json!({
+            "name": name, "played": played, "won": won,
+            "winRate": wr.round() as i32,
+        }));
+    }
+    arena_stats.sort_by(|a, b| {
+        b["played"]
+            .as_i64()
+            .unwrap()
+            .cmp(&a["played"].as_i64().unwrap())
+    });
 
     let total_matches = rows.len() as i32;
 
@@ -3185,6 +3409,12 @@ pub fn get_insights(
         "byHour": hour_stats,
         "bestHour": best_hour,
         "bestHourWR": best_hour_wr.round() as i32,
+        "byWeekday": weekday_stats,
+        "bestWeekday": best_weekday,
+        "bestWeekdayWR": best_weekday_wr.round() as i32,
+        "heatmap": heatmap_stats,
+        "byArena": arena_stats,
+        "minSample": MIN_INSIGHT_SAMPLE,
         "otGames": ot_games,
         "otWins": ot_wins,
         "otLosses": ot_games - ot_wins,
@@ -3207,15 +3437,16 @@ pub fn get_insights(
     }))
 }
 
-/// Reconstructs, for every match, whether the "home" perspective ever trailed
-/// and ever led during the match, based on the GoalScored timeline persisted
-/// in `match_events`.
+/// Reconstructs, for every match, which color ever led during the match,
+/// based on the GoalScored timeline persisted in `match_events`.
 ///
-/// The running score is rebuilt from each goal's `scorer.teamNum`:
-/// - `ever_behind` → the perspective was losing at some point (used for
-///   comeback wins: was losing → won).
-/// - `ever_ahead`  → the perspective was winning at some point (used for
-///   collapse losses: was winning → lost).
+/// The running score is rebuilt from each goal's `scorer.teamNum` and the
+/// result is `(blue_ever_ahead, orange_ever_ahead)` in absolute colors.
+/// Callers translate that into the viewer's perspective with
+/// [`relative_timeline_flags`]: a player on orange who wins after blue led
+/// staged a comeback just as much as a blue player who wins after orange
+/// led. (This used to return perspective-blind ever-behind/ever-ahead flags,
+/// so every comeback/collapse involving an orange local team was missed.)
 ///
 /// Matches without goal events simply yield `(false, false)`, so they never
 /// count as comebacks or collapses — no timeline, no claim.
@@ -3267,13 +3498,23 @@ fn load_goal_timelines(
 
         let flag = flags.entry(match_id).or_insert((false, false));
         if scores.0 > scores.1 {
-            flag.1 = true; // blue ahead
+            flag.0 = true; // blue ahead
         } else if scores.1 > scores.0 {
-            flag.0 = true; // orange ahead
+            flag.1 = true; // orange ahead
         }
     }
 
     Ok(flags)
+}
+
+/// Translate absolute timeline flags into the perspective of `my_team`:
+/// `(ever_behind, ever_ahead)` — was *my* team losing / winning at some point.
+fn relative_timeline_flags(blue_ahead: bool, orange_ahead: bool, my_team: i32) -> (bool, bool) {
+    if my_team == 0 {
+        (orange_ahead, blue_ahead)
+    } else {
+        (blue_ahead, orange_ahead)
+    }
 }
 
 /// Matches played by a given player (any platform identity), with the match
@@ -3297,7 +3538,7 @@ pub fn get_player_analytics_matches(
                 m.is_online, m.is_overtime, m.duration_seconds,
                 m.match_type, m.playlist,
                 mp.team_num, mp.goals, mp.assists, mp.saves, mp.shots, mp.score, mp.demos,
-                mp.kickoff_goals
+                mp.kickoff_goals, m.mood
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
@@ -3350,6 +3591,7 @@ pub fn get_player_analytics_matches(
             row.get::<_, i32>(18)?,
             row.get::<_, i32>(19)?,
             row.get::<_, i32>(20)?,
+            row.get::<_, Option<String>>(21).unwrap_or(None),
         ))
     })?;
 
@@ -3387,6 +3629,7 @@ pub fn get_player_analytics_matches(
             score,
             demos,
             kickoff_goals,
+            mood,
         ) = row;
 
         let is_win = winner == Some(team_num);
@@ -3400,7 +3643,9 @@ pub fn get_player_analytics_matches(
         } else {
             score_blue
         };
-        let (ever_behind, ever_ahead) = timelines.get(&match_id).copied().unwrap_or((false, false));
+        let (blue_ahead, orange_ahead) =
+            timelines.get(&match_id).copied().unwrap_or((false, false));
+        let (ever_behind, ever_ahead) = relative_timeline_flags(blue_ahead, orange_ahead, team_num);
         let was_comeback = is_win && ever_behind;
         let was_collapse = !is_win && ever_ahead;
 
@@ -3428,6 +3673,7 @@ pub fn get_player_analytics_matches(
             "score": score,
             "demos": demos,
             "kickoff_goals": kickoff_goals,
+            "mood": mood,
             "was_comeback": was_comeback,
             "was_collapse": was_collapse,
         }));
@@ -3713,4 +3959,40 @@ pub fn delete_user_preset(pool: &DbPool, id: i64) -> AppResult<()> {
         .map_err(|e| AppError::StorageError(e.to_string()))?;
     info!(preset_id = id, "Deleted user preset");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mood_validation_accepts_the_five_moods_and_clears_on_empty() {
+        assert_eq!(
+            normalize_mood(Some("very_happy")).unwrap(),
+            Some("very_happy".to_string())
+        );
+        assert_eq!(
+            normalize_mood(Some("  Angry ")).unwrap(),
+            Some("angry".to_string())
+        );
+        assert_eq!(normalize_mood(None).unwrap(), None);
+        assert_eq!(normalize_mood(Some("")).unwrap(), None);
+        assert_eq!(normalize_mood(Some("   ")).unwrap(), None);
+        assert!(normalize_mood(Some("tilted")).is_err());
+        assert_eq!(MATCH_MOODS.len(), 5);
+    }
+
+    #[test]
+    fn local_date_buckets_use_local_time() {
+        // Noon UTC is morning in the Americas and evening in Asia — either
+        // way the helpers must parse and return a same-shaped answer.
+        let ts = "2026-06-01T12:00:00+00:00";
+        assert_eq!(local_date_string(ts).len(), 10);
+        assert!(local_hour(ts).unwrap() <= 23);
+        assert!(local_weekday(ts).unwrap() <= 6);
+        assert_eq!(
+            local_date_string("garbage"),
+            Local::now().format("%Y-%m-%d").to_string()
+        );
+    }
 }

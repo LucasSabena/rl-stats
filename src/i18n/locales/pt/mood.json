@@ -1,0 +1,18 @@
+{
+  "pickerLabel": "Humor da partida",
+  "editLabel": "Humor",
+  "unrated": "Sem avaliação",
+  "modal": {
+    "title": "Como foi esta partida para você?",
+    "description": "Registre seu humor para descobrir como ele afeta seu desempenho.",
+    "skip": "Agora não",
+    "error": "Não foi possível salvar. Tente de novo."
+  },
+  "options": {
+    "very_happy": "Demais",
+    "happy": "Feliz",
+    "neutral": "Neutro",
+    "angry": "Bravo",
+    "very_angry": "Furioso"
+  }
+}

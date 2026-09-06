@@ -10,7 +10,7 @@ use crate::core::storage::{
     MatchMmrSnapshot, MatchPlayerRow,
 };
 use crate::error::AppResult;
-use chrono::Utc;
+use chrono::{Local, Utc};
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
@@ -35,7 +35,7 @@ pub struct SessionManager {
     score_blue: i32,
     score_orange: i32,
     players: HashMap<String, LivePlayer>,
-    events: Vec<(String, String, chrono::DateTime<chrono::Utc>)>, // (event_type, json, occurred_at)
+    events: Vec<(String, String, chrono::DateTime<chrono::Utc>, Option<i32>)>, // (event_type, json, occurred_at, game clock)
     ball_speed: f64,
     match_type: Option<String>,
     winner_team_num: Option<i32>,
@@ -99,6 +99,14 @@ impl SessionManager {
     /// Store the MMR snapshot so it can be persisted with the finished match.
     pub fn set_mmr_snapshot(&mut self, snapshot: MatchMmrSnapshot) {
         self.mmr_snapshot = Some(snapshot);
+    }
+
+    /// Update the kickoff-goal window live when the setting changes.
+    ///
+    /// The threshold used to be read once at startup, so changing it in
+    /// Settings had no effect until the app restarted.
+    pub fn set_kickoff_threshold_seconds(&mut self, threshold: i32) {
+        self.kickoff_threshold_seconds = threshold.max(1);
     }
 
     /// Map a goal's scorer onto a key that exists in `self.players`.
@@ -225,13 +233,24 @@ impl SessionManager {
                     // kickoff goals after the first one. Re-anchor whenever the
                     // score moves so every kickoff after a goal is evaluated
                     // against a fresh anchor.
+                    //
+                    // Overtime is the exception: the game clock sits at 0, so
+                    // the wall-clock anchor from GoalReplayEnd (fired right
+                    // before the restart) is far more accurate than anything
+                    // stamped mid-replay. Re-anchoring here would drag the
+                    // anchor back to the goal moment — replay (~5s) + countdown
+                    // (~3s) already exceed the threshold, so no overtime
+                    // kickoff goal could ever count.
                     if let Some(teams) = &game.teams {
                         if !teams.is_empty() {
                             let blue = teams[0].score;
                             let orange = teams.get(1).map(|t| t.score).unwrap_or(0);
                             let score_changed =
                                 blue != self.score_blue || orange != self.score_orange;
-                            if score_changed && self.round_start_game_time.is_some() {
+                            if score_changed
+                                && self.round_start_game_time.is_some()
+                                && !self.is_overtime
+                            {
                                 self.mark_round_start();
                             }
                             self.score_blue = blue;
@@ -284,13 +303,31 @@ impl SessionManager {
                 if !matches!(&event, RlEvent::GoalReplayEnd) {
                     let json =
                         serde_json::json!({"time_remaining": self.time_remaining}).to_string();
-                    self.events.push((event_name.into(), json, Utc::now()));
+                    self.events.push((
+                        event_name.into(),
+                        json,
+                        Utc::now(),
+                        Some(self.time_remaining),
+                    ));
                 }
             }
             RlEvent::GoalScored { data } if self.phase == MatchPhase::Active => {
                 info!(scorer = %data.scorer.name, "Goal scored");
-                let json = serde_json::to_string(&data).unwrap_or_default();
-                self.events.push(("GoalScored".into(), json, Utc::now()));
+                // Persist the game-clock reading alongside the goal: it is the
+                // evidence the kickoff backfill uses to recount history, and
+                // the dedicated column carries it for cheap queries.
+                let mut value = serde_json::to_value(data).unwrap_or(serde_json::json!({}));
+                if let Some(obj) = value.as_object_mut() {
+                    obj.insert(
+                        "gameTimeRemaining".into(),
+                        serde_json::json!(self.time_remaining),
+                    );
+                    obj.insert("isOvertime".into(), serde_json::json!(self.is_overtime));
+                }
+                let json = serde_json::to_string(&value).unwrap_or_default();
+                let goal_clock = self.time_remaining;
+                self.events
+                    .push(("GoalScored".into(), json, Utc::now(), Some(goal_clock)));
 
                 // Capture the score before the kickoff anchor is re-armed, so
                 // the kickoff-goal window closes and the next kickoff starts
@@ -320,15 +357,21 @@ impl SessionManager {
                     }
                 }
 
-                // Re-anchor after every goal so goals scored off the kickoff
-                // that follows this one are detected even when the stream
-                // never emits GoalReplayEnd / RoundStarted / CountdownBegin.
-                self.mark_round_start();
+                // Re-anchor after every regulation goal so goals scored off the
+                // kickoff that follows this one are detected even when the
+                // stream never emits GoalReplayEnd / RoundStarted /
+                // CountdownBegin. In overtime the anchor must stay on
+                // GoalReplayEnd (see above): re-anchoring at the goal moment
+                // would push every overtime kickoff goal outside the window.
+                if !self.is_overtime {
+                    self.mark_round_start();
+                }
             }
             RlEvent::StatfeedEvent { data } if self.phase == MatchPhase::Active => {
                 debug!(event = %data.event_name, target = %data.main_target.name, "Statfeed event");
                 let json = serde_json::to_string(&data).unwrap_or_default();
-                self.events.push(("StatfeedEvent".into(), json, Utc::now()));
+                self.events
+                    .push(("StatfeedEvent".into(), json, Utc::now(), None));
             }
             RlEvent::MatchEnded { winner_team_num } if self.phase == MatchPhase::Active => {
                 info!(?winner_team_num, "Match ended");
@@ -351,7 +394,8 @@ impl SessionManager {
                     if matches!(&event, RlEvent::PodiumStart) {
                         info!("Podium start");
                         let json = serde_json::json!({"type": "PodiumStart"}).to_string();
-                        self.events.push(("PodiumStart".into(), json, Utc::now()));
+                        self.events
+                            .push(("PodiumStart".into(), json, Utc::now(), None));
                     }
                     info!("Match destroyed / podium start");
                 }
@@ -359,7 +403,8 @@ impl SessionManager {
             RlEvent::CrossbarHit { data } if self.phase == MatchPhase::Active => {
                 info!(player = %data.player.name, "Crossbar hit");
                 let json = serde_json::to_string(&data).unwrap_or_default();
-                self.events.push(("CrossbarHit".into(), json, Utc::now()));
+                self.events
+                    .push(("CrossbarHit".into(), json, Utc::now(), None));
             }
             _ => {}
         }
@@ -497,8 +542,15 @@ impl SessionManager {
                 },
             )?;
 
-            for (event_type, event_data, occurred_at) in &self.events {
-                insert_match_event_conn(&conn, match_id, event_type, event_data, *occurred_at)?;
+            for (event_type, event_data, occurred_at, game_clock) in &self.events {
+                insert_match_event_conn(
+                    &conn,
+                    match_id,
+                    event_type,
+                    event_data,
+                    *occurred_at,
+                    *game_clock,
+                )?;
             }
 
             Ok((match_id, players_vec))
@@ -596,9 +648,14 @@ impl SessionManager {
             return Err(error);
         }
 
-        // Update daily rollup — skip for training matches
+        // Update daily rollup — skip for training matches.
+        // The bucket date is local time: rollups grouped by UTC date split
+        // evening sessions across two days.
         if !is_training {
-            let date = start_time.format("%Y-%m-%d").to_string();
+            let date = start_time
+                .with_timezone(&Local)
+                .format("%Y-%m-%d")
+                .to_string();
 
             let rollup = crate::core::models::DailyRollup {
                 date,
@@ -676,6 +733,8 @@ impl SessionManager {
 
         info!(match_id, "Match persisted successfully");
         Ok(PersistResult {
+            match_id,
+            is_training,
             summary,
             detected_primary_id: detected_identity.as_ref().map(|(pid, _)| pid.clone()),
             detected_player_name: detected_identity.as_ref().map(|(_, name)| name.clone()),
@@ -714,6 +773,8 @@ impl SessionManager {
 }
 
 pub struct PersistResult {
+    pub match_id: i64,
+    pub is_training: bool,
     pub summary: SessionSummary,
     pub detected_primary_id: Option<String>,
     pub detected_player_name: Option<String>,
@@ -1090,6 +1151,98 @@ mod tests {
             kickoff_goals(&session, "p2"),
             1,
             "kickoff goal after a restart without round markers must count"
+        );
+    }
+
+    fn overtime_state(time: i32, is_overtime: bool) -> RlEvent {
+        RlEvent::UpdateState {
+            match_guid: Some("guid-ot".into()),
+            game: GameState {
+                teams: None,
+                time,
+                is_overtime,
+                ball: None,
+                arena: Some("stadium_p".into()),
+                target: None,
+            },
+            players: {
+                let mut players = HashMap::new();
+                players.insert("p1".to_string(), live_player("p1", "Alpha"));
+                players.insert("p2".to_string(), live_player("p2", "Beta"));
+                players
+            },
+        }
+    }
+
+    /// Overtime kickoff goals must count when GoalReplayEnd anchors the
+    /// restart — the game clock sits at 0, so the wall-clock anchor is the
+    /// only signal. Previously the goal-time re-anchor pushed the anchor back
+    /// past replay + countdown, so no overtime kickoff goal ever counted.
+    #[test]
+    fn overtime_kickoff_goal_counts_off_replay_end_anchor() {
+        let mut session = started_session();
+        session.handle_event(overtime_state(0, true));
+
+        // Goal during overtime, then the replay ends and the restart goal
+        // comes quickly.
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+        session.handle_event(RlEvent::GoalReplayEnd);
+        session.handle_event(RlEvent::GoalScored { data: scorer("p2") });
+
+        assert_eq!(
+            kickoff_goals(&session, "p2"),
+            1,
+            "overtime goal right after the replay must count as a kickoff goal"
+        );
+    }
+
+    /// Without any replay anchor in overtime there is no evidence of a
+    /// restart, so the goal must not count.
+    #[test]
+    fn overtime_goal_without_replay_anchor_does_not_count() {
+        let mut session = started_session();
+        session.handle_event(overtime_state(0, true));
+        // Reset the wall anchor so only the goal-time path remains — which is
+        // deliberately disabled in overtime.
+        session.round_start_wall_time = None;
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(kickoff_goals(&session, "p1"), 0);
+    }
+
+    /// The threshold can be updated live when the setting changes.
+    #[test]
+    fn kickoff_threshold_updates_live() {
+        let mut session = started_session();
+        session.set_kickoff_threshold_seconds(1);
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 290 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(
+            kickoff_goals(&session, "p1"),
+            0,
+            "with a 1s threshold a goal 10s in must not count"
+        );
+    }
+
+    /// GoalScored events persist the game-clock reading for the backfill.
+    #[test]
+    fn goal_events_carry_the_game_clock() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 294 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        let (event_type, json, _, clock) = session
+            .events
+            .iter()
+            .find(|(t, _, _, _)| t == "GoalScored")
+            .expect("goal event must be recorded");
+        assert_eq!(event_type, "GoalScored");
+        assert_eq!(*clock, Some(294));
+        let value: serde_json::Value = serde_json::from_str(json).expect("goal json must parse");
+        assert_eq!(
+            value.get("gameTimeRemaining").and_then(|v| v.as_i64()),
+            Some(294)
         );
     }
 }

@@ -1,11 +1,16 @@
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
-import { useAnalytics, useSessionMatches, useInsights, usePlayerAnalyticsMatches, usePlayerAnalyticsSummary } from "@/hooks/useAnalytics";
+import { useAnalytics, useSessionMatches, useInsights, usePlayerAnalyticsMatches, usePlayerAnalyticsSummary, useKickoffBackfill } from "@/hooks/useAnalytics";
 import { useFriends } from "@/hooks/useFriends";
 import { useSettings } from "@/hooks/useSettings";
 import { PrimaryStatsRow, SecondaryStatsRow } from "@/components/analytics/StatsGrid";
 import { PerformanceChart } from "@/components/analytics/PerformanceChart";
+import { FatiguePanel } from "@/components/analytics/FatiguePanel";
+import { HeatmapPanel } from "@/components/analytics/HeatmapPanel";
+import { ChemistryPanel } from "@/components/analytics/ChemistryPanel";
+import { MoodPanel } from "@/components/analytics/MoodPanel";
+import { CustomBuilderPanel } from "@/components/analytics/CustomBuilderPanel";
 import { AnalyticsFilters } from "@/components/analytics/AnalyticsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -17,6 +22,7 @@ import { Button } from "@/components/ui/Button";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildDayShareContext, buildWeekShareContext, buildSessionShareContext, buildSummaryShareContext } from "@/lib/shareContext";
 import type { AnalyticsPeriod, MatchSession, SessionMatch, PlaylistFilter, MatchTypeFilter, DataScope, AnalyticsData, InsightsData, ShareContext, PlayerAnalyticsMatch } from "@/lib/types";
+import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import {
   BarChart3,
   Clock,
@@ -128,6 +134,17 @@ function SessionCard({
 }
 
 
+function MoodGlyph({ mood }: { mood?: string | null }) {
+  const { t } = useTranslation(['mood']);
+  const Icon = moodIcon(mood);
+  if (!mood) return null;
+  return (
+    <span title={t(moodLabelKey(mood))}>
+      <Icon size={13} className={moodTone(mood)} aria-label={t(moodLabelKey(mood))} />
+    </span>
+  );
+}
+
 function SessionMatchDetail({
   matches,
   isLoading,
@@ -137,7 +154,7 @@ function SessionMatchDetail({
   isLoading: boolean;
   isError: boolean;
 }) {
-  const { t } = useTranslation(["analytics", "common", "players"]);
+  const { t } = useTranslation(["analytics", "common", "players", "mood"]);
   const { data: friends } = useFriends();
 
   // These three states were collapsed into one: an empty result rendered the
@@ -244,6 +261,7 @@ function SessionMatchDetail({
                     {t("analytics:matchDetail.overtime")}
                   </span>
                 )}
+                <MoodGlyph mood={m.mood} />
                 <span>{Math.round(m.duration_seconds / 60)}m</span>
               </div>
             </div>
@@ -282,7 +300,7 @@ function PlayerMatchesPanel({
   isLoading: boolean;
   playerName: string;
 }) {
-  const { t } = useTranslation(["analytics", "common"]);
+  const { t } = useTranslation(["analytics", "common", "mood"]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -362,6 +380,7 @@ function PlayerMatchesPanel({
                     {t("analytics:matchDetail.assists")} · {m.saves}{" "}
                     {t("analytics:matchDetail.saves")}
                   </span>
+                  <MoodGlyph mood={m.mood} />
                 </div>
               </div>
             );
@@ -443,7 +462,28 @@ function InsightsPanel({
                 <span className="text-accent-success">{insights.bestHourWR}%</span>
               </p>
             </div>
-            <HoursWheel data={insights.byHour} />
+            <HoursWheel data={insights.byHour} minSample={insights.minSample ?? 3} />
+          </Card>
+        )}
+
+        {insights.byArena && insights.byArena.length > 0 && (
+          <Card className="p-4">
+            <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-text-tertiary">
+              <Trophy size={14} /> {t("analytics:insights.byArena")}
+            </h4>
+            <div className="space-y-2">
+              {insights.byArena.slice(0, 5).map((a) => (
+                <div key={a.name} className="flex items-center justify-between text-xs">
+                  <span className="max-w-[60%] truncate text-text-secondary">{a.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-text-tertiary">{t("analytics:insights.gamesPlayed", { count: a.played })}</span>
+                    <span className={a.winRate >= 50 ? "text-accent-success" : "text-accent-danger"}>
+                      {a.winRate}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
         )}
 
@@ -517,6 +557,8 @@ function InsightsPanel({
         </Card>
       </div>
 
+      <HeatmapPanel insights={insights} />
+
       {insights.contrib && (
         <Card className="p-4">
           <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-text-tertiary">
@@ -565,8 +607,63 @@ function InsightsPanel({
   );
 }
 
-export function AnalyticsPage() {
-  const { t, i18n } = useTranslation(["analytics", "common"]);
+interface PatternPanelsProps {
+  period: AnalyticsPeriod;
+  playlist: PlaylistFilter;
+  matchType: MatchTypeFilter;
+  scope: DataScope;
+  playerId: string | null;
+  username: string;
+  friendsPresent: string[];
+  dateLabel: string;
+}
+
+function PatternPanels(props: PatternPanelsProps) {
+  const { period, playlist, matchType, scope, playerId, username, friendsPresent, dateLabel } = props;
+  const shared = { period, playlist, matchType, scope, playerId, username, friendsPresent, dateLabel };
+  return (
+    <>
+      <FatiguePanel {...shared} />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChemistryPanel {...shared} />
+        <MoodPanel {...shared} />
+      </div>
+      <CustomBuilderPanel {...shared} />
+    </>
+  );
+}
+
+function KickoffRecountButton() {
+  const { t } = useTranslation(['analytics']);
+  const recount = useKickoffBackfill();
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => recount.mutate()}
+        disabled={recount.isPending}
+      >
+        {recount.isPending
+          ? t('analytics:kickoff.recounting')
+          : t('analytics:kickoff.recount')}
+      </Button>
+      {recount.isSuccess && (
+        <span className="text-xs text-text-secondary">
+          {t('analytics:kickoff.recountDone', {
+            found: recount.data.kickoffFound,
+            updated: recount.data.matchesUpdated,
+          })}
+        </span>
+      )}
+      {recount.isError && (
+        <span className="text-xs text-accent-danger">{t('analytics:kickoff.recountError')}</span>
+      )}
+    </div>
+  );
+}
+
+export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytics", "common"]);
   const [period, setPeriod] = useState<AnalyticsPeriod>("week");
   const [playlist, setPlaylist] = useState<PlaylistFilter>("all");
   const [matchType, setMatchType] = useState<MatchTypeFilter>("all");
@@ -631,10 +728,10 @@ export function AnalyticsPage() {
 
   const handleShareSession = useCallback(() => {
     if (!selectedSession) return;
-    const ctx = buildSessionShareContext(selectedSession, [], username, i18n.language);
+    const ctx = buildSessionShareContext(selectedSession, friendsPresent, username, i18n.language);
     setSessionShareContext(ctx);
     setSessionShareOpen(true);
-  }, [selectedSession, username, i18n.language]);
+  }, [selectedSession, friendsPresent, username, i18n.language]);
 
   const clearFilters = useCallback(() => {
     setPlaylist("all");
@@ -777,6 +874,19 @@ export function AnalyticsPage() {
                 isLoading={insightsLoading}
                 summary={result.data}
               />
+
+              <PatternPanels
+                period={period}
+                playlist={playlist}
+                matchType={matchType}
+                scope={scope}
+                playerId={null}
+                username={username}
+                friendsPresent={friendsPresent}
+                dateLabel={t('analytics:periods.' + period, { defaultValue: period.toUpperCase() })}
+              />
+
+              <KickoffRecountButton />
             </>
           )}
 
@@ -819,6 +929,17 @@ export function AnalyticsPage() {
                 insights={insights}
                 isLoading={insightsLoading}
                 summary={playerSummary}
+              />
+
+              <PatternPanels
+                period={period}
+                playlist={playlist}
+                matchType={matchType}
+                scope={scope}
+                playerId={playerId}
+                username={selectedPlayerName}
+                friendsPresent={friendsPresent}
+                dateLabel={t('analytics:periods.' + period, { defaultValue: period.toUpperCase() })}
               />
             </>
           ) : (

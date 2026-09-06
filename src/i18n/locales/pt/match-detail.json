@@ -92,6 +92,8 @@
     "notFoundDescription": "Não foi possível carregar os detalhes desta partida.",
     "backToHistory": "Voltar ao histórico",
     "noDataTitle": "Sem dados da partida",
-    "noDataDescription": "Esta partida não contém dados de jogadores ou eventos."
+    "noDataDescription": "Esta partida não contém dados de jogadores ou eventos.",
+    "editMatch": "Editar",
+    "deleteMatch": "Excluir"
   }
 }

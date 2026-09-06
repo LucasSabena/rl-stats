@@ -81,7 +81,8 @@
       "saves": "Saves",
       "shots": "Shots",
       "demos": "Demos"
-    }
+    },
+    "byArena": "By arena"
   },
   "sessions": {
     "title": "Session history",
@@ -162,5 +163,95 @@
       "training": "Training",
       "other": "Other"
     }
+  },
+  "heatmap": {
+    "title": "Weekly map",
+    "subtitle": "Your win rate by hour and weekday, in your local time.",
+    "weekdays": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    },
+    "cellTooltip": "{{day}} {{hour}}h: {{played}}g, {{winRate}}% WR",
+    "cellEmpty": "No matches",
+    "legendBad": "Bad",
+    "legendEven": "Even",
+    "legendGood": "Good",
+    "sampleNote": "Cells with fewer than {{count}} matches are dimmed."
+  },
+  "fatigue": {
+    "title": "Session curve",
+    "tabs": {
+      "game": "By game",
+      "minutes": "By minutes"
+    },
+    "subtitle": "{{matches}} matches across {{sessions}} sessions",
+    "played": "Matches",
+    "breakpointTag": "drop",
+    "breakpointTitle": "Breaking point:",
+    "breakpointGameDetail": "your WR falls from {{before}}% to {{after}}% after game {{n}}. Best to stop or pause there.",
+    "breakpointMinuteDetail": "your WR falls from {{before}}% to {{after}}% after {{minutes}} min in session. Best to pause there.",
+    "momentum": {
+      "afterWin": "After win",
+      "afterLoss": "After loss",
+      "firstOfDay": "1st of day",
+      "restOfDay": "Rest of day"
+    },
+    "sampleNote": "{{count}} matches"
+  },
+  "chemistry": {
+    "title": "Teammate chemistry",
+    "friendTag": "Friend",
+    "soloq": "SoloQ",
+    "teamSize": "Team of {{count}}"
+  },
+  "mood": {
+    "title": "Mood plays too",
+    "subtitle": "{{rated}} of {{total}} matches rated"
+  },
+  "builder": {
+    "title": "Custom analysis",
+    "dimension": "Dimension",
+    "metric": "Metric",
+    "chartType": "Chart",
+    "dimensions": {
+      "hour": "Hour of day",
+      "weekday": "Weekday",
+      "playlist": "Playlist",
+      "arena": "Arena",
+      "match_type": "Match type",
+      "mood": "Mood",
+      "game_number": "Game in session",
+      "minute_bucket": "Session minute",
+      "prev_result": "Previous result"
+    },
+    "metrics": {
+      "winRate": "Win Rate %",
+      "played": "Matches",
+      "avgGoals": "Avg goals",
+      "avgSaves": "Avg saves",
+      "avgShots": "Avg shots",
+      "avgAssists": "Avg assists",
+      "avgDemos": "Avg demos",
+      "avgScore": "Avg score"
+    },
+    "kinds": {
+      "bars": "Bars",
+      "line": "Line",
+      "area": "Area"
+    },
+    "noData": "No data for this combination.",
+    "save": "Save",
+    "savePlaceholder": "Name this view…"
+  },
+  "kickoff": {
+    "recount": "Recount kickoff goals",
+    "recounting": "Recounting…",
+    "recountDone": "Done: {{found}} goals in {{updated}} matches.",
+    "recountError": "Could not recount."
   }
 }

@@ -1,5 +1,60 @@
 # Changelog
 
+## v2.6.0 — Análisis de patrones, mood post-partido y fixes de hora/kickoff
+
+### Added
+
+- **Curva de sesión / fatiga.** Nuevo panel que muestra tu win rate por N°
+  de partido dentro de la sesión y por bloques de 15 minutos, con detector
+  de punto de quiebre ("tu WR cae de 68% a 31% a partir del partido 6"),
+  splits de momentum (tras victoria / tras derrota / 1° del día) y botón
+  para compartirlo como imagen.
+- **Mapa semanal hora × día.** Heatmap 7×24 de tu rendimiento en horario
+  local, con día de semana destacado y nota de muestra mínima.
+- **Química con compañeros.** Win rate con cada compañero de equipo,
+  insignia de amigos y desglose por tamaño de equipo (SoloQ vs premade),
+  compartible como imagen.
+- **Mood post-partido.** Al terminar cada partido (no entrenamiento) se abre
+  un modal con 5 ánimos (genial → furioso). Si no lo completás, desaparece
+  al arrancar el siguiente partido. El ánimo se puede agregar o cambiar
+  desde Historial (editar) y desde el Detalle del partido, y se muestra en
+  las tarjetas del historial.
+- **El ánimo juega.** Nuevo panel que cruza tu ánimo con tu rendimiento
+  (WR por ánimo + cobertura de calificados), compartible como imagen.
+- **Análisis personalizado.** Builder con dimensión (hora, día, playlist,
+  arena, tipo, ánimo, N° en sesión, minuto de sesión, resultado previo) ×
+  métrica (WR, partidos, promedios) × tipo de gráfico (barras/línea/área),
+  vistas guardadas en local y botón de compartir.
+- **Desglose por arena** en insights y nuevos comandos Tauri
+  (`get_session_curve`, `get_teammate_stats`, `get_custom_breakdown`,
+  `recompute_kickoff_goals`, `set_match_mood_cmd`) con evento
+  `match-finished` al persistir cada partido.
+- **Recalcular goles de saque.** Botón en Análisis que recuenta el
+  histórico desde la línea de tiempo de goles y refresca los rollups.
+
+### Fixed
+
+- **Mejor horario en hora local.** Los buckets por hora, día de semana y
+  fecha de rollups se calculan en el huso horario de la máquina (antes UTC,
+  mostraba horas aparentemente aleatorias). Umbral mínimo unificado en 3
+  partidos.
+- **Goles de saque en overtime.** El ancla de reloj en OT queda en
+  `GoalReplayEnd` (ya no se re-ancla en el gol ni en el cambio de
+  marcador), cada gol persiste su lectura de reloj (`match_events`
+  v21) y el umbral de Settings se aplica en vivo sin reiniciar.
+- **Remontadas/colapsos** ahora se calculan en la perspectiva de tu equipo
+  (antes fallaban cuando jugabas en naranja).
+- **Compartir sesión** incluye a los amigos presentes; fechas de rollups en
+  hora local también en lecturas.
+
+### Notes
+
+- Al arrancar, la app corre una reparación única (v21): recuenta kickoffs
+  y reconstruye rollups con fechas locales. Los goles viejos sin reloj se
+  estiman por gaps cortos y se reportan como estimados.
+- Todo lo nuevo está en español, inglés y portugués.
+
+
 ## v2.5.0 — Per-profile analytics, overtime & comeback stats
 
 ### Added

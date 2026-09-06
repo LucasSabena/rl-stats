@@ -92,6 +92,8 @@
     "notFoundDescription": "Could not load the details for this match.",
     "backToHistory": "Back to history",
     "noDataTitle": "No match data",
-    "noDataDescription": "This match contains no player data or events."
+    "noDataDescription": "This match contains no player data or events.",
+    "editMatch": "Edit",
+    "deleteMatch": "Delete"
   }
 }

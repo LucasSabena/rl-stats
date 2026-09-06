@@ -123,6 +123,7 @@ pub fn run() {
             commands::history::get_match_detail,
             commands::history::delete_match_cmd,
             commands::history::update_match_cmd,
+            commands::history::set_match_mood_cmd,
             commands::analytics::get_analytics,
             commands::analytics::get_sessions,
             commands::analytics::get_daily_rollups,
@@ -130,6 +131,10 @@ pub fn run() {
             commands::analytics::get_insights,
             commands::analytics::get_player_analytics_summary,
             commands::analytics::get_player_analytics_matches,
+            commands::analytics::get_session_curve,
+            commands::analytics::get_teammate_stats,
+            commands::analytics::get_custom_breakdown,
+            commands::analytics::recompute_kickoff_goals,
             commands::players::get_player_directory,
             commands::players::get_player_detail,
             commands::players::get_player_detail_by_primary_id,
@@ -244,6 +249,47 @@ pub fn run() {
 
             info!(profile_id = %active_profile_id, db_path = %db_path.display(), "Initializing storage");
             let db_pool = Arc::new(init_storage(&db_path)?);
+
+            // One-off v21 analytics repair (runs once per profile database):
+            // daily rollups switch to local-time dates and kickoff goals are
+            // recounted from the goal timeline. Runs in the background so a
+            // large history never blocks the window.
+            {
+                let pool = db_pool.clone();
+                tauri::async_runtime::spawn(async move {
+                    if crate::core::storage::get_kv_flag(&pool, "analytics_repair_v21") {
+                        return;
+                    }
+                    info!("Running one-off v21 analytics repair");
+                    let settings =
+                        crate::core::settings::get_settings(&pool).unwrap_or_default();
+                    let backfill = crate::core::patterns::recompute_kickoff_goals(
+                        &pool,
+                        settings.kickoff_goal_threshold_seconds,
+                    );
+                    match backfill {
+                        Ok(report) => info!(report = %report, "Kickoff backfill finished"),
+                        Err(error) => {
+                            tracing::warn!(error = %error, "Kickoff backfill failed");
+                        }
+                    }
+                    let names = crate::core::storage::identity_candidate_names(&settings);
+                    if let Err(error) =
+                        crate::core::storage::rebuild_daily_rollups_for_identity(
+                            &pool,
+                            settings.local_primary_id.as_deref(),
+                            &names,
+                        )
+                    {
+                        tracing::warn!(error = %error, "Rollup rebuild failed");
+                    }
+                    if let Err(error) =
+                        crate::core::storage::set_kv_flag(&pool, "analytics_repair_v21")
+                    {
+                        tracing::warn!(error = %error, "Could not persist repair flag");
+                    }
+                });
+            }
 
             let settings = get_settings(&db_pool).unwrap_or_default();
             let port = settings.port;
@@ -426,13 +472,18 @@ pub fn run() {
                                 let overlay_win = app_handle.get_webview_window("overlay");
 
                                 if game_running {
-                                    // Game started: show overlay if enabled
+                                    // Game started (or relaunched from another
+                                    // launcher, Steam <-> Epic): show overlay if
+                                    // enabled. Re-assert always-on-top without
+                                    // stealing focus — `show()` alone leaves the
+                                    // window behind exclusive fullscreen.
                                     if overlay_win.is_none() {
                                         if let Err(e) = create_overlay_window_inner(&app_handle, &app_settings).await {
                                             tracing::warn!(error = %e, "Failed to create overlay window when game started");
                                         }
                                     } else if let Some(ref win) = overlay_win {
                                         let _ = win.show();
+                                        let _ = win.set_always_on_top(true);
                                     }
                                 } else {
                                     // Game closed: hide overlay
@@ -616,6 +667,8 @@ async fn process_events(
                 match session.persist_finished_match(&db_pool) {
                     Ok(result) => {
                         let PersistResult {
+                            match_id,
+                            is_training,
                             summary,
                             detected_primary_id,
                             detected_player_name,
@@ -658,6 +711,19 @@ async fn process_events(
                         }
 
                         let _ = app_handle.emit("match-summary", &summary);
+                        // Post-match mood prompt: the frontend opens the mood
+                        // modal on this event (skipped for training matches).
+                        let _ = app_handle.emit(
+                            "match-finished",
+                            serde_json::json!({
+                                "matchId": match_id,
+                                "guid": summary.match_guid,
+                                "isTraining": is_training,
+                                "winner": summary.winner,
+                                "scoreBlue": summary.score_blue,
+                                "scoreOrange": summary.score_orange,
+                            }),
+                        );
                         session.handle_event(RlEvent::MatchDestroyed);
                         let final_state = session.live_state();
                         let _ = app_handle.emit("live-update", final_state);
@@ -981,7 +1047,9 @@ async fn create_overlay_window_inner(
         settings.overlay_clickthrough,
     );
 
+    // Re-assert TOPMOST without stealing focus (see overlay_window.rs).
     let _ = win.show();
+    let _ = win.set_always_on_top(true);
 
     Ok(())
 }

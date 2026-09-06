@@ -37,28 +37,37 @@ impl ProcessWatcher {
         let active_platform = Arc::clone(&self.active_platform);
         thread::spawn(move || {
             let mut last_state = false;
-            let mut last_platform = None;
+            let mut last_platform: Option<String> = None;
+            // Track the executable path too: switching launchers (Steam <->
+            // Epic) can keep `running == true` with `platform == "unknown"`
+            // on both sides (custom install dir), in which case comparing
+            // only running/platform would swallow the relaunch and the
+            // overlay would never be re-raised above fullscreen.
+            let mut last_exe: Option<String> = None;
             let mut system = sysinfo::System::new();
             loop {
                 let running = is_rl_running_with_system(&mut system);
-                let platform = if running {
-                    find_rl_process(&system).map(|process| {
-                        let exe = process.exe().map(|path| path.to_string_lossy().to_string());
-                        let name = process.name().to_str().map(str::to_string);
-                        let base = exe
-                            .as_deref()
-                            .or(name.as_deref())
-                            .unwrap_or_default()
-                            .to_string();
-                        detect_platform_from_exe(&base)
-                    })
+                let (platform, exe_path) = if running {
+                    find_rl_process(&system)
+                        .map(|process| {
+                            let exe = process.exe().map(|path| path.to_string_lossy().to_string());
+                            let name = process.name().to_str().map(str::to_string);
+                            let base = exe
+                                .as_deref()
+                                .or(name.as_deref())
+                                .unwrap_or_default()
+                                .to_string();
+                            (Some(detect_platform_from_exe(&base)), exe)
+                        })
+                        .unwrap_or((None, None))
                 } else {
-                    None
+                    (None, None)
                 };
 
-                if running != last_state || platform != last_platform {
+                if running != last_state || platform != last_platform || exe_path != last_exe {
                     last_state = running;
                     last_platform = platform.clone();
+                    last_exe = exe_path.clone();
                     game_running.store(running, Ordering::SeqCst);
                     if let Ok(mut guard) = active_platform.write() {
                         *guard = platform.clone();
@@ -66,6 +75,7 @@ impl ProcessWatcher {
                     info!(
                         running,
                         platform = platform.as_deref().unwrap_or("none"),
+                        exe = exe_path.as_deref().unwrap_or("none"),
                         "Rocket League process state changed"
                     );
 

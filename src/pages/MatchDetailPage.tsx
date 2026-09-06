@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMatchDetail } from "@/hooks/useMatchDetail";
 import { useFriends } from "@/hooks/useFriends";
 import { useSettings } from "@/hooks/useSettings";
+import { useUpdateMatch } from "@/hooks/useUpdateMatch";
+import { useDeleteMatch } from "@/hooks/useDeleteMatch";
+import { useSetMatchMood } from "@/hooks/useSetMatchMood";
+import { MoodPicker } from "@/components/mood/MoodPicker";
+import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import { MatchHeader } from "@/components/match-detail/MatchHeader";
 import { MatchInfoPanel } from "@/components/match-detail/MatchInfoPanel";
 import { TeamRoster } from "@/components/match-detail/TeamRoster";
@@ -15,11 +20,13 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/Select";
 import { buildMatchShareContext } from "@/lib/shareContext";
-import { Gamepad2, ArrowLeft, Share2 } from "lucide-react";
+import { Gamepad2, ArrowLeft, Pencil, Share2, Trash2 } from "lucide-react";
 
 export function MatchDetailPage() {
-  const { t, i18n } = useTranslation(["matchDetail", "common"]);
+  const { t, i18n } = useTranslation(["matchDetail", "history", "common", "mood"]);
   const { matchId } = useParams<{ matchId: string }>();
   const navigate = useNavigate();
   const id = Number(matchId);
@@ -27,6 +34,22 @@ export function MatchDetailPage() {
   const { data: friends } = useFriends();
   const { data: settings } = useSettings();
   const [shareOpen, setShareOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editMatchType, setEditMatchType] = useState("");
+  const [editPlaylist, setEditPlaylist] = useState("");
+  const [editMood, setEditMood] = useState<string | null>(null);
+  const updateMutation = useUpdateMatch();
+  const deleteMutation = useDeleteMatch();
+  const moodMutation = useSetMatchMood();
+
+  useEffect(() => {
+    if (editing && data) {
+      setEditMatchType(data.matchType ?? "");
+      setEditPlaylist(data.playlist ?? "");
+      setEditMood(data.mood ?? null);
+    }
+  }, [editing, data]);
 
   if (isLoading) {
     return (
@@ -107,9 +130,46 @@ export function MatchDetailPage() {
     i18n.language
   );
 
+  const DetailMoodIcon = moodIcon(data.mood);
+
+  const matchTypeOptions: { value: string; label: string }[] = [
+    { value: "ranked", label: t("history:matchTypes.ranked") },
+    { value: "casual", label: t("history:matchTypes.casual") },
+    { value: "tournament", label: t("history:matchTypes.tournament") },
+    { value: "other", label: t("history:matchTypes.other") },
+  ];
+
+  const playlistOptions: { value: string; label: string }[] = [
+    { value: "Duel", label: t("history:playlists.duel") },
+    { value: "Doubles", label: t("history:playlists.doubles") },
+    { value: "Standard", label: t("history:playlists.standard") },
+    { value: "Chaos", label: t("history:playlists.chaos") },
+    { value: "Other", label: t("history:playlists.other") },
+  ];
+
+  const saveEdit = () => {
+    updateMutation.mutate(
+      {
+        matchId: id,
+        data: { matchType: editMatchType || null, playlist: editPlaylist || null },
+      },
+      { onSuccess: () => setEditing(false) }
+    );
+    moodMutation.mutate({ matchId: id, mood: editMood });
+  };
+
+  const confirmDelete = () => {
+    deleteMutation.mutate(id, {
+      onSuccess: () => {
+        setDeleting(false);
+        navigate("/history");
+      },
+    });
+  };
+
   return (
     <PageContainer>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <Button
           variant="ghost"
           leftIcon={ArrowLeft}
@@ -117,14 +177,33 @@ export function MatchDetailPage() {
         >
           {t("matchDetail:page.backToHistory")}
         </Button>
-        <Button
-          variant="secondary"
-          leftIcon={Share2}
-          onClick={() => setShareOpen(true)}
-          size="sm"
-        >
-          {t("common:share.button", { defaultValue: "Compartir" })}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            leftIcon={Pencil}
+            onClick={() => setEditing(true)}
+            size="sm"
+          >
+            {t("matchDetail:page.editMatch")}
+          </Button>
+          <Button
+            variant="ghost"
+            leftIcon={Trash2}
+            onClick={() => setDeleting(true)}
+            size="sm"
+            className="text-accent-danger hover:bg-accent-danger-subtle hover:text-accent-danger"
+          >
+            {t("matchDetail:page.deleteMatch")}
+          </Button>
+          <Button
+            variant="secondary"
+            leftIcon={Share2}
+            onClick={() => setShareOpen(true)}
+            size="sm"
+          >
+            {t("common:share.button", { defaultValue: "Compartir" })}
+          </Button>
+        </div>
       </div>
 
       {/* Share modal */}
@@ -134,10 +213,80 @@ export function MatchDetailPage() {
         context={shareContext}
       />
 
+      {/* Edit modal */}
+      <Modal
+        isOpen={editing}
+        onClose={() => setEditing(false)}
+        title={t("history:modals.edit.title")}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setEditing(false)}>
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button variant="primary" onClick={saveEdit} isLoading={updateMutation.isPending}>
+              {t("common:buttons.save")}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-secondary">{t("history:modals.edit.matchTypeLabel")}</label>
+            <Select
+              value={editMatchType || ""}
+              onChange={(val) => setEditMatchType(val)}
+              options={[{ value: "", label: "—" }, ...matchTypeOptions]}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-secondary">{t("history:modals.edit.playlistLabel")}</label>
+            <Select
+              value={editPlaylist || ""}
+              onChange={(val) => setEditPlaylist(val)}
+              options={[{ value: "", label: "—" }, ...playlistOptions]}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-text-secondary">{t("mood:editLabel")}</label>
+            <MoodPicker value={editMood} onChange={setEditMood} size="sm" />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        isOpen={deleting}
+        onClose={() => setDeleting(false)}
+        title={t("history:modals.delete.title")}
+        description={t("history:modals.delete.description")}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDeleting(false)}>
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button variant="danger" onClick={confirmDelete} isLoading={deleteMutation.isPending}>
+              {t("common:buttons.delete")}
+            </Button>
+          </div>
+        }
+      />
+
       {/* Scoreboard first — it is what the page is about. */}
       <div className="animate-rise-in">
         <MatchHeader match={data} />
       </div>
+
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        title={t("mood:editLabel")}
+        className="flex items-center gap-2 self-start rounded-lg border border-border-subtle bg-bg-surface px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-default hover:text-text-primary"
+      >
+        <DetailMoodIcon size={16} className={moodTone(data.mood)} />
+        <span>{t(moodLabelKey(data.mood))}</span>
+      </button>
 
       {/* The two rosters share one flat surface, split by a hairline. */}
       <section className="grid divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-bg-surface lg:grid-cols-2 lg:divide-x lg:divide-y-0">

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { cn, formatDateTime, formatDuration } from "@/lib/utils";
 import { ContextMenu } from "@/components/ui/ContextMenu";
+import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import type { MatchSummary } from "@/lib/types";
 import { Eye, Pencil, Trash2, ChevronRight } from "lucide-react";
 import { getArenaDisplayName } from "@/lib/arenaMap";
@@ -24,7 +25,9 @@ export const MatchCard = memo(function MatchCard({
   staggerIndex = 0,
 }: MatchCardProps) {
   const navigate = useNavigate();
-  const { t } = useTranslation(["history", "common"]);
+  const { t } = useTranslation(["history", "common", "mood"]);
+
+  const MoodGlyph = moodIcon(match.mood);
 
   const hasLocalTeam = match.localTeamNum !== null && match.localTeamNum !== undefined;
   const isWin = hasLocalTeam && match.winnerTeamNum === match.localTeamNum;
@@ -98,7 +101,7 @@ export const MatchCard = memo(function MatchCard({
         role="button"
         tabIndex={0}
         className={cn(
-          "group grid w-full cursor-pointer grid-cols-[3px_minmax(0,1fr)_auto_auto_auto] items-center gap-4 py-3 pl-0 pr-2",
+          "group grid w-full cursor-pointer grid-cols-[3px_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-4 py-3 pl-0 pr-2",
           "transition-colors duration-150 hover:bg-bg-hover",
           "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]",
         )}
@@ -146,6 +149,10 @@ export const MatchCard = memo(function MatchCard({
 
         <span className={cn("w-16 text-right text-xs font-semibold", resultTone)}>
           {resultLabel}
+        </span>
+
+        <span title={t(moodLabelKey(match.mood))}>
+          <MoodGlyph size={15} className={cn("shrink-0", moodTone(match.mood))} aria-label={t(moodLabelKey(match.mood))} />
         </span>
 
         <ChevronRight

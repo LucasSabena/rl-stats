@@ -1,0 +1,18 @@
+{
+  "pickerLabel": "Match mood",
+  "editLabel": "Mood",
+  "unrated": "Unrated",
+  "modal": {
+    "title": "How did this match feel?",
+    "description": "Log your mood to discover how it affects your performance.",
+    "skip": "Not now",
+    "error": "Could not save. Try again."
+  },
+  "options": {
+    "very_happy": "Amazing",
+    "happy": "Happy",
+    "neutral": "Neutral",
+    "angry": "Angry",
+    "very_angry": "Furious"
+  }
+}

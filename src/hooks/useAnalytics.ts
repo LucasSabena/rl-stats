@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAnalytics,
   getDailyRollups,
@@ -6,6 +6,11 @@ import {
   getInsights,
   getPlayerAnalyticsMatches,
   getPlayerAnalyticsSummary,
+  getSessionCurve,
+  getTeammateStats,
+  getCustomBreakdown,
+  recomputeKickoffGoals,
+  type PatternFilters,
 } from "@/lib/api";
 import type {
   AnalyticsData,
@@ -17,6 +22,10 @@ import type {
   PlaylistFilter,
   MatchTypeFilter,
   DataScope,
+  SessionCurveData,
+  TeammateData,
+  BreakdownData,
+  KickoffBackfillReport,
 } from "@/lib/types";
 import { QUERY_STALE_TIME } from "@/lib/constants";
 
@@ -71,6 +80,46 @@ export function useInsights(period: AnalyticsPeriod, filters?: AnalyticsFiltersS
     queryKey: ["insights", period, filters],
     queryFn: () => getInsights(period, filters),
     staleTime: QUERY_STALE_TIME.analytics,
+  });
+}
+
+export function useSessionCurve(period: AnalyticsPeriod, filters?: PatternFilters) {
+  return useQuery<SessionCurveData>({
+    queryKey: ["session-curve", period, filters],
+    queryFn: () => getSessionCurve(period, filters),
+    staleTime: QUERY_STALE_TIME.analytics,
+  });
+}
+
+export function useTeammateStats(period: AnalyticsPeriod, filters?: PatternFilters) {
+  return useQuery<TeammateData>({
+    queryKey: ["teammate-stats", period, filters],
+    queryFn: () => getTeammateStats(period, filters),
+    staleTime: QUERY_STALE_TIME.analytics,
+  });
+}
+
+export function useCustomBreakdown(
+  period: AnalyticsPeriod,
+  dimension: string,
+  filters?: PatternFilters,
+) {
+  return useQuery<BreakdownData>({
+    queryKey: ["custom-breakdown", period, dimension, filters],
+    queryFn: () => getCustomBreakdown(period, dimension, filters),
+    staleTime: QUERY_STALE_TIME.analytics,
+  });
+}
+
+export function useKickoffBackfill() {
+  const queryClient = useQueryClient();
+  return useMutation<KickoffBackfillReport, Error, void>({
+    mutationFn: () => recomputeKickoffGoals(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+      queryClient.invalidateQueries({ queryKey: ["insights"] });
+      queryClient.invalidateQueries({ queryKey: ["rollups"] });
+    },
   });
 }
 

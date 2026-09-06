@@ -114,6 +114,8 @@ export interface MatchSummary {
   isOvertime: boolean;
   matchType?: MatchType | null;
   playlist?: string | null;
+  /** Self-reported post-match mood (`very_happy`…`very_angry`), null = unrated. */
+  mood?: string | null;
 }
 
 export interface MatchDetail extends MatchSummary {
@@ -247,6 +249,7 @@ export interface SessionMatch {
   goal_diff: number | null;
   kickoff_goals_scored?: number;
   kickoff_goals_conceded?: number;
+  mood?: string | null;
 }
 
 export interface InsightsData {
@@ -277,6 +280,13 @@ export interface InsightsData {
     shotsPct: number;
     demosPct: number;
   };
+  byWeekday?: { weekday: number; played: number; won: number; winRate: number }[];
+  bestWeekday?: number;
+  bestWeekdayWR?: number;
+  heatmap?: { weekday: number; hour: number; played: number; won: number; winRate: number }[];
+  byArena?: { name: string; played: number; won: number; winRate: number }[];
+  /** Backend sample threshold below which a bucket is never picked as "best". */
+  minSample?: number;
 }
 
 export interface PlayerAnalyticsMatch {
@@ -303,6 +313,7 @@ export interface PlayerAnalyticsMatch {
   score: number;
   demos: number;
   kickoff_goals: number;
+  mood?: string | null;
   was_comeback: boolean;
   was_collapse: boolean;
 }
@@ -313,6 +324,101 @@ export interface OverlayServerStatus {
   connected_clients: number;
 }
 
+// ─── Session-pattern analytics ─────────────────────────────────────────────
+
+export interface CurvePoint {
+  n?: number;
+  bucket?: number;
+  label: string;
+  startMinutes?: number;
+  played: number;
+  won: number;
+  lost: number;
+  winRate: number;
+  avgGoals: number;
+  avgAssists: number;
+  avgSaves: number;
+  avgShots: number;
+  avgDemos: number;
+  avgScore: number;
+}
+
+export interface CurveBreakpoint {
+  /** Game number / minute bucket after which the drop starts. */
+  splitAfter?: number;
+  splitAfterBucket?: number;
+  splitAfterMinutes?: number;
+  beforeWr: number;
+  afterWr: number;
+  beforeN: number;
+  afterN: number;
+}
+
+export interface SessionCurveData {
+  available: boolean;
+  totalMatches?: number;
+  totalSessions?: number;
+  byGameNumber?: CurvePoint[];
+  byMinute?: CurvePoint[];
+  momentum?: {
+    afterWin: CurvePoint;
+    afterLoss: CurvePoint;
+    firstOfDay: CurvePoint;
+    restOfDay: CurvePoint;
+  };
+  breakpointGame?: CurveBreakpoint | null;
+  breakpointMinute?: CurveBreakpoint | null;
+  minSample?: number;
+}
+
+export interface TeammateEntry {
+  primaryId: string;
+  name: string;
+  played: number;
+  won: number;
+  lost: number;
+  winRate: number;
+  isFriend: boolean;
+}
+
+export interface TeammateData {
+  available: boolean;
+  teammates?: TeammateEntry[];
+  byTeamSize?: { teamSize: number; played: number; won: number; lost: number; winRate: number }[];
+  minSample?: number;
+}
+
+export type BreakdownDimension =
+  | "hour"
+  | "weekday"
+  | "playlist"
+  | "arena"
+  | "match_type"
+  | "mood"
+  | "game_number"
+  | "minute_bucket"
+  | "prev_result";
+
+export interface BreakdownBucket extends CurvePoint {
+  key: string;
+}
+
+export interface BreakdownData {
+  available: boolean;
+  dimension?: string;
+  buckets?: BreakdownBucket[];
+  minSample?: number;
+}
+
+export interface KickoffBackfillReport {
+  goalsScanned: number;
+  kickoffFound: number;
+  matchesUpdated: number;
+  unattributed: number;
+  estimatedMatches: number;
+  matchesWithoutData: number;
+  rollupsRebuilt?: boolean | string;
+}
 export interface OverlayUrl {
   name: string;
   url: string;

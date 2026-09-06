@@ -113,6 +113,7 @@ interface RawMatchSummary {
   duration_seconds: number;
   match_type?: string | null;
   playlist?: string | null;
+  mood?: string | null;
 }
 
 interface RawPlayerStats {
@@ -327,6 +328,7 @@ function mapMatchSummary(match: RawMatchSummary): MatchSummary {
     isOvertime: match.is_overtime,
     matchType: (match.match_type as MatchType) ?? null,
     playlist: match.playlist ?? null,
+    mood: match.mood ?? null,
   };
 }
 
@@ -656,6 +658,13 @@ export async function updateMatch(
   });
 }
 
+export async function setMatchMood(matchId: number, mood: string | null): Promise<void> {
+  return invokeCommand<void>("set_match_mood_cmd", {
+    matchId,
+    mood: mood ?? null,
+  });
+}
+
 // Analytics
 export async function getAnalytics(
   period: AnalyticsPeriod,
@@ -725,9 +734,13 @@ export async function getDailyRollups(
   const end = new Date();
   const start = new Date(end);
   start.setDate(end.getDate() - periodToDays(period));
+  // Local calendar dates: rollup buckets are stored in local time since v21,
+  // so querying with UTC dates would shift matches around midnight.
+  const toLocalDate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const args: Record<string, unknown> = {
-    startDate: start.toISOString().slice(0, 10),
-    endDate: end.toISOString().slice(0, 10),
+    startDate: toLocalDate(start),
+    endDate: toLocalDate(end),
   };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
@@ -829,6 +842,64 @@ export async function getPlayerAnalyticsSummary(
     args,
   );
   return mapSummaryToAnalyticsData(period, summary);
+}
+
+export interface PatternFilters {
+  playlist?: PlaylistFilter;
+  matchType?: MatchTypeFilter;
+  scope?: DataScope;
+  playerId?: string | null;
+}
+
+function patternArgs(
+  period: AnalyticsPeriod,
+  filters?: PatternFilters,
+): Record<string, unknown> {
+  const args: Record<string, unknown> = { period: { days: periodToDays(period) } };
+  if (filters?.playlist && filters.playlist !== "all") {
+    args.playlist = filters.playlist;
+  }
+  if (filters?.matchType && filters.matchType !== "all") {
+    args.match_type = filters.matchType;
+  }
+  if (filters?.scope) {
+    args.scope = filters.scope;
+  }
+  if (filters?.playerId) {
+    args.player_id = filters.playerId;
+  }
+  return args;
+}
+
+export async function getSessionCurve(
+  period: AnalyticsPeriod,
+  filters?: PatternFilters,
+): Promise<import("@/lib/types").SessionCurveData> {
+  return invokeCommand("get_session_curve", patternArgs(period, filters));
+}
+
+export async function getTeammateStats(
+  period: AnalyticsPeriod,
+  filters?: PatternFilters,
+): Promise<import("@/lib/types").TeammateData> {
+  return invokeCommand("get_teammate_stats", patternArgs(period, filters));
+}
+
+export async function getCustomBreakdown(
+  period: AnalyticsPeriod,
+  dimension: string,
+  filters?: PatternFilters,
+): Promise<import("@/lib/types").BreakdownData> {
+  return invokeCommand("get_custom_breakdown", {
+    ...patternArgs(period, filters),
+    dimension,
+  });
+}
+
+export async function recomputeKickoffGoals(): Promise<
+  import("@/lib/types").KickoffBackfillReport
+> {
+  return invokeCommand("recompute_kickoff_goals", {});
 }
 
 // Settings

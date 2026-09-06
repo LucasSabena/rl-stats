@@ -26,11 +26,15 @@ pub async fn create_overlay_window(
         crate::core::settings::get_settings(pool).unwrap_or_default()
     };
 
-    // If already exists, just show and update it
+    // If already exists, just show and update it.
+    // NOTE: intentionally no `set_focus()` here — stealing focus from a
+    // fullscreen game causes alt-tab-like hitches. Re-asserting
+    // `always_on_top` is enough to restore TOPMOST z-order when Rocket
+    // League was relaunched from another launcher (Steam <-> Epic) while
+    // the window was only hidden.
     if let Some(win) = app.get_webview_window(OVERLAY_LABEL) {
         apply_overlay_settings(&win, &app_settings)?;
-        let _ = win.show();
-        let _ = win.set_focus();
+        bring_overlay_to_front(&win);
 
         return Ok(build_state(&app_settings, true));
     }
@@ -84,7 +88,7 @@ pub async fn create_overlay_window(
 
     apply_overlay_settings(&win, &app_settings)?;
 
-    let _ = win.show();
+    bring_overlay_to_front(&win);
 
     Ok(build_state(&app_settings, true))
 }
@@ -316,6 +320,19 @@ pub async fn set_overlay_interactive(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/// Show the overlay and re-assert TOPMOST without stealing keyboard focus.
+///
+/// `always_on_top(true)` is set at creation, but Windows can drop a hidden
+/// WebView behind an exclusive-fullscreen game when Rocket League is
+/// relaunched (e.g. Steam -> Epic) while the window only lived hidden.
+/// Calling `show()` alone does not restore the z-order; re-asserting
+/// `set_always_on_top(true)` does, and unlike `set_focus()` it never
+/// interrupts gameplay.
+fn bring_overlay_to_front(win: &tauri::WebviewWindow) {
+    let _ = win.show();
+    let _ = win.set_always_on_top(true);
+}
 
 fn overlay_is_visible(app: &tauri::AppHandle) -> bool {
     app.get_webview_window(OVERLAY_LABEL)

@@ -81,7 +81,8 @@
       "saves": "Defesas",
       "shots": "Chutes",
       "demos": "Demos"
-    }
+    },
+    "byArena": "Por arena"
   },
   "sessions": {
     "title": "Histórico de sessões",
@@ -162,5 +163,95 @@
       "training": "Treino",
       "other": "Outro"
     }
+  },
+  "heatmap": {
+    "title": "Mapa semanal",
+    "subtitle": "Seu win rate por hora e dia da semana, no seu horário local.",
+    "weekdays": {
+      "mon": "seg",
+      "tue": "ter",
+      "wed": "qua",
+      "thu": "qui",
+      "fri": "sex",
+      "sat": "sáb",
+      "sun": "dom"
+    },
+    "cellTooltip": "{{day}} {{hour}}h: {{played}}j, {{winRate}}% WR",
+    "cellEmpty": "Sem partidas",
+    "legendBad": "Ruim",
+    "legendEven": "Neutro",
+    "legendGood": "Bom",
+    "sampleNote": "Células com menos de {{count}} partidas ficam apagadas."
+  },
+  "fatigue": {
+    "title": "Curva de sessão",
+    "tabs": {
+      "game": "Por partida",
+      "minutes": "Por minutos"
+    },
+    "subtitle": "{{matches}} partidas em {{sessions}} sessões",
+    "played": "Partidas",
+    "breakpointTag": "queda",
+    "breakpointTitle": "Ponto de quebra:",
+    "breakpointGameDetail": "seu WR cai de {{before}}% para {{after}}% a partir da partida {{n}}. Melhor parar ou pausar aí.",
+    "breakpointMinuteDetail": "seu WR cai de {{before}}% para {{after}}% depois de {{minutes}} min de sessão. Melhor pausar aí.",
+    "momentum": {
+      "afterWin": "Após vitória",
+      "afterLoss": "Após derrota",
+      "firstOfDay": "1ª do dia",
+      "restOfDay": "Resto do dia"
+    },
+    "sampleNote": "{{count}} partidas"
+  },
+  "chemistry": {
+    "title": "Química com companheiros",
+    "friendTag": "Amigo",
+    "soloq": "SoloQ",
+    "teamSize": "Time de {{count}}"
+  },
+  "mood": {
+    "title": "O humor joga junto",
+    "subtitle": "{{rated}} de {{total}} partidas avaliadas"
+  },
+  "builder": {
+    "title": "Análise personalizada",
+    "dimension": "Dimensão",
+    "metric": "Métrica",
+    "chartType": "Gráfico",
+    "dimensions": {
+      "hour": "Hora do dia",
+      "weekday": "Dia da semana",
+      "playlist": "Playlist",
+      "arena": "Arena",
+      "match_type": "Tipo de partida",
+      "mood": "Humor",
+      "game_number": "Nº na sessão",
+      "minute_bucket": "Minuto da sessão",
+      "prev_result": "Resultado anterior"
+    },
+    "metrics": {
+      "winRate": "Win Rate %",
+      "played": "Partidas",
+      "avgGoals": "Gols méd.",
+      "avgSaves": "Defesas méd.",
+      "avgShots": "Chutes méd.",
+      "avgAssists": "Assist. méd.",
+      "avgDemos": "Demos méd.",
+      "avgScore": "Pontos méd."
+    },
+    "kinds": {
+      "bars": "Barras",
+      "line": "Linha",
+      "area": "Área"
+    },
+    "noData": "Sem dados para esta combinação.",
+    "save": "Salvar",
+    "savePlaceholder": "Nome desta visão…"
+  },
+  "kickoff": {
+    "recount": "Recalcular gols de saída",
+    "recounting": "Recalculando…",
+    "recountDone": "Pronto: {{found}} gols em {{updated}} partidas.",
+    "recountError": "Não foi possível recalcular."
   }
 }

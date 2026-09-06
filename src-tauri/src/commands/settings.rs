@@ -37,6 +37,14 @@ pub async fn set_settings_cmd(
             if auto_start_changed {
                 configure_autostart(settings.auto_start);
             }
+            // Push the kickoff window to the live session manager: it used to
+            // be read once at startup, so changing it here did nothing until
+            // the app restarted.
+            state
+                .session_manager
+                .write()
+                .await
+                .set_kickoff_threshold_seconds(settings.kickoff_goal_threshold_seconds);
             let player_names = identity_candidate_names(&settings);
             if let Err(e) = storage::rebuild_daily_rollups_for_identity(
                 pool,

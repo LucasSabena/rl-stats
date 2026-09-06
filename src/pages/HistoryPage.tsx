@@ -4,11 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
 import { useDeleteMatch } from "@/hooks/useDeleteMatch";
 import { useUpdateMatch } from "@/hooks/useUpdateMatch";
+import { useSetMatchMood } from "@/hooks/useSetMatchMood";
 import { useDailyRollups } from "@/hooks/useAnalytics";
 import { useFriends } from "@/hooks/useFriends";
 import { useSettings } from "@/hooks/useSettings";
 import { MatchList } from "@/components/history/MatchList";
 import { FilterBar } from "@/components/history/FilterBar";
+import { MoodPicker } from "@/components/mood/MoodPicker";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -58,7 +60,7 @@ function paramsToFilters(params: URLSearchParams): MatchFilters {
 }
 
 export function HistoryPage() {
-  const { t, i18n } = useTranslation(["history", "common"]);
+  const { t, i18n } = useTranslation(["history", "common", "mood"]);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialFilters = paramsToFilters(searchParams);
   const [filters, setFilters] = useState<MatchFilters>(initialFilters);
@@ -70,9 +72,11 @@ export function HistoryPage() {
 
   const [editMatchType, setEditMatchType] = useState<string>("");
   const [editPlaylist, setEditPlaylist] = useState<string>("");
+  const [editMood, setEditMood] = useState<string | null>(null);
 
   const deleteMutation = useDeleteMatch();
   const updateMutation = useUpdateMatch();
+  const moodMutation = useSetMatchMood();
 
   const matchTypeOptions: { value: string; label: string }[] = [
     { value: "ranked", label: t("history:matchTypes.ranked") },
@@ -102,6 +106,7 @@ export function HistoryPage() {
     if (editingMatch) {
       setEditMatchType(editingMatch.matchType ?? "");
       setEditPlaylist(editingMatch.playlist ?? "");
+      setEditMood(editingMatch.mood ?? null);
     }
   }, [editingMatch]);
 
@@ -119,6 +124,7 @@ export function HistoryPage() {
   const saveEdit = (data: { matchType: string | null; playlist: string | null }) => {
     if (editingMatch) {
       updateMutation.mutate({ matchId: editingMatch.id, data });
+      moodMutation.mutate({ matchId: editingMatch.id, mood: editMood });
       setEditingMatch(null);
     }
   };
@@ -231,9 +237,7 @@ export function HistoryPage() {
             </Button>
           </div>
         }
-      >
-        <></>
-      </Modal>
+      />
 
       {/* Edit modal */}
       <Modal
@@ -278,6 +282,10 @@ export function HistoryPage() {
               options={[{ value: "", label: "—" }, ...playlistOptions]}
               className="w-full"
             />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-text-secondary">{t("mood:editLabel")}</label>
+            <MoodPicker value={editMood} onChange={setEditMood} size="sm" />
           </div>
         </div>
       </Modal>
