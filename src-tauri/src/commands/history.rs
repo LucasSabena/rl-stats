@@ -99,6 +99,7 @@ pub async fn get_matches(
                     "duration_seconds": m.duration_seconds,
                     "match_type": m.match_type,
                     "playlist": m.playlist,
+                    "mood": m.mood,
                 }));
             }
             Ok(serde_json::json!({ "matches": result }))
@@ -142,6 +143,7 @@ pub async fn get_match_detail(
                 "duration_seconds": m.duration_seconds,
                 "match_type": m.match_type,
                 "playlist": m.playlist,
+                "mood": m.mood,
             },
                 "players": players,
                 "events": events,

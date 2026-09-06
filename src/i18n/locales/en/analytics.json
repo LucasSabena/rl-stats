@@ -246,7 +246,10 @@
     },
     "noData": "No data for this combination.",
     "save": "Save",
-    "savePlaceholder": "Name this view…"
+    "savePlaceholder": "Name this view…",
+    "prevWin": "After win",
+    "prevLoss": "After loss",
+    "prevStart": "Session start"
   },
   "kickoff": {
     "recount": "Recount kickoff goals",

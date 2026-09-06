@@ -276,6 +276,7 @@ fn import_data_json_internal(
                     .unwrap_or(0) as i32;
                 let match_type = m.get("match_type").and_then(|v| v.as_str());
                 let playlist = m.get("playlist").and_then(|v| v.as_str());
+                let mood = m.get("mood").and_then(|v| v.as_str());
 
                 let match_id = storage::upsert_match_by_guid(
                     &conn,
@@ -292,6 +293,7 @@ fn import_data_json_internal(
                         duration_seconds,
                         match_type,
                         playlist,
+                        mood,
                     },
                 )
                 .map_err(|e| e.to_string())?;

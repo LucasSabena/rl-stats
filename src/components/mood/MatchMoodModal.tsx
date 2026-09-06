@@ -81,7 +81,12 @@ export function MatchMoodModal() {
     if (!pending || !selected) return;
     moodMutation.mutate(
       { matchId: pending.matchId, mood: selected },
-      { onSuccess: () => close() },
+      {
+        onSuccess: () => close(),
+        onError: (error) => {
+          console.error("[mood] failed to save match mood", error);
+        },
+      },
     );
   }, [pending, selected, moodMutation, close]);
 
@@ -113,6 +118,9 @@ export function MatchMoodModal() {
         {moodMutation.isError && (
           <p className="mt-3 text-center text-xs text-accent-danger">
             {t("mood:modal.error")}
+            {moodMutation.error instanceof Error && moodMutation.error.message
+              ? ` ${moodMutation.error.message}`
+              : ""}
           </p>
         )}
       </div>

@@ -84,6 +84,7 @@ pub struct MatchUpsert<'a> {
     pub duration_seconds: i32,
     pub match_type: Option<&'a str>,
     pub playlist: Option<&'a str>,
+    pub mood: Option<&'a str>,
 }
 
 /// Initialize the SQLite database pool and run versioned migrations.
@@ -543,26 +544,6 @@ pub fn insert_match_event(
 ) -> AppResult<()> {
     let conn = get_conn(pool)?;
     insert_match_event_conn(&conn, match_id, event_type, event_data, occurred_at, None)
-}
-
-/// Insert a match event with the game-clock reading attached (v21+).
-pub fn insert_match_event_with_clock(
-    pool: &DbPool,
-    match_id: i64,
-    event_type: &str,
-    event_data: &str,
-    occurred_at: DateTime<Utc>,
-    game_time_remaining: Option<i32>,
-) -> AppResult<()> {
-    let conn = get_conn(pool)?;
-    insert_match_event_conn(
-        &conn,
-        match_id,
-        event_type,
-        event_data,
-        occurred_at,
-        game_time_remaining,
-    )
 }
 
 /// Tiny key/value flag store on top of `app_settings` for one-off data
@@ -1819,8 +1800,8 @@ pub fn upsert_match_by_guid(
     record: MatchUpsert<'_>,
 ) -> AppResult<i64> {
     conn.execute(
-        "INSERT INTO matches (guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        "INSERT INTO matches (guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(guid) DO UPDATE SET
             start_time = excluded.start_time,
             end_time = coalesce(excluded.end_time, matches.end_time),
@@ -1832,7 +1813,8 @@ pub fn upsert_match_by_guid(
             is_overtime = excluded.is_overtime,
             duration_seconds = excluded.duration_seconds,
             match_type = coalesce(excluded.match_type, matches.match_type),
-            playlist = coalesce(excluded.playlist, matches.playlist)",
+            playlist = coalesce(excluded.playlist, matches.playlist),
+            mood = coalesce(excluded.mood, matches.mood)",
         params![
             record.guid,
             record.start_time,
@@ -1846,6 +1828,7 @@ pub fn upsert_match_by_guid(
             record.duration_seconds,
             record.match_type,
             record.playlist,
+            record.mood,
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
@@ -3994,5 +3977,89 @@ mod tests {
             local_date_string("garbage"),
             Local::now().format("%Y-%m-%d").to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod mood_roundtrip_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-mood-test-{}-{}-{}",
+            tag,
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    fn insert_test_match(pool: &DbPool) -> i64 {
+        let conn = get_conn(pool).unwrap();
+        insert_match_conn(
+            &conn,
+            "mood-test-guid",
+            chrono::Utc.with_ymd_and_hms(2026, 9, 6, 21, 0, 0).unwrap(),
+            Some("DFH Stadium"),
+            true,
+            Some("ranked"),
+            Some("Doubles"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn migrations_reach_v22_with_mood_column() {
+        let pool = temp_pool("version");
+        let conn = get_conn(&pool).unwrap();
+        conn.prepare("SELECT mood FROM matches LIMIT 0")
+            .expect("matches.mood must exist after migrations");
+        let version: i32 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(version >= 22, "migrations must reach v22, got {version}");
+    }
+
+    #[test]
+    fn mood_set_read_update_and_clear_roundtrip() {
+        let pool = temp_pool("roundtrip");
+        let match_id = insert_test_match(&pool);
+
+        // Set every valid mood and read it back through both detail and list paths.
+        for mood in MATCH_MOODS {
+            set_match_mood(&pool, match_id, Some(mood)).unwrap();
+            let (detail, _) = get_match_detail(&pool, match_id).unwrap();
+            assert_eq!(detail.mood.as_deref(), Some(*mood));
+            let listed = get_matches(
+                &pool,
+                MatchQuery {
+                    limit: 10,
+                    offset: 0,
+                    arena: None,
+                    match_type: None,
+                    playlist: None,
+                    result: None,
+                    date_from: None,
+                    date_to: None,
+                    search: None,
+                },
+            )
+            .unwrap();
+            assert_eq!(listed.len(), 1);
+            assert_eq!(listed[0].mood.as_deref(), Some(*mood));
+        }
+
+        // Clearing works and unknown values are rejected.
+        set_match_mood(&pool, match_id, None).unwrap();
+        let (detail, _) = get_match_detail(&pool, match_id).unwrap();
+        assert_eq!(detail.mood, None);
+        assert!(set_match_mood(&pool, match_id, Some("tilted")).is_err());
+        assert!(set_match_mood(&pool, 999_999, Some("happy")).is_err());
     }
 }

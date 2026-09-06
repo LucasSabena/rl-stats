@@ -1124,3 +1124,334 @@ mod tests {
         assert_eq!(MIN_INSIGHT_SAMPLE, 3);
     }
 }
+
+#[cfg(test)]
+mod db_tests {
+    use super::*;
+    use crate::core::models::PlayerStats;
+    use crate::core::storage::{
+        finish_match_conn, get_or_create_player_conn, init_storage, insert_match_conn,
+        insert_match_player_conn, set_match_mood, DbPool, FinishMatchUpdate, MatchPlayerRow,
+    };
+    use chrono::TimeZone;
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-patterns-test-{tag}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    fn stats() -> PlayerStats {
+        PlayerStats {
+            score: 100,
+            goals: 1,
+            shots: 3,
+            assists: 0,
+            saves: 1,
+            touches: 10,
+            car_touches: 8,
+            demos: 0,
+            speed: 100.0,
+            boost: 50,
+            mmr: None,
+            kickoff_goals: 0,
+            head_to_head: None,
+        }
+    }
+
+    /// Build two sessions: session 1 (5 wins) + session 2 (5 losses), 3 hours
+    /// apart so the 30-minute gap rule splits them.
+    fn seed_two_sessions(pool: &DbPool) {
+        let conn = crate::core::storage::get_conn(pool).unwrap();
+        let me = get_or_create_player_conn(&conn, "me-pid", "Me").unwrap();
+        let mate = get_or_create_player_conn(&conn, "mate-pid", "Mate").unwrap();
+        let foe = get_or_create_player_conn(&conn, "foe-pid", "Foe").unwrap();
+
+        let base = chrono::Utc.with_ymd_and_hms(2026, 9, 1, 18, 0, 0).unwrap();
+        for session in 0..2 {
+            for game in 0..5 {
+                let start = base
+                    + chrono::Duration::hours(session * 3)
+                    + chrono::Duration::minutes(game * 8);
+                let end = start + chrono::Duration::minutes(6);
+                // Session 0: my team (0) wins; session 1: team 1 wins.
+                let winner = if session == 0 { 0 } else { 1 };
+                let guid = format!("guid-{session}-{game}");
+                let match_id = insert_match_conn(
+                    &conn,
+                    &guid,
+                    start,
+                    Some("DFH Stadium"),
+                    true,
+                    Some("ranked"),
+                    Some("Doubles"),
+                )
+                .unwrap();
+                for (pid, team) in [(me, 0), (mate, 0), (foe, 1)] {
+                    insert_match_player_conn(
+                        &conn,
+                        match_id,
+                        MatchPlayerRow {
+                            player_id: pid,
+                            team_num: team,
+                            stats: stats(),
+                            head_to_head_json: None,
+                        },
+                    )
+                    .unwrap();
+                }
+                finish_match_conn(
+                    &conn,
+                    match_id,
+                    FinishMatchUpdate {
+                        end_time: end,
+                        score_blue: if winner == 0 { 3 } else { 1 },
+                        score_orange: if winner == 1 { 3 } else { 1 },
+                        winner: Some(winner),
+                        is_overtime: false,
+                        duration_seconds: 360,
+                    },
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn session_curve_groups_sessions_and_detects_shape() {
+        let pool = temp_pool("curve");
+        seed_two_sessions(&pool);
+
+        let curve =
+            get_session_curve(&pool, "me-pid", "2026-09-01", "2026-09-02", None, None, 30).unwrap();
+        assert_eq!(curve["available"], true);
+        assert_eq!(curve["totalMatches"], 10);
+        assert_eq!(curve["totalSessions"], 2);
+        // Every session contributes games 1-5: each ordinal bucket has 2.
+        let by_game = curve["byGameNumber"].as_array().unwrap();
+        assert_eq!(by_game.len(), 5);
+        assert_eq!(by_game[0]["played"], 2);
+        // Ordinal 1: one win (session 1) + one loss (session 2).
+        assert_eq!(by_game[0]["won"], 1);
+        assert_eq!(by_game[0]["winRate"], 50);
+    }
+
+    #[test]
+    fn teammates_and_breakdown_cover_mates_moods_and_hours() {
+        let pool = temp_pool("mates");
+        seed_two_sessions(&pool);
+        set_match_mood(&pool, 1, Some("very_happy")).unwrap();
+        set_match_mood(&pool, 6, Some("angry")).unwrap();
+
+        let mates =
+            get_teammate_stats(&pool, "me-pid", "2026-09-01", "2026-09-02", None, None).unwrap();
+        assert_eq!(mates["available"], true);
+        let list = mates["teammates"].as_array().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0]["name"], "Mate");
+        assert_eq!(list[0]["played"], 10);
+        assert_eq!(list[0]["won"], 5);
+
+        for dim in ["hour", "weekday", "playlist", "arena", "match_type", "mood"] {
+            let bd = get_custom_breakdown(
+                &pool,
+                "me-pid",
+                "2026-09-01",
+                "2026-09-02",
+                None,
+                None,
+                30,
+                dim,
+            )
+            .unwrap_or_else(|e| panic!("dimension {dim} failed: {e}"));
+            assert_eq!(bd["available"], true, "dimension {dim}");
+            assert!(
+                !bd["buckets"].as_array().unwrap().is_empty(),
+                "dimension {dim}"
+            );
+        }
+
+        let mood = get_custom_breakdown(
+            &pool,
+            "me-pid",
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+            30,
+            "mood",
+        )
+        .unwrap();
+        let labels: Vec<&str> = mood["buckets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["label"].as_str().unwrap())
+            .collect();
+        assert!(labels.contains(&"very_happy"), "{labels:?}");
+        assert!(labels.contains(&"angry"), "{labels:?}");
+        assert!(labels.contains(&"unrated"), "{labels:?}");
+
+        assert!(get_custom_breakdown(
+            &pool,
+            "me-pid",
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+            30,
+            "nope"
+        )
+        .is_err());
+    }
+}
+
+#[cfg(test)]
+mod backfill_tests {
+    use crate::core::storage::{
+        get_conn, init_storage, insert_match_conn, insert_match_event_conn, DbPool,
+    };
+    use chrono::TimeZone;
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-backfill-test-{tag}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    fn goal_event(scorer_id: &str, team: i32) -> String {
+        serde_json::json!({"scorer": {"id": scorer_id, "name": scorer_id, "teamNum": team}})
+            .to_string()
+    }
+
+    #[test]
+    fn recount_uses_clock_freeze_and_flags_estimates() {
+        let pool = temp_pool("recount");
+        let conn = get_conn(&pool).unwrap();
+        let t0 = chrono::Utc.with_ymd_and_hms(2026, 9, 1, 18, 0, 0).unwrap();
+
+        // Match 1 (regulation): opening goal at clock 295 (kickoff), open-play
+        // goal at 250 thirty seconds later (not), then a goal 8s after that
+        // with the clock barely moved 248 -> still open play... craft instead:
+        // goal3 at clock 249 only 8s after goal2 with clock 250: frozen-clock
+        // restart => kickoff.
+        let m1 = insert_match_conn(
+            &conn,
+            "bf-1",
+            t0,
+            Some("DFH"),
+            true,
+            Some("ranked"),
+            Some("Doubles"),
+        )
+        .unwrap();
+        let me = crate::core::storage::get_or_create_player_conn(&conn, "me", "Me").unwrap();
+        crate::core::storage::insert_match_player_conn(
+            &conn,
+            m1,
+            crate::core::storage::MatchPlayerRow {
+                player_id: me,
+                team_num: 0,
+                stats: crate::core::models::PlayerStats {
+                    score: 0,
+                    goals: 0,
+                    shots: 0,
+                    assists: 0,
+                    saves: 0,
+                    touches: 0,
+                    car_touches: 0,
+                    demos: 0,
+                    speed: 0.0,
+                    boost: 0,
+                    mmr: None,
+                    kickoff_goals: 0,
+                    head_to_head: None,
+                },
+                head_to_head_json: None,
+            },
+        )
+        .unwrap();
+        crate::core::storage::finish_match_conn(
+            &conn,
+            m1,
+            crate::core::storage::FinishMatchUpdate {
+                end_time: t0 + chrono::Duration::minutes(6),
+                score_blue: 2,
+                score_orange: 1,
+                winner: Some(0),
+                is_overtime: false,
+                duration_seconds: 360,
+            },
+        )
+        .unwrap();
+        insert_match_event_conn(&conn, m1, "GoalScored", &goal_event("me", 0), t0, Some(295))
+            .unwrap();
+        insert_match_event_conn(
+            &conn,
+            m1,
+            "GoalScored",
+            &goal_event("me", 0),
+            t0 + chrono::Duration::seconds(40),
+            Some(250),
+        )
+        .unwrap();
+        insert_match_event_conn(
+            &conn,
+            m1,
+            "GoalScored",
+            &goal_event("me", 0),
+            t0 + chrono::Duration::seconds(48),
+            Some(249),
+        )
+        .unwrap();
+
+        // Match 2 (old data, no clock): two goals 9s apart => estimated kickoff.
+        let m2 = insert_match_conn(
+            &conn,
+            "bf-2",
+            t0,
+            Some("DFH"),
+            true,
+            Some("ranked"),
+            Some("Doubles"),
+        )
+        .unwrap();
+        insert_match_event_conn(&conn, m2, "GoalScored", &goal_event("ghost", 0), t0, None)
+            .unwrap();
+        insert_match_event_conn(
+            &conn,
+            m2,
+            "GoalScored",
+            &goal_event("ghost", 0),
+            t0 + chrono::Duration::seconds(9),
+            None,
+        )
+        .unwrap();
+
+        let report = crate::core::patterns::recompute_kickoff_goals(&pool, 7).unwrap();
+        assert_eq!(report["goalsScanned"], 5);
+        // m1: opening (295) + frozen-clock restart (249, 8s after 250).
+        // m2: strict wall-gap estimate. Total 3.
+        assert_eq!(report["kickoffFound"], 3, "{report}");
+        assert_eq!(report["estimatedMatches"], 1);
+        // Match 1's goals attribute to "me"; match 2's scorer is unknown.
+        assert_eq!(report["unattributed"], 1, "{report}");
+
+        let ko: i32 = conn
+            .query_row(
+                "SELECT kickoff_goals FROM match_players WHERE match_id = ?1",
+                rusqlite::params![m1],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ko, 2);
+    }
+}

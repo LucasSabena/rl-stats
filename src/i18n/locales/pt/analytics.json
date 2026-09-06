@@ -246,7 +246,10 @@
     },
     "noData": "Sem dados para esta combinação.",
     "save": "Salvar",
-    "savePlaceholder": "Nome desta visão…"
+    "savePlaceholder": "Nome desta visão…",
+    "prevWin": "Após vitória",
+    "prevLoss": "Após derrota",
+    "prevStart": "Início da sessão"
   },
   "kickoff": {
     "recount": "Recalcular gols de saída",

@@ -140,6 +140,20 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
       if (bucket.label === "unrated") return t("mood:unrated");
       return t(moodLabelKey(bucket.label));
     }
+    if (dimension === "weekday") {
+      // Backend labels arrive in Spanish ("Lunes"…); map them back to the
+      // Monday-first index so every locale renders its own names.
+      const es = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+      const short = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+      const idx = es.indexOf(bucket.label);
+      if (idx >= 0) return t(`analytics:heatmap.weekdays.${short[idx]}`);
+      return bucket.label;
+    }
+    if (dimension === "prev_result") {
+      if (bucket.label === "Tras victoria") return t("analytics:builder.prevWin");
+      if (bucket.label === "Tras derrota") return t("analytics:builder.prevLoss");
+      return t("analytics:builder.prevStart");
+    }
     return bucket.label;
   };
 

@@ -249,7 +249,7 @@ fn hydrate_change_payload_conn(
 fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::Value> {
     conn.query_row(
         "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner,
-                is_online, is_overtime, duration_seconds, match_type, playlist
+                is_online, is_overtime, duration_seconds, match_type, playlist, mood
          FROM matches
          WHERE guid = ?1",
         params![guid],
@@ -267,6 +267,7 @@ fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::
             let duration_seconds = row.get::<_, i32>(10)?;
             let match_type = row.get::<_, Option<String>>(11)?;
             let playlist = row.get::<_, Option<String>>(12)?;
+            let mood = row.get::<_, Option<String>>(13).unwrap_or(None);
 
             Ok(serde_json::json!({
                 "local_id": local_id,
@@ -282,6 +283,7 @@ fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::
                 "duration_seconds": duration_seconds,
                 "match_type": match_type,
                 "playlist": playlist,
+                "mood": mood,
             }))
         },
     )

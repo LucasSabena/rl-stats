@@ -39,6 +39,7 @@ export function MatchDetailPage() {
   const [editMatchType, setEditMatchType] = useState("");
   const [editPlaylist, setEditPlaylist] = useState("");
   const [editMood, setEditMood] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const updateMutation = useUpdateMatch();
   const deleteMutation = useDeleteMatch();
   const moodMutation = useSetMatchMood();
@@ -48,6 +49,7 @@ export function MatchDetailPage() {
       setEditMatchType(data.matchType ?? "");
       setEditPlaylist(data.playlist ?? "");
       setEditMood(data.mood ?? null);
+      setEditError(null);
     }
   }, [editing, data]);
 
@@ -147,15 +149,18 @@ export function MatchDetailPage() {
     { value: "Other", label: t("history:playlists.other") },
   ];
 
-  const saveEdit = () => {
-    updateMutation.mutate(
-      {
+  const saveEdit = async () => {
+    setEditError(null);
+    try {
+      await updateMutation.mutateAsync({
         matchId: id,
         data: { matchType: editMatchType || null, playlist: editPlaylist || null },
-      },
-      { onSuccess: () => setEditing(false) }
-    );
-    moodMutation.mutate({ matchId: id, mood: editMood });
+      });
+      await moodMutation.mutateAsync({ matchId: id, mood: editMood });
+      setEditing(false);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const confirmDelete = () => {
@@ -223,7 +228,7 @@ export function MatchDetailPage() {
             <Button variant="ghost" onClick={() => setEditing(false)}>
               {t("common:buttons.cancel")}
             </Button>
-            <Button variant="primary" onClick={saveEdit} isLoading={updateMutation.isPending}>
+            <Button variant="primary" onClick={saveEdit} isLoading={updateMutation.isPending || moodMutation.isPending}>
               {t("common:buttons.save")}
             </Button>
           </div>
@@ -252,6 +257,9 @@ export function MatchDetailPage() {
             <label className="mb-2 block text-sm font-medium text-text-secondary">{t("mood:editLabel")}</label>
             <MoodPicker value={editMood} onChange={setEditMood} size="sm" />
           </div>
+          {editError && (
+            <p className="text-xs text-accent-danger">{editError}</p>
+          )}
         </div>
       </Modal>
 

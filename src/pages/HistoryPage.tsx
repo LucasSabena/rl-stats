@@ -73,6 +73,7 @@ export function HistoryPage() {
   const [editMatchType, setEditMatchType] = useState<string>("");
   const [editPlaylist, setEditPlaylist] = useState<string>("");
   const [editMood, setEditMood] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const deleteMutation = useDeleteMatch();
   const updateMutation = useUpdateMatch();
@@ -107,6 +108,7 @@ export function HistoryPage() {
       setEditMatchType(editingMatch.matchType ?? "");
       setEditPlaylist(editingMatch.playlist ?? "");
       setEditMood(editingMatch.mood ?? null);
+      setEditError(null);
     }
   }, [editingMatch]);
 
@@ -121,11 +123,17 @@ export function HistoryPage() {
 
   const handleEdit = (match: MatchSummary) => setEditingMatch(match);
 
-  const saveEdit = (data: { matchType: string | null; playlist: string | null }) => {
-    if (editingMatch) {
-      updateMutation.mutate({ matchId: editingMatch.id, data });
-      moodMutation.mutate({ matchId: editingMatch.id, mood: editMood });
+  const saveEdit = async (data: { matchType: string | null; playlist: string | null }) => {
+    if (!editingMatch) return;
+    setEditError(null);
+    try {
+      await updateMutation.mutateAsync({ matchId: editingMatch.id, data });
+      await moodMutation.mutateAsync({ matchId: editingMatch.id, mood: editMood });
       setEditingMatch(null);
+    } catch (error) {
+      // Keep the dialog open so the failure is visible instead of silently
+      // dropping the mood while the rest of the edit looks saved.
+      setEditError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -257,7 +265,7 @@ export function HistoryPage() {
                   playlist: editPlaylist || null,
                 })
               }
-              isLoading={updateMutation.isPending}
+              isLoading={updateMutation.isPending || moodMutation.isPending}
             >
               {t("common:buttons.save")}
             </Button>
@@ -287,6 +295,9 @@ export function HistoryPage() {
             <label className="mb-2 block text-sm font-medium text-text-secondary">{t("mood:editLabel")}</label>
             <MoodPicker value={editMood} onChange={setEditMood} size="sm" />
           </div>
+          {editError && (
+            <p className="text-xs text-accent-danger">{editError}</p>
+          )}
         </div>
       </Modal>
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.6.1 — Fix: el ánimo no llegaba al historial
+
+### Fixed
+
+- **El mood no se mostraba en Historial ni Detalle.** Los comandos
+  `get_matches` y `get_match_detail` armaban el JSON a mano y dropeaban el
+  campo `mood` (el dato SÍ se guardaba). Ahora viaja en ambas respuestas y
+  las tarjetas, diálogos de edición y paneles lo muestran.
+- **El mood sobrevive a export/import y al sync.** `MatchUpsert` y el
+  payload de sync incluyen `mood` (con `coalesce` para no pisar ratings
+  locales en un import sin mood).
+- **Errores de guardado visibles.** Los diálogos de edición mostraban el
+  error de mood en silencio y cerraban igual; ahora esperan a ambas
+  escrituras y muestran el error sin cerrar.
+- Etiquetas de día/resultado-previo del builder traducidas en los 3 idiomas.
+
+
 ## v2.6.0 — Análisis de patrones, mood post-partido y fixes de hora/kickoff
 
 ### Added
