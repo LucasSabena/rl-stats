@@ -1455,3 +1455,238 @@ mod backfill_tests {
         assert_eq!(ko, 2);
     }
 }
+
+#[cfg(test)]
+mod insights_tests {
+    use crate::core::storage::{
+        get_conn, get_daily_rollups, get_insights, get_player_analytics_matches, init_storage,
+        insert_match_event_conn, local_hour, local_weekday, rebuild_daily_rollups_for_identity,
+        DbPool,
+    };
+    use chrono::TimeZone;
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-insights-test-{tag}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    fn goal_event(team: i32) -> String {
+        serde_json::json!({"scorer": {"id": "x", "name": "x", "teamNum": team}}).to_string()
+    }
+
+    /// Three matches five minutes apart (same local hour on every timezone):
+    /// - M1: O,O → orange wins, led throughout (no comeback, no collapse).
+    /// - M2: O,B,B → blue wins; orange led then lost (collapse for orange,
+    ///   comeback for blue).
+    /// - M3: B,O,O → orange wins after trailing (comeback for orange).
+    fn seed_comeback_week(pool: &DbPool) {
+        use crate::core::models::PlayerStats;
+        use crate::core::storage::{
+            finish_match_conn, get_or_create_player_conn, insert_match_conn,
+            insert_match_player_conn, FinishMatchUpdate, MatchPlayerRow,
+        };
+
+        let conn = get_conn(pool).unwrap();
+        let op = get_or_create_player_conn(&conn, "op-pid", "Op").unwrap();
+        let bp = get_or_create_player_conn(&conn, "bp-pid", "Bp").unwrap();
+        let base = chrono::Utc.with_ymd_and_hms(2026, 9, 1, 12, 0, 0).unwrap();
+
+        let blank = || PlayerStats {
+            score: 0,
+            goals: 0,
+            shots: 0,
+            assists: 0,
+            saves: 0,
+            touches: 0,
+            car_touches: 0,
+            demos: 0,
+            speed: 0.0,
+            boost: 0,
+            mmr: None,
+            kickoff_goals: 0,
+            head_to_head: None,
+        };
+
+        // (minute offset, goal team sequence, winner, blue score, orange score)
+        let script: [(i64, &[i32], i32, i32, i32); 3] = [
+            (0, &[1, 1], 1, 0, 2),
+            (5, &[1, 0, 0], 0, 2, 1),
+            (10, &[0, 1, 1], 1, 1, 2),
+        ];
+        for (i, (offset, goals, winner, sb, so)) in script.iter().enumerate() {
+            let start = base + chrono::Duration::minutes(*offset);
+            let guid = format!("cb-{i}");
+            let match_id = insert_match_conn(
+                &conn,
+                &guid,
+                start,
+                Some("DFH Stadium"),
+                true,
+                Some("ranked"),
+                Some("Doubles"),
+            )
+            .unwrap();
+            for (pid, team) in [(op, 1), (bp, 0)] {
+                insert_match_player_conn(
+                    &conn,
+                    match_id,
+                    MatchPlayerRow {
+                        player_id: pid,
+                        team_num: team,
+                        stats: blank(),
+                        head_to_head_json: None,
+                    },
+                )
+                .unwrap();
+            }
+            for (g, team) in goals.iter().enumerate() {
+                insert_match_event_conn(
+                    &conn,
+                    match_id,
+                    "GoalScored",
+                    &goal_event(*team),
+                    start + chrono::Duration::seconds((g as i64) * 60 + 5),
+                    None,
+                )
+                .unwrap();
+            }
+            finish_match_conn(
+                &conn,
+                match_id,
+                FinishMatchUpdate {
+                    end_time: start + chrono::Duration::minutes(6),
+                    score_blue: *sb,
+                    score_orange: *so,
+                    winner: Some(*winner),
+                    is_overtime: false,
+                    duration_seconds: 360,
+                },
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn insights_bucket_local_time_and_pick_best_hour() {
+        let pool = temp_pool("hours");
+        seed_comeback_week(&pool);
+
+        let ins = get_insights(
+            &pool,
+            "op-pid",
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(ins["available"], true);
+        assert_eq!(ins["totalMatches"], 3);
+
+        // All three matches sit in the same LOCAL hour; the UTC hour would
+        // only coincide on UTC machines. This is the regression test for the
+        // "random best hour" bug.
+        let start_str = "2026-09-01T12:00:00+00:00";
+        let expected_hour = local_hour(start_str).unwrap();
+        let by_hour = ins["byHour"].as_array().unwrap();
+        let bucket = by_hour
+            .iter()
+            .find(|h| h["hour"] == expected_hour)
+            .expect("local-hour bucket must exist");
+        assert_eq!(bucket["played"], 3);
+        assert_eq!(bucket["won"], 2);
+        assert_eq!(ins["bestHour"], expected_hour);
+        assert_eq!(ins["bestHourWR"], 67);
+        assert_eq!(ins["minSample"], 3);
+
+        let expected_day = local_weekday(start_str).unwrap();
+        let by_weekday = ins["byWeekday"].as_array().unwrap();
+        assert_eq!(by_weekday.len(), 1);
+        assert_eq!(by_weekday[0]["weekday"], expected_day);
+        assert_eq!(by_weekday[0]["played"], 3);
+        assert_eq!(ins["bestWeekday"], expected_day);
+
+        let heat = ins["heatmap"].as_array().unwrap();
+        assert_eq!(heat.len(), 1);
+        assert_eq!(heat[0]["weekday"], expected_day);
+        assert_eq!(heat[0]["hour"], expected_hour);
+        assert_eq!(heat[0]["played"], 3);
+
+        let arenas = ins["byArena"].as_array().unwrap();
+        assert_eq!(arenas.len(), 1);
+        assert_eq!(arenas[0]["name"], "DFH Stadium");
+        assert_eq!(arenas[0]["played"], 3);
+
+        // Orange identity: M1 win without trailing, M2 collapse, M3 comeback.
+        assert_eq!(ins["comebackWins"], 1);
+        assert_eq!(ins["collapseLosses"], 1);
+    }
+
+    #[test]
+    fn comeback_collapse_flags_follow_my_team_not_the_color() {
+        let pool = temp_pool("perspective");
+        seed_comeback_week(&pool);
+
+        let rows = get_player_analytics_matches(
+            &pool,
+            "op-pid",
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+            10,
+        )
+        .unwrap();
+        // NOTE: newest first (ORDER BY start_time DESC): rows[0] is M3.
+        assert_eq!(rows.len(), 3);
+        // M1: orange wins leading throughout — no comeback staged.
+        assert_eq!(rows[2]["was_comeback"], false);
+        assert_eq!(rows[2]["was_collapse"], false);
+        // M2: orange led, then lost — a collapse.
+        assert_eq!(rows[1]["was_comeback"], false);
+        assert_eq!(rows[1]["was_collapse"], true);
+        // M3: orange trailed, then won — a comeback.
+        assert_eq!(rows[0]["was_comeback"], true);
+        assert_eq!(rows[0]["was_collapse"], false);
+
+        let blue = get_player_analytics_matches(
+            &pool,
+            "bp-pid",
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+            10,
+        )
+        .unwrap();
+        // M2: blue trailed, then won — a comeback.
+        assert_eq!(blue[1]["was_comeback"], true);
+        // M1: blue never led — losing is not collapsing.
+        assert_eq!(blue[2]["was_collapse"], false);
+    }
+
+    #[test]
+    fn rollup_rebuild_groups_by_local_date() {
+        use crate::core::storage::local_date_string;
+
+        let pool = temp_pool("rollup");
+        seed_comeback_week(&pool);
+        rebuild_daily_rollups_for_identity(&pool, Some("op-pid"), &["Op".to_string()]).unwrap();
+
+        let rollups = get_daily_rollups(&pool, "2026-08-30", "2026-09-05").unwrap();
+        assert_eq!(rollups.len(), 1);
+        assert_eq!(
+            rollups[0].date,
+            local_date_string("2026-09-01T12:00:00+00:00")
+        );
+        assert_eq!(rollups[0].matches_played, 3);
+        assert_eq!(rollups[0].wins, 2);
+        assert_eq!(rollups[0].losses, 1);
+    }
+}
