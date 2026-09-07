@@ -535,6 +535,25 @@ struct SessionTally {
     last_was_win: Option<bool>,
 }
 
+/// How long after an interrupt-persist a companion entry event is absorbed.
+///
+/// Entering training (or a match) emits both `MatchCreated` and
+/// `MatchInitialized` milliseconds apart. The first one persists the just
+/// finished match and opens its rating prompt; without this window the
+/// companion event would instantly hide it again (visible flash, rating
+/// lost). A genuinely new match can never start this fast (countdowns alone
+/// take longer), so suppressing the burst is always correct.
+const ENTRY_BURST_SUPPRESS_SECS: u64 = 3;
+
+/// True when `now` falls inside the suppression window opened at `opened`.
+fn entry_burst_suppressed(opened: Option<Instant>, now: Instant) -> bool {
+    opened
+        .map(|t| {
+            now.saturating_duration_since(t) < StdDuration::from_secs(ENTRY_BURST_SUPPRESS_SECS)
+        })
+        .unwrap_or(false)
+}
+
 /// Persist a finished session: write the match, update the tally, emit
 /// `match-summary`/`match-finished` (showing the focus prompt when enabled)
 /// and sync the detected identity. Shared by the normal delayed path and the
@@ -673,6 +692,7 @@ async fn process_events(
     info!("Event processing task started");
 
     let mut tally = SessionTally::default();
+    let mut last_interrupt: Option<Instant> = None;
 
     struct MismatchState {
         alerted: bool,
@@ -739,6 +759,7 @@ async fn process_events(
                 let interrupted = session.phase() == &MatchPhase::Finished;
                 if interrupted {
                     persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
+                    last_interrupt = Some(Instant::now());
                 } else if session.is_training_session() {
                     // The player left training and queued straight into a
                     // match (or the game moved on): the training stint is
@@ -757,8 +778,11 @@ async fn process_events(
                 obs_text::update_obs_files(0, 0, "");
                 // A new match supersedes any pending post-match prompt —
                 // unless this very event interrupted a finished match (see
-                // above): that prompt was just created for it.
-                if !interrupted {
+                // above): that prompt was just created for it. The same goes
+                // for the companion entry event (MatchCreated +
+                // MatchInitialized fire milliseconds apart on every training
+                // hop): it must not hide the prompt the first one opened.
+                if !interrupted && !entry_burst_suppressed(last_interrupt, Instant::now()) {
                     let _ = crate::commands::prompt_window::hide_prompt_window(&app_handle);
 
                     let _ = app_handle.emit(
@@ -766,6 +790,10 @@ async fn process_events(
                         serde_json::json!({
                             "timestamp": chrono::Utc::now().to_rfc3339()
                         }),
+                    );
+                } else if !interrupted {
+                    info!(
+                        "Absorbed companion entry event after interrupt-persist; prompt left open"
                     );
                 }
             }
@@ -1160,4 +1188,26 @@ async fn create_overlay_window_inner(
     let _ = win.set_always_on_top(true);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod prompt_burst_tests {
+    use super::*;
+
+    #[test]
+    fn companion_entry_events_are_absorbed_after_an_interrupt() {
+        let opened = Instant::now();
+        // Milliseconds later (the MatchInitialized companion): suppressed.
+        assert!(entry_burst_suppressed(
+            Some(opened),
+            opened + StdDuration::from_millis(300)
+        ));
+        // A genuinely new match minutes later: not suppressed.
+        assert!(!entry_burst_suppressed(
+            Some(opened),
+            opened + StdDuration::from_secs(60)
+        ));
+        // No interrupt on record: normal dismiss behavior.
+        assert!(!entry_burst_suppressed(None, Instant::now()));
+    }
 }

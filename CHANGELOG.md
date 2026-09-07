@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.8.1 — El prompt ya no parpadea al entrar a entrenamiento
+
+### Fixed
+
+- **El popup aparecía y desaparecía en un microsegundo.** Entrar a
+  entrenamiento emite `MatchCreated` + `MatchInitialized` con milisegundos
+  de diferencia: el primero persistía el partido y abría el prompt, el
+  segundo lo cerraba al instante. Ahora hay una ventana de supresión de 3 s
+  tras un persist interrumpido que absorbe el evento compañero (un partido
+  real nunca arranca tan rápido). Con log de diagnóstico cuando se absorbe.
+
+
 ## v2.7.1 — No perder partidos + settings del prompt que sí guardan
 
 ### Fixed
