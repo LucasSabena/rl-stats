@@ -106,7 +106,7 @@ The app automatically groups consecutive matches into play sessions. A session i
 - **Windows 10 or 11** (the app is Windows-only for now)
 - **Rocket League installed** on the same machine
 - [Rust toolchain](https://rustup.rs/) (stable)
-- [Node.js 20+](https://nodejs.org/) with [pnpm](https://pnpm.io/) (recommended)
+- [Node.js 22+](https://nodejs.org/) with [pnpm](https://pnpm.io/) (recommended)
 
 ---
 

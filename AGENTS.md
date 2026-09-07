@@ -8,7 +8,7 @@
 
 **Frontend** (run in repo root):
 ```bash
-pnpm install              # pnpm 9, Node 20+
+pnpm install              # pnpm 9, Node 22+
 pnpm exec tsc --noEmit    # typecheck first
 pnpm lint                 # ESLint with --max-warnings 0
 pnpm vitest run           # unit tests (CI mode; `pnpm test` starts watch mode)
