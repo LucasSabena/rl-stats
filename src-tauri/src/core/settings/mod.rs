@@ -36,6 +36,8 @@ pub struct AppSettings {
     pub tracker_refresh_interval_min: u32,
     pub session_gap_minutes: u32,
     pub kickoff_goal_threshold_seconds: i32,
+    // ─── Training tracking ────────────────────────────────────────────────
+    pub training_tracking_enabled: bool,
     // ─── Overlay window settings ─────────────────────────────────────────
     pub overlay_enabled: bool,
     pub overlay_opacity: f64,
@@ -92,6 +94,7 @@ impl Default for AppSettings {
             tracker_refresh_interval_min: 5,
             session_gap_minutes: 30,
             kickoff_goal_threshold_seconds: 7,
+            training_tracking_enabled: true,
             overlay_enabled: false,
             overlay_opacity: 0.75,
             overlay_position_x: 40,
@@ -190,6 +193,10 @@ impl AppSettings {
             (
                 "kickoff_goal_threshold_seconds",
                 self.kickoff_goal_threshold_seconds.to_string(),
+            ),
+            (
+                "training_tracking_enabled",
+                self.training_tracking_enabled.to_string(),
             ),
             ("overlay_enabled", self.overlay_enabled.to_string()),
             ("overlay_opacity", self.overlay_opacity.to_string()),
@@ -323,6 +330,9 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
             "session_gap_minutes" => settings.session_gap_minutes = value.parse().unwrap_or(30),
             "kickoff_goal_threshold_seconds" => {
                 settings.kickoff_goal_threshold_seconds = value.parse().unwrap_or(7)
+            }
+            "training_tracking_enabled" => {
+                settings.training_tracking_enabled = value.parse().unwrap_or(true)
             }
             "overlay_enabled" => settings.overlay_enabled = value.parse().unwrap_or(false),
             "overlay_opacity" => settings.overlay_opacity = value.parse::<f64>().unwrap_or(0.75),
@@ -1138,10 +1148,12 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let pool = crate::core::storage::init_storage(dir.join("test.db")).expect("init storage");
 
-        let mut settings = AppSettings::default();
-        settings.prompt_focus_enabled = true;
-        settings.prompt_timeout_secs = 60;
-        settings.prompt_only_when_game_running = false;
+        let settings = AppSettings {
+            prompt_focus_enabled: true,
+            prompt_timeout_secs: 60,
+            prompt_only_when_game_running: false,
+            ..Default::default()
+        };
         super::set_settings(&pool, &settings).expect("save settings");
 
         let loaded = super::get_settings(&pool).expect("load settings");

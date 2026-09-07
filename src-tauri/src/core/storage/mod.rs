@@ -897,6 +897,91 @@ pub fn identity_candidate_names(settings: &crate::core::settings::AppSettings) -
     names
 }
 
+/// Aggregated training-session stats for a local-date window.
+/// Sessions are the matches rows with `match_type = 'training'` (solo game
+/// detected by the Stats API stream); time buckets use the machine's local
+/// timezone so "today" matches the player's day, not UTC.
+pub fn get_training_stats(
+    pool: &DbPool,
+    start_date: &str,
+    end_date: &str,
+) -> AppResult<serde_json::Value> {
+    let conn = get_conn(pool)?;
+
+    // Per-local-day training totals (sessions = rows, time = summed duration).
+    let mut daily_stmt = conn.prepare(
+        "SELECT local_date_string(m.start_time) AS day,
+                COUNT(*) AS sessions,
+                COALESCE(SUM(m.duration_seconds), 0) AS total_seconds
+         FROM matches m
+         WHERE m.match_type = 'training'
+           AND m.start_time >= ?1
+           AND m.start_time < date(?2, '+1 day')
+         GROUP BY day
+         ORDER BY day ASC",
+    )?;
+
+    #[derive(serde::Serialize)]
+    struct TrainingDay {
+        date: String,
+        sessions: i64,
+        total_seconds: i64,
+    }
+
+    let mut days: Vec<TrainingDay> = Vec::new();
+    let mut rows = daily_stmt.query(params![start_date, end_date])?;
+    while let Some(row) = rows.next()? {
+        days.push(TrainingDay {
+            date: row.get(0)?,
+            sessions: row.get(1)?,
+            total_seconds: row.get(2)?,
+        });
+    }
+    drop(rows);
+    drop(daily_stmt);
+
+    // Hour-of-day distribution (local time) for the heatmap-style panel.
+    let mut hour_stmt = conn.prepare(
+        "SELECT local_hour(m.start_time) AS hour, COUNT(*), COALESCE(SUM(m.duration_seconds), 0)
+         FROM matches m
+         WHERE m.match_type = 'training'
+           AND m.start_time >= ?1
+           AND m.start_time < date(?2, '+1 day')
+         GROUP BY hour
+         ORDER BY hour ASC",
+    )?;
+    let mut by_hour: Vec<serde_json::Value> = Vec::new();
+    let mut hour_rows = hour_stmt.query(params![start_date, end_date])?;
+    while let Some(row) = hour_rows.next()? {
+        let hour: Option<i64> = row.get(0)?;
+        if let Some(hour) = hour {
+            by_hour.push(serde_json::json!({
+                "hour": hour,
+                "sessions": row.get::<_, i64>(1)?,
+                "totalSeconds": row.get::<_, i64>(2)?,
+            }));
+        }
+    }
+    drop(hour_rows);
+    drop(hour_stmt);
+
+    let total_sessions: i64 = days.iter().map(|d| d.sessions).sum();
+    let total_seconds: i64 = days.iter().map(|d| d.total_seconds).sum();
+    let avg_session_seconds: i64 = if total_sessions > 0 {
+        total_seconds / total_sessions
+    } else {
+        0
+    };
+
+    Ok(serde_json::json!({
+        "totalSessions": total_sessions,
+        "totalSeconds": total_seconds,
+        "avgSessionSeconds": avg_session_seconds,
+        "days": days,
+        "byHour": by_hour,
+    }))
+}
+
 /// Get daily rollups for a date range.
 pub fn get_daily_rollups(
     pool: &DbPool,

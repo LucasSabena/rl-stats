@@ -1217,3 +1217,53 @@ pub async fn recompute_kickoff_goals(
     }
     Ok(report)
 }
+
+/// Training-time analytics for the selected period: total tracked time,
+/// session count, average session length, a per-local-day series and an
+/// hour-of-day distribution. Complements the match analytics on the
+/// Analytics page.
+#[tauri::command]
+pub async fn get_training_analytics(
+    state: State<'_, AppState>,
+    period: AnalyticsPeriod,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+
+    if period.days == 0 {
+        // "Session" view has no meaning for training; report an empty window
+        // so the UI can hide the panel instead of guessing a range.
+        return Ok(serde_json::json!({
+            "totalSessions": 0,
+            "totalSeconds": 0,
+            "avgSessionSeconds": 0,
+            "days": [],
+            "byHour": [],
+            "enabled": false,
+        }));
+    }
+
+    let enabled = get_settings(pool)
+        .map(|s| s.training_tracking_enabled)
+        .unwrap_or(true);
+    if !enabled {
+        return Ok(serde_json::json!({
+            "totalSessions": 0,
+            "totalSeconds": 0,
+            "avgSessionSeconds": 0,
+            "days": [],
+            "byHour": [],
+            "enabled": false,
+        }));
+    }
+
+    let end = chrono::Utc::now();
+    let start = end - chrono::Duration::days(period.days.max(1) as i64);
+    let start_str = start.format("%Y-%m-%d").to_string();
+    let end_str = end.format("%Y-%m-%d").to_string();
+
+    let mut stats = storage::get_training_stats(pool, &start_str, &end_str)
+        .map_err(|e| e.to_string())?;
+    stats["enabled"] = serde_json::json!(true);
+    stats["period"] = serde_json::json!(period.days);
+    Ok(stats)
+}

@@ -134,6 +134,7 @@ pub fn run() {
             commands::analytics::get_session_curve,
             commands::analytics::get_teammate_stats,
             commands::analytics::get_custom_breakdown,
+            commands::analytics::get_training_analytics,
             commands::analytics::recompute_kickoff_goals,
             commands::prompt_window::show_prompt,
             commands::prompt_window::hide_prompt,
@@ -549,10 +550,20 @@ async fn persist_finished_session(
             let PersistResult {
                 match_id,
                 is_training,
+                skipped_training,
                 summary,
                 detected_primary_id,
                 detected_player_name,
             } = result;
+
+            // Training tracking disabled: nothing was written, just close the
+            // session quietly without firing match-summary/match-finished.
+            if skipped_training {
+                session.handle_event(RlEvent::MatchDestroyed);
+                let final_state = session.live_state();
+                let _ = app_handle.emit("live-update", final_state);
+                return;
+            }
             info!(guid = %summary.match_guid, "Match persisted");
 
             if let Some(winner) = summary.winner {

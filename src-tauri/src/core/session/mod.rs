@@ -437,6 +437,40 @@ impl SessionManager {
             }
         });
         let is_training = self.max_player_count <= 1;
+
+        // Training-tracking opt-out: when the setting is off, solo sessions are
+        // not persisted at all. The reset happens before the check so a disabled
+        // tracking session never lingers and leaks into the next real match.
+        if is_training {
+            let training_enabled = get_settings(pool)
+                .map(|s| s.training_tracking_enabled)
+                .unwrap_or(true);
+            if !training_enabled {
+                info!("Training tracking disabled; discarding solo session");
+                self.reset();
+                return Ok(PersistResult {
+                    match_id: -1,
+                    is_training: true,
+                    skipped_training: true,
+                    summary: SessionSummary {
+                        match_guid: String::new(),
+                        duration_seconds: 0,
+                        score_blue: 0,
+                        score_orange: 0,
+                        winner: None,
+                        local_primary_id: None,
+                        local_team_num: None,
+                        players: Vec::new(),
+                        match_type: Some("training".into()),
+                        kickoff_goals_scored: 0,
+                        kickoff_goals_conceded: 0,
+                    },
+                    detected_primary_id: None,
+                    detected_player_name: None,
+                });
+            }
+        }
+
         let effective_match_type = if is_training {
             Some("training")
         } else {
@@ -735,6 +769,7 @@ impl SessionManager {
         Ok(PersistResult {
             match_id,
             is_training,
+            skipped_training: false,
             summary,
             detected_primary_id: detected_identity.as_ref().map(|(pid, _)| pid.clone()),
             detected_player_name: detected_identity.as_ref().map(|(_, name)| name.clone()),
@@ -775,6 +810,9 @@ impl SessionManager {
 pub struct PersistResult {
     pub match_id: i64,
     pub is_training: bool,
+    /// True when the session was a training session discarded because the
+    /// training-tracking setting is off (no row was written, match_id = -1).
+    pub skipped_training: bool,
     pub summary: SessionSummary,
     pub detected_primary_id: Option<String>,
     pub detected_player_name: Option<String>,
