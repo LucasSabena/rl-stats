@@ -15,6 +15,12 @@
     "rocketLeague": "Rocket League",
     "system": "Sistema"
   },
+  "training": {
+    "title": "Treinos",
+    "description": "Registre o tempo que você passa no modo de treino do jogo (Free Play).",
+    "enabled": "Rastrear treinos",
+    "enabledHint": "Quando ativado, cada sessão de treino é salva com sua duração e aparece em Análises e Histórico."
+  },
   "fields": {
     "playerName": "Nome no jogo",
     "playerNamePlaceholder": "Ex.: Si Locura",

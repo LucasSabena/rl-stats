@@ -12,6 +12,7 @@ import { ChemistryPanel } from "@/components/analytics/ChemistryPanel";
 import { MoodPanel } from "@/components/analytics/MoodPanel";
 import { CustomBuilderPanel } from "@/components/analytics/CustomBuilderPanel";
 import { AnalyticsFilters } from "@/components/analytics/AnalyticsFilters";
+import { TrainingTimeCard } from "@/components/analytics/TrainingTimeCard";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -858,6 +859,8 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
           ) : (
             <>
               <PrimaryStatsRow data={result.data} scope={scope} />
+
+              <TrainingTimeCard period={period} />
 
               {result.rollups.length > 0 && (
                 <PerformanceChart data={result.rollups} scope={scope} />

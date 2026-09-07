@@ -37,6 +37,7 @@ export const settingsSchema = z.object({
   promptFocusEnabled: z.boolean(),
   promptTimeoutSecs: z.number().int().min(5).max(120),
   promptOnlyWhenGameRunning: z.boolean(),
+  trainingTrackingEnabled: z.boolean(),
 });
 
 export type SettingsFormInput = z.input<typeof settingsSchema>;

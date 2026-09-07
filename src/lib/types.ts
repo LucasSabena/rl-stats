@@ -544,6 +544,17 @@ export interface AppSettings {
   promptFocusEnabled?: boolean;
   promptTimeoutSecs?: number;
   promptOnlyWhenGameRunning?: boolean;
+  trainingTrackingEnabled?: boolean;
+}
+
+export interface TrainingStats {
+  totalSessions: number;
+  totalSeconds: number;
+  avgSessionSeconds: number;
+  days: { date: string; sessions: number; totalSeconds: number }[];
+  byHour: { hour: number; sessions: number; totalSeconds: number }[];
+  enabled?: boolean;
+  period?: number;
 }
 
 // ─── Overlay Window ─────────────────────────────────────────────────────────

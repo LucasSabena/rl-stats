@@ -33,7 +33,16 @@
     "noMatches": {
       "title": "No Matches Captured",
       "description": "Start Rocket League, enable the Stats API and play a match. We'll capture the data automatically."
+    },
+    "noTraining": {
+      "title": "No Training Sessions Recorded",
+      "description": "Training (Free Play) sessions are recorded automatically while you play. Enter the game's training mode and they will show up here."
     }
+  },
+  "tabs": {
+    "matches": "Matches",
+    "training": "Training",
+    "all": "All"
   },
   "errors": {
     "loadFailed": {

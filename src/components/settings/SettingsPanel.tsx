@@ -136,6 +136,7 @@ export function SettingsPanel() {
       promptFocusEnabled: false,
       promptTimeoutSecs: 30,
       promptOnlyWhenGameRunning: true,
+      trainingTrackingEnabled: true,
     },
   });
 
@@ -165,6 +166,7 @@ export function SettingsPanel() {
         promptFocusEnabled: settings.promptFocusEnabled ?? false,
         promptTimeoutSecs: settings.promptTimeoutSecs ?? 30,
         promptOnlyWhenGameRunning: settings.promptOnlyWhenGameRunning ?? true,
+        trainingTrackingEnabled: settings.trainingTrackingEnabled ?? true,
       });
     }
   }, [settings, reset]);
@@ -196,6 +198,7 @@ export function SettingsPanel() {
           promptFocusEnabled: data.promptFocusEnabled,
           promptTimeoutSecs: data.promptTimeoutSecs,
           promptOnlyWhenGameRunning: data.promptOnlyWhenGameRunning,
+          trainingTrackingEnabled: data.trainingTrackingEnabled,
         },
         {
           onSuccess: () =>
@@ -634,6 +637,30 @@ export function SettingsPanel() {
                 {errors.kickoffGoalThresholdSeconds.message}
               </p>
             )}
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-base px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-text-secondary">
+                {t("settings:training.title")}
+              </p>
+              <p className="text-xs text-text-muted">
+                {t("settings:training.description")}
+              </p>
+            </div>
+
+            <Controller
+              name="trainingTrackingEnabled"
+              control={control}
+              render={({ field }) => (
+                <ToggleRow
+                  label={t("settings:training.enabled")}
+                  description={t("settings:training.enabledHint")}
+                  checked={field.value}
+                  onChange={() => field.onChange(!field.value)}
+                />
+              )}
+            />
           </div>
 
           <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-base px-4 py-3">

@@ -316,6 +316,90 @@ mod session_tests {
         assert_eq!(live.players.len(), 6);
     }
 
+    /// A solo session (max 1 player) is recognized as training.
+    #[test]
+    fn solo_session_is_training() {
+        use rl_stats_lib::core::settings::{get_settings, set_settings};
+        let (pool, _path) = temp_db_pool();
+
+        let mut settings = get_settings(&pool).unwrap();
+        settings.training_tracking_enabled = true;
+        set_settings(&pool, &settings).unwrap();
+
+        let mut session = SessionManager::new(7);
+        let mut players = HashMap::new();
+        players.insert(
+            "P1".to_string(),
+            LivePlayer {
+                id: "P1".to_string(),
+                name: "Alpha".to_string(),
+                team: 0,
+                ..Default::default()
+            },
+        );
+        session.handle_event(RlEvent::MatchCreated);
+        session.handle_event(RlEvent::UpdateState {
+            match_guid: Some("training-guid".into()),
+            game: GameState::default(),
+            players,
+        });
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: None,
+        });
+
+        let result = session.persist_finished_match(&pool).unwrap();
+        assert!(result.is_training);
+        assert!(!result.skipped_training);
+
+        let _ = fs::remove_file(&_path);
+    }
+
+    /// With the tracking toggle off, solo sessions are discarded: no row is
+    /// written and the session resets so it cannot leak into the next match.
+    #[test]
+    fn training_gate_discards_solo_session_when_disabled() {
+        use rl_stats_lib::core::settings::{get_settings, set_settings};
+        let (pool, _path) = temp_db_pool();
+
+        let mut settings = get_settings(&pool).unwrap();
+        settings.training_tracking_enabled = false;
+        set_settings(&pool, &settings).unwrap();
+
+        let mut session = SessionManager::new(7);
+        let mut players = HashMap::new();
+        players.insert(
+            "P1".to_string(),
+            LivePlayer {
+                id: "P1".to_string(),
+                name: "Alpha".to_string(),
+                team: 0,
+                ..Default::default()
+            },
+        );
+        session.handle_event(RlEvent::MatchCreated);
+        session.handle_event(RlEvent::UpdateState {
+            match_guid: Some("training-off-guid".into()),
+            game: GameState::default(),
+            players,
+        });
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: None,
+        });
+
+        let result = session.persist_finished_match(&pool).unwrap();
+        assert!(result.is_training);
+        assert!(result.skipped_training);
+        assert_eq!(result.match_id, -1);
+        assert_eq!(storage::get_match_count(&pool).unwrap(), 0);
+        // The session must have been reset: the next match starts clean.
+        assert_eq!(
+            session.phase(),
+            &rl_stats_lib::core::session::MatchPhase::Waiting
+        );
+
+        let _ = fs::remove_file(&_path);
+    }
+
     #[test]
     fn session_accumulates_player_stats() {
         let mut session = SessionManager::new(7);

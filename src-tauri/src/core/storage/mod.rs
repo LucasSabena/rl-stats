@@ -4092,6 +4092,7 @@ mod tests {
     }
 }
 
+#[cfg(test)]
 fn find_match_by_guid(conn: &rusqlite::Connection, guid: &str) -> i64 {
     conn.query_row("SELECT id FROM matches WHERE guid = ?1", [guid], |r| {
         r.get(0)

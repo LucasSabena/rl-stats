@@ -10,6 +10,12 @@
     "alltime": "All Time",
     "session": "Session"
   },
+  "training": {
+    "title": "Training Time",
+    "totalTime": "Total time",
+    "sessions": "Sessions",
+    "avgSession": "Avg session"
+  },
   "stats": {
     "totalMatches": "Matches played",
     "winRate": "Win Rate",

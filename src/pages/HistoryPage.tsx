@@ -17,10 +17,11 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildDayShareContext } from "@/lib/shareContext";
 import type { MatchFilters, MatchSummary } from "@/lib/types";
-import { Gamepad2, Share2 } from "lucide-react";
+import { Gamepad2, Share2, Dumbbell } from "lucide-react";
 
 function toISODate(ts?: number | null): string | null {
   if (!ts) return null;
@@ -64,8 +65,30 @@ export function HistoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialFilters = paramsToFilters(searchParams);
   const [filters, setFilters] = useState<MatchFilters>(initialFilters);
+  const [viewTab, setViewTab] = useState<"matches" | "training" | "all">(
+    initialFilters.matchType === "training" ? "training" : "matches",
+  );
 
   const { data, isLoading, isError } = useMatchHistory(filters);
+
+  // Tabs: "matches" hides training rows, "training" shows only those and
+  // "all" shows everything. Training rows are matched by the stored
+  // match_type ("training") the backend assigns to solo sessions.
+  const visibleData = useMemo(() => {
+    if (!data) return data;
+    if (viewTab === "training") {
+      return data.filter((m) => m.matchType === "training");
+    }
+    if (viewTab === "matches") {
+      return data.filter((m) => m.matchType !== "training");
+    }
+    return data;
+  }, [data, viewTab]);
+
+  const trainingCount = useMemo(
+    () => (data ?? []).filter((m) => m.matchType === "training").length,
+    [data],
+  );
 
   const [editingMatch, setEditingMatch] = useState<MatchSummary | null>(null);
   const [deletingMatchId, setDeletingMatchId] = useState<number | null>(null);
@@ -168,16 +191,16 @@ export function HistoryPage() {
           <h2 className="text-2xl font-bold tracking-tight text-text-primary">
             {t("history:pageTitle")}
           </h2>
-          {data && data.length > 0 && (
+          {visibleData && visibleData.length > 0 && (
             <p className="mt-1 text-xs text-text-tertiary">
-              {t("history:summary.count", { count: data.length })}
+              {t("history:summary.count", { count: visibleData.filter((m) => m.matchType !== "training").length })}
               {" · "}
               <span className="text-accent-success">
-                {t("history:summary.wins", { count: data.filter((m) => m.localTeamNum !== null && m.winnerTeamNum === m.localTeamNum).length })}
+                {t("history:summary.wins", { count: visibleData.filter((m) => m.localTeamNum !== null && m.winnerTeamNum === m.localTeamNum).length })}
               </span>
               {" – "}
               <span className="text-accent-danger">
-                {t("history:summary.losses", { count: data.filter((m) => m.localTeamNum !== null && m.winnerTeamNum !== null && m.winnerTeamNum !== m.localTeamNum).length })}
+                {t("history:summary.losses", { count: visibleData.filter((m) => m.localTeamNum !== null && m.winnerTeamNum !== null && m.winnerTeamNum !== m.localTeamNum).length })}
               </span>
             </p>
           )}
@@ -197,6 +220,28 @@ export function HistoryPage() {
         <FilterBar filters={filters} onChange={handleFiltersChange} />
       </div>
 
+      <Tabs
+        value={viewTab}
+        onValueChange={(v) => setViewTab(v as typeof viewTab)}
+        className="gap-0"
+      >
+        <TabsList>
+          <TabsTrigger value="matches">{t("history:tabs.matches")}</TabsTrigger>
+          <TabsTrigger value="training">
+            <span className="inline-flex items-center gap-1.5">
+              <Dumbbell size={13} />
+              {t("history:tabs.training")}
+              {trainingCount > 0 && (
+                <span className="rounded-full bg-accent-primary/15 px-1.5 text-[10px] font-bold text-accent-primary">
+                  {trainingCount}
+                </span>
+              )}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="all">{t("history:tabs.all")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {isLoading && (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -213,17 +258,25 @@ export function HistoryPage() {
         />
       )}
 
-      {!isLoading && !isError && (!data || data.length === 0) && (
+      {!isLoading && !isError && (!visibleData || visibleData.length === 0) && (
         <EmptyState
-          icon={Gamepad2}
-          title={t("history:empty.noMatches.title")}
-          description={t("history:empty.noMatches.description")}
+          icon={viewTab === "training" ? Dumbbell : Gamepad2}
+          title={
+            viewTab === "training"
+              ? t("history:empty.noTraining.title")
+              : t("history:empty.noMatches.title")
+          }
+          description={
+            viewTab === "training"
+              ? t("history:empty.noTraining.description")
+              : t("history:empty.noMatches.description")
+          }
         />
       )}
 
-      {!isLoading && !isError && data && data.length > 0 && (
+      {!isLoading && !isError && visibleData && visibleData.length > 0 && (
         <MatchList
-          matches={data}
+          matches={visibleData}
           onEditMatch={handleEdit}
           onDeleteMatch={handleDelete}
         />

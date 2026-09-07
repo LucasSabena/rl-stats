@@ -10,6 +10,12 @@
     "alltime": "Siempre",
     "session": "Sesion"
   },
+  "training": {
+    "title": "Tiempo de entrenamiento",
+    "totalTime": "Tiempo total",
+    "sessions": "Sesiones",
+    "avgSession": "Sesión promedio"
+  },
   "stats": {
     "totalMatches": "Partidas jugadas",
     "winRate": "Win Rate",

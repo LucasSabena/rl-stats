@@ -15,6 +15,12 @@
     "rocketLeague": "Rocket League",
     "system": "System"
   },
+  "training": {
+    "title": "Training",
+    "description": "Track the time you spend in the game's training mode (Free Play).",
+    "enabled": "Track training sessions",
+    "enabledHint": "When enabled, every training session is saved with its duration and shows up in Analytics and History."
+  },
   "fields": {
     "playerName": "In-game name",
     "playerNamePlaceholder": "E.g.: Si Locura",

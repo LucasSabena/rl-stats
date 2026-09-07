@@ -40,6 +40,7 @@ import {
   type CloudSyncStatus,
   type SyncStatus,
   type CloudPushRequest,
+  type TrainingStats,
 } from "./types";
 import { formatLocalDateFromUnix } from "./utils";
 
@@ -204,6 +205,7 @@ interface RawAppSettings {
   prompt_focus_enabled?: boolean;
   prompt_timeout_secs?: number;
   prompt_only_when_game_running?: boolean;
+  training_tracking_enabled?: boolean;
 }
 
 interface RawDailyRollup {
@@ -905,6 +907,16 @@ export async function recomputeKickoffGoals(): Promise<
   return invokeCommand("recompute_kickoff_goals", {});
 }
 
+// Training tracking
+export async function getTrainingAnalytics(
+  period: AnalyticsPeriod,
+): Promise<TrainingStats> {
+  const days = periodToDays(period);
+  return invokeCommand<TrainingStats>("get_training_analytics", {
+    period: { days },
+  });
+}
+
 // Settings
 export async function getSettings(): Promise<AppSettings> {
   const settings = await invokeCommand<RawAppSettings>("get_settings_cmd");
@@ -964,6 +976,7 @@ export async function getSettings(): Promise<AppSettings> {
     promptFocusEnabled: settings.prompt_focus_enabled ?? false,
     promptTimeoutSecs: settings.prompt_timeout_secs ?? 30,
     promptOnlyWhenGameRunning: settings.prompt_only_when_game_running ?? true,
+    trainingTrackingEnabled: settings.training_tracking_enabled ?? true,
   };
 }
 
@@ -1017,6 +1030,7 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       prompt_focus_enabled: settings.promptFocusEnabled ?? false,
       prompt_timeout_secs: settings.promptTimeoutSecs ?? 30,
       prompt_only_when_game_running: settings.promptOnlyWhenGameRunning ?? true,
+      training_tracking_enabled: settings.trainingTrackingEnabled ?? true,
     },
   });
 }
