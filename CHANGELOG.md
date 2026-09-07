@@ -1,5 +1,36 @@
 # Changelog
 
+## v2.7.0 — Pregunta de ánimo sobre el juego (mando + teclado + ratón)
+
+### Added
+
+- **Ventana de prompt sobre el juego.** Al terminar cada partido aparece
+  encima del juego con foco: 5 caritas grandes con countdown configurable.
+  Es un sistema genérico (`prompt` window + `PromptHost`): hoy mood,
+  mañana cualquier aviso.
+- **Triple input simultáneo** con autodetección (último que toca manda):
+  mando (← → / sticks con repetición, A/✕ aceptar, B/○ omitir, multi-mando
+  por actividad), teclado (flechas, Enter, Esc) y ratón (hover + clic).
+- **Settings**: sección *Pregunta sobre el juego* (apagado por defecto,
+  solo si el juego sigue abierto, auto-cierre configurable). Se cierra sola
+  al arrancar el siguiente partido, al cerrar el juego o por timeout, sin
+  guardar. El modal de escritorio se aparta cuando el prompt la maneja
+  (`promptShown`).
+- Todo en español, inglés y portugués, con tests del hook, flujos y defaults.
+
+### Notes
+
+- En pantalla completa exclusiva, Windows minimiza el juego al tomar foco
+  otra ventana: está avisado en el propio ajuste. En borderless no pasa nada.
+- Solo lectura del mando en nuestra ventana: no inyecta input ni toca el
+  juego (cero riesgo de baneo).
+
+### Fixed
+
+- **CI**: Node 20 → 22 porque `jsdom@30` exige Node 22+ (crasheaban los
+  suites jsdom con `markAsUncloneable`). `engines >= 22` en package.json.
+
+
 ## v2.6.1 — Fix: el ánimo no llegaba al historial
 
 ### Fixed
