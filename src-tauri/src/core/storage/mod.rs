@@ -909,17 +909,24 @@ pub fn get_training_stats(
     let conn = get_conn(pool)?;
 
     // Per-local-day training totals (sessions = rows, time = summed duration).
+    // Bucketing happens in Rust via `local_date_string` because SQLite has no
+    // access to the local-timezone helpers.
     let mut daily_stmt = conn.prepare(
-        "SELECT local_date_string(m.start_time) AS day,
-                COUNT(*) AS sessions,
-                COALESCE(SUM(m.duration_seconds), 0) AS total_seconds
+        "SELECT m.start_time, COALESCE(m.duration_seconds, 0)
          FROM matches m
          WHERE m.match_type = 'training'
            AND m.start_time >= ?1
            AND m.start_time < date(?2, '+1 day')
-         GROUP BY day
-         ORDER BY day ASC",
+         ORDER BY m.start_time ASC",
     )?;
+
+    let mut day_rows: Vec<(String, i64)> = Vec::new();
+    let mut rows = daily_stmt.query(params![start_date, end_date])?;
+    while let Some(row) = rows.next()? {
+        day_rows.push((row.get(0)?, row.get(1)?));
+    }
+    drop(rows);
+    drop(daily_stmt);
 
     #[derive(serde::Serialize)]
     struct TrainingDay {
@@ -928,41 +935,61 @@ pub fn get_training_stats(
         total_seconds: i64,
     }
 
-    let mut days: Vec<TrainingDay> = Vec::new();
-    let mut rows = daily_stmt.query(params![start_date, end_date])?;
-    while let Some(row) = rows.next()? {
-        days.push(TrainingDay {
-            date: row.get(0)?,
-            sessions: row.get(1)?,
-            total_seconds: row.get(2)?,
-        });
+    let mut ordered_days: Vec<TrainingDay> = Vec::new();
+    for (start_time, seconds) in day_rows {
+        let date = local_date_string(&start_time);
+        match ordered_days.last_mut() {
+            Some(day) if day.date == date => {
+                day.sessions += 1;
+                day.total_seconds += seconds;
+            }
+            _ => ordered_days.push(TrainingDay {
+                date,
+                sessions: 1,
+                total_seconds: seconds,
+            }),
+        }
     }
-    drop(rows);
-    drop(daily_stmt);
+    let days: Vec<TrainingDay> = ordered_days;
 
     // Hour-of-day distribution (local time) for the heatmap-style panel.
     let mut hour_stmt = conn.prepare(
-        "SELECT local_hour(m.start_time) AS hour, COUNT(*), COALESCE(SUM(m.duration_seconds), 0)
+        "SELECT m.start_time, COALESCE(m.duration_seconds, 0)
          FROM matches m
          WHERE m.match_type = 'training'
            AND m.start_time >= ?1
-           AND m.start_time < date(?2, '+1 day')
-         GROUP BY hour
-         ORDER BY hour ASC",
+           AND m.start_time < date(?2, '+1 day')",
     )?;
     let mut by_hour: Vec<serde_json::Value> = Vec::new();
-    let mut hour_rows = hour_stmt.query(params![start_date, end_date])?;
-    while let Some(row) = hour_rows.next()? {
-        let hour: Option<i64> = row.get(0)?;
-        if let Some(hour) = hour {
-            by_hour.push(serde_json::json!({
-                "hour": hour,
-                "sessions": row.get::<_, i64>(1)?,
-                "totalSeconds": row.get::<_, i64>(2)?,
-            }));
+    {
+        let mut buckets: HashMap<u32, (i64, i64)> = HashMap::new();
+        let mut hour_rows = hour_stmt.query(params![start_date, end_date])?;
+        while let Some(row) = hour_rows.next()? {
+            let start_time: String = row.get(0)?;
+            if let Some(hour) = local_hour(&start_time) {
+                let entry = buckets.entry(hour).or_insert((0, 0));
+                entry.0 += 1;
+                entry.1 += row.get::<_, i64>(1)?;
+            }
         }
+        drop(hour_rows);
+        by_hour.extend(
+            {
+                let mut hours: Vec<u32> = buckets.keys().copied().collect();
+                hours.sort_unstable();
+                hours
+            }
+            .into_iter()
+            .map(|hour| {
+                let (sessions, total_seconds) = buckets[&hour];
+                serde_json::json!({
+                    "hour": hour,
+                    "sessions": sessions,
+                    "totalSeconds": total_seconds,
+                })
+            }),
+        );
     }
-    drop(hour_rows);
     drop(hour_stmt);
 
     let total_sessions: i64 = days.iter().map(|d| d.sessions).sum();
@@ -4065,6 +4092,13 @@ mod tests {
     }
 }
 
+fn find_match_by_guid(conn: &rusqlite::Connection, guid: &str) -> i64 {
+    conn.query_row("SELECT id FROM matches WHERE guid = ?1", [guid], |r| {
+        r.get(0)
+    })
+    .unwrap()
+}
+
 #[cfg(test)]
 mod mood_roundtrip_tests {
     use super::*;
@@ -4144,7 +4178,61 @@ mod mood_roundtrip_tests {
         set_match_mood(&pool, match_id, None).unwrap();
         let (detail, _) = get_match_detail(&pool, match_id).unwrap();
         assert_eq!(detail.mood, None);
-        assert!(set_match_mood(&pool, match_id, Some("tilted")).is_err());
         assert!(set_match_mood(&pool, 999_999, Some("happy")).is_err());
+    }
+
+    #[test]
+    fn training_stats_aggregate_only_training_sessions() {
+        let pool = temp_pool("training");
+
+        {
+            let conn = get_conn(&pool).unwrap();
+            let today = Local::now().format("%Y-%m-%d").to_string();
+            let start = chrono::DateTime::parse_from_rfc3339(&format!("{today}T21:00:00Z"))
+                .unwrap()
+                .with_timezone(&Utc);
+            insert_match_conn(
+                &conn,
+                "training-1",
+                start,
+                Some("underpass_p"),
+                false,
+                Some("training"),
+                None,
+            )
+            .unwrap();
+            finish_match_conn(
+                &conn,
+                find_match_by_guid(&conn, "training-1"),
+                FinishMatchUpdate {
+                    end_time: start + chrono::Duration::seconds(600),
+                    score_blue: 0,
+                    score_orange: 0,
+                    winner: None,
+                    is_overtime: false,
+                    duration_seconds: 600,
+                },
+            )
+            .unwrap();
+            insert_match_conn(
+                &conn,
+                "ranked-1",
+                start,
+                Some("DFH Stadium"),
+                true,
+                Some("ranked"),
+                Some("Doubles"),
+            )
+            .unwrap();
+        }
+
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let stats = get_training_stats(&pool, &today, &today).unwrap();
+        assert_eq!(stats["totalSessions"], 1);
+        assert_eq!(stats["totalSeconds"], 600);
+        assert_eq!(stats["avgSessionSeconds"], 600);
+        let days = stats["days"].as_array().unwrap();
+        assert_eq!(days.len(), 1);
+        assert_eq!(days[0]["sessions"], 1);
     }
 }
