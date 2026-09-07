@@ -1129,6 +1129,28 @@ mod tests {
         assert_eq!(kickoff_goals(&session, "p1"), 0);
     }
 
+    /// Documents the ordering contract `process_events` relies on: once a
+    /// match is Finished, the next MatchCreated wipes the session (phase
+    /// back to Active, roster cleared). Persisting must therefore happen
+    /// BEFORE the reset — a player hopping into training within the grace
+    /// window would otherwise lose the finished match entirely (no history
+    /// row, no summary event, no mood prompt).
+    #[test]
+    fn match_created_after_finish_wipes_the_session() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 296 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: Some(0),
+        });
+        assert_eq!(session.phase(), &MatchPhase::Finished);
+
+        session.handle_event(RlEvent::MatchCreated);
+
+        assert_eq!(session.phase(), &MatchPhase::Active);
+        assert!(session.players().is_empty());
+    }
+
     /// Regression: streams that never emit GoalReplayEnd / RoundStarted /
     /// CountdownBegin between goals left the anchor pointing at the opening
     /// kickoff, so every kickoff goal after the first was missed. Goals now

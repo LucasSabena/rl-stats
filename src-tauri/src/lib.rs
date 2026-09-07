@@ -524,6 +524,133 @@ pub struct TrayHandle {
     _tray: Box<tauri::tray::TrayIcon>,
 }
 
+/// Win/loss counters for the current session. Bundled so the persist helper
+/// and the event loop share one mutable record.
+#[derive(Default)]
+struct SessionTally {
+    wins: i32,
+    losses: i32,
+    streak: i32,
+    last_was_win: Option<bool>,
+}
+
+/// Persist a finished session: write the match, update the tally, emit
+/// `match-summary`/`match-finished` (showing the focus prompt when enabled)
+/// and sync the detected identity. Shared by the normal delayed path and the
+/// interrupted path (a new match arriving before the grace window elapsed).
+async fn persist_finished_session(
+    session: &mut SessionManager,
+    db_pool: &Arc<DbPool>,
+    app_handle: &tauri::AppHandle,
+    tally: &mut SessionTally,
+) {
+    match session.persist_finished_match(db_pool) {
+        Ok(result) => {
+            let PersistResult {
+                match_id,
+                is_training,
+                summary,
+                detected_primary_id,
+                detected_player_name,
+            } = result;
+            info!(guid = %summary.match_guid, "Match persisted");
+
+            if let Some(winner) = summary.winner {
+                let settings = get_settings(db_pool).unwrap_or_default();
+                let local_team = settings.local_primary_id.as_ref().and_then(|pid| {
+                    summary
+                        .players
+                        .iter()
+                        .find(|p| &p.primary_id == pid)
+                        .map(|p| p.team_num)
+                });
+                let is_win = local_team == Some(winner);
+                if is_win {
+                    tally.wins += 1;
+                } else {
+                    tally.losses += 1;
+                }
+                tally.streak = match tally.last_was_win {
+                    Some(true) if is_win => tally.streak + 1,
+                    Some(false) if !is_win => tally.streak - 1,
+                    _ => {
+                        if is_win {
+                            1
+                        } else {
+                            -1
+                        }
+                    }
+                };
+                tally.last_was_win = Some(is_win);
+                obs_text::update_obs_files_win(is_win, tally.wins, tally.losses, tally.streak);
+            }
+
+            let _ = app_handle.emit("match-summary", &summary);
+            // Post-match mood prompt: the frontend opens the mood
+            // modal on this event (skipped for training matches).
+            //
+            // When the focus prompt is enabled, show the generic
+            // prompt window on top of the game instead: the
+            // desktop modal stands down (see `promptShown`).
+            let prompt_settings = get_settings(db_pool).unwrap_or_default();
+            let prompt_shown = !is_training
+                && prompt_settings.prompt_focus_enabled
+                && (!prompt_settings.prompt_only_when_game_running || prompt_settings.game_running)
+                && crate::commands::prompt_window::show_prompt_window(
+                    app_handle,
+                    crate::commands::prompt_window::PromptPayload {
+                        kind: "mood".to_string(),
+                        match_id,
+                    },
+                )
+                .is_ok();
+            let _ = app_handle.emit(
+                "match-finished",
+                serde_json::json!({
+                    "matchId": match_id,
+                    "guid": summary.match_guid,
+                    "isTraining": is_training,
+                    "winner": summary.winner,
+                    "scoreBlue": summary.score_blue,
+                    "scoreOrange": summary.score_orange,
+                    "promptShown": prompt_shown,
+                }),
+            );
+            session.handle_event(RlEvent::MatchDestroyed);
+            let final_state = session.live_state();
+            let _ = app_handle.emit("live-update", final_state);
+
+            // Sync detected identity to the active profile only when it does not
+            // clearly belong to another configured profile. This prevents a match
+            // played on the wrong app profile from silently reassigning identities.
+            if let (Some(pid), Some(pname)) = (detected_primary_id, detected_player_name) {
+                if !pid.is_empty() {
+                    let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
+                    if let Ok(active_profile) = get_active_profile(&app_dir) {
+                        let belongs_to_other_profile = find_profile_by_primary_id(&app_dir, &pid)
+                            .ok()
+                            .flatten()
+                            .map(|profile| profile.id != active_profile.id)
+                            .unwrap_or(false);
+
+                        if !belongs_to_other_profile {
+                            let _ = update_profile_player_identity(
+                                &app_dir,
+                                &active_profile.id,
+                                &pid,
+                                &pname,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to persist match");
+        }
+    }
+}
+
 /// Background task that consumes events from the ingestor and drives the session manager.
 /// Emits Tauri `live-update` events when game state changes so the frontend can react in real time.
 async fn process_events(
@@ -534,10 +661,7 @@ async fn process_events(
 ) {
     info!("Event processing task started");
 
-    let mut session_wins: i32 = 0;
-    let mut session_losses: i32 = 0;
-    let mut session_streak: i32 = 0;
-    let mut last_was_win: Option<bool> = None;
+    let mut tally = SessionTally::default();
 
     struct MismatchState {
         alerted: bool,
@@ -557,24 +681,38 @@ async fn process_events(
 
         match &event {
             RlEvent::MatchCreated | RlEvent::MatchInitialized => {
-                session_wins = 0;
-                session_losses = 0;
-                session_streak = 0;
-                last_was_win = None;
+                // A match that finished inside the grace window (the player
+                // hopped into training or queued the next match in <2s) was
+                // never persisted — and reset() below would wipe it forever,
+                // losing the match, its summary event and its mood prompt.
+                // Persist it first. This MatchCreated must NOT dismiss the
+                // prompt it just triggered (nor emit match-started for it):
+                // the rating belongs to the finished match, even if the
+                // player is already in training. The *next* MatchCreated
+                // dismisses it normally.
+                let interrupted = session.phase() == &MatchPhase::Finished;
+                if interrupted {
+                    persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
+                }
+                tally = SessionTally::default();
                 mismatch_state.alerted = false;
                 mismatch_state.last_detected_id = None;
                 last_live_publish = Instant::now() - StdDuration::from_secs(1);
                 last_identity_check = Instant::now() - StdDuration::from_secs(5);
                 obs_text::update_obs_files(0, 0, "");
-                // A new match supersedes any pending post-match prompt.
-                let _ = crate::commands::prompt_window::hide_prompt_window(&app_handle);
+                // A new match supersedes any pending post-match prompt —
+                // unless this very event interrupted a finished match (see
+                // above): that prompt was just created for it.
+                if !interrupted {
+                    let _ = crate::commands::prompt_window::hide_prompt_window(&app_handle);
 
-                let _ = app_handle.emit(
-                    "match-started",
-                    serde_json::json!({
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    }),
-                );
+                    let _ = app_handle.emit(
+                        "match-started",
+                        serde_json::json!({
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        }),
+                    );
+                }
             }
             _ => {}
         }
@@ -674,120 +812,7 @@ async fn process_events(
 
             let mut session = session_manager.write().await;
             if session.phase() == &MatchPhase::Finished {
-                match session.persist_finished_match(&db_pool) {
-                    Ok(result) => {
-                        let PersistResult {
-                            match_id,
-                            is_training,
-                            summary,
-                            detected_primary_id,
-                            detected_player_name,
-                        } = result;
-                        info!(guid = %summary.match_guid, "Match persisted");
-
-                        if let Some(winner) = summary.winner {
-                            let settings = get_settings(&db_pool).unwrap_or_default();
-                            let local_team = settings.local_primary_id.as_ref().and_then(|pid| {
-                                summary
-                                    .players
-                                    .iter()
-                                    .find(|p| &p.primary_id == pid)
-                                    .map(|p| p.team_num)
-                            });
-                            let is_win = local_team == Some(winner);
-                            if is_win {
-                                session_wins += 1;
-                            } else {
-                                session_losses += 1;
-                            }
-                            session_streak = match last_was_win {
-                                Some(true) if is_win => session_streak + 1,
-                                Some(false) if !is_win => session_streak - 1,
-                                _ => {
-                                    if is_win {
-                                        1
-                                    } else {
-                                        -1
-                                    }
-                                }
-                            };
-                            last_was_win = Some(is_win);
-                            obs_text::update_obs_files_win(
-                                is_win,
-                                session_wins,
-                                session_losses,
-                                session_streak,
-                            );
-                        }
-
-                        let _ = app_handle.emit("match-summary", &summary);
-                        // Post-match mood prompt: the frontend opens the mood
-                        // modal on this event (skipped for training matches).
-                        //
-                        // When the focus prompt is enabled, show the generic
-                        // prompt window on top of the game instead: the
-                        // desktop modal stands down (see `promptShown`).
-                        let prompt_settings = get_settings(&db_pool).unwrap_or_default();
-                        let prompt_shown = !is_training
-                            && prompt_settings.prompt_focus_enabled
-                            && (!prompt_settings.prompt_only_when_game_running
-                                || prompt_settings.game_running)
-                            && crate::commands::prompt_window::show_prompt_window(
-                                &app_handle,
-                                crate::commands::prompt_window::PromptPayload {
-                                    kind: "mood".to_string(),
-                                    match_id,
-                                },
-                            )
-                            .is_ok();
-                        let _ = app_handle.emit(
-                            "match-finished",
-                            serde_json::json!({
-                                "matchId": match_id,
-                                "guid": summary.match_guid,
-                                "isTraining": is_training,
-                                "winner": summary.winner,
-                                "scoreBlue": summary.score_blue,
-                                "scoreOrange": summary.score_orange,
-                                "promptShown": prompt_shown,
-                            }),
-                        );
-                        session.handle_event(RlEvent::MatchDestroyed);
-                        let final_state = session.live_state();
-                        let _ = app_handle.emit("live-update", final_state);
-
-                        // Sync detected identity to the active profile only when it does not
-                        // clearly belong to another configured profile. This prevents a match
-                        // played on the wrong app profile from silently reassigning identities.
-                        if let (Some(pid), Some(pname)) =
-                            (detected_primary_id, detected_player_name)
-                        {
-                            if !pid.is_empty() {
-                                let app_dir = app_handle.path().app_data_dir().unwrap_or_default();
-                                if let Ok(active_profile) = get_active_profile(&app_dir) {
-                                    let belongs_to_other_profile =
-                                        find_profile_by_primary_id(&app_dir, &pid)
-                                            .ok()
-                                            .flatten()
-                                            .map(|profile| profile.id != active_profile.id)
-                                            .unwrap_or(false);
-
-                                    if !belongs_to_other_profile {
-                                        let _ = update_profile_player_identity(
-                                            &app_dir,
-                                            &active_profile.id,
-                                            &pid,
-                                            &pname,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!(error = %e, "Failed to persist match");
-                    }
-                }
+                persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
             }
         }
     }

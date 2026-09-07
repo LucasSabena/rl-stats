@@ -193,6 +193,9 @@ export function SettingsPanel() {
           warnOnProfileMismatch: data.warnOnProfileMismatch,
           autoSwitchProfileOnExactMatch: data.autoSwitchProfileOnExactMatch,
           autoSyncOnMatchEnd: data.autoSyncOnMatchEnd,
+          promptFocusEnabled: data.promptFocusEnabled,
+          promptTimeoutSecs: data.promptTimeoutSecs,
+          promptOnlyWhenGameRunning: data.promptOnlyWhenGameRunning,
         },
         {
           onSuccess: () =>
