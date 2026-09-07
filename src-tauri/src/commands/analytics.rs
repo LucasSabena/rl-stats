@@ -1261,8 +1261,8 @@ pub async fn get_training_analytics(
     let start_str = start.format("%Y-%m-%d").to_string();
     let end_str = end.format("%Y-%m-%d").to_string();
 
-    let mut stats = storage::get_training_stats(pool, &start_str, &end_str)
-        .map_err(|e| e.to_string())?;
+    let mut stats =
+        storage::get_training_stats(pool, &start_str, &end_str).map_err(|e| e.to_string())?;
     stats["enabled"] = serde_json::json!(true);
     stats["period"] = serde_json::json!(period.days);
     Ok(stats)
