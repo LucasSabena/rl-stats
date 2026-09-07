@@ -135,6 +135,9 @@ pub fn run() {
             commands::analytics::get_teammate_stats,
             commands::analytics::get_custom_breakdown,
             commands::analytics::recompute_kickoff_goals,
+            commands::prompt_window::show_prompt,
+            commands::prompt_window::hide_prompt,
+            commands::prompt_window::get_prompt_state,
             commands::players::get_player_directory,
             commands::players::get_player_detail,
             commands::players::get_player_detail_by_primary_id,
@@ -490,6 +493,11 @@ pub fn run() {
                                     if let Some(ref win) = overlay_win {
                                         let _ = win.hide();
                                     }
+                                    // A closed game also dismisses any pending prompt.
+                                    let _ =
+                                        crate::commands::prompt_window::hide_prompt_window(
+                                            &app_handle,
+                                        );
                                 }
                             }
                         });
@@ -558,6 +566,8 @@ async fn process_events(
                 last_live_publish = Instant::now() - StdDuration::from_secs(1);
                 last_identity_check = Instant::now() - StdDuration::from_secs(5);
                 obs_text::update_obs_files(0, 0, "");
+                // A new match supersedes any pending post-match prompt.
+                let _ = crate::commands::prompt_window::hide_prompt_window(&app_handle);
 
                 let _ = app_handle.emit(
                     "match-started",
@@ -713,6 +723,23 @@ async fn process_events(
                         let _ = app_handle.emit("match-summary", &summary);
                         // Post-match mood prompt: the frontend opens the mood
                         // modal on this event (skipped for training matches).
+                        //
+                        // When the focus prompt is enabled, show the generic
+                        // prompt window on top of the game instead: the
+                        // desktop modal stands down (see `promptShown`).
+                        let prompt_settings = get_settings(&db_pool).unwrap_or_default();
+                        let prompt_shown = !is_training
+                            && prompt_settings.prompt_focus_enabled
+                            && (!prompt_settings.prompt_only_when_game_running
+                                || prompt_settings.game_running)
+                            && crate::commands::prompt_window::show_prompt_window(
+                                &app_handle,
+                                crate::commands::prompt_window::PromptPayload {
+                                    kind: "mood".to_string(),
+                                    match_id,
+                                },
+                            )
+                            .is_ok();
                         let _ = app_handle.emit(
                             "match-finished",
                             serde_json::json!({
@@ -722,6 +749,7 @@ async fn process_events(
                                 "winner": summary.winner,
                                 "scoreBlue": summary.score_blue,
                                 "scoreOrange": summary.score_orange,
+                                "promptShown": prompt_shown,
                             }),
                         );
                         session.handle_event(RlEvent::MatchDestroyed);

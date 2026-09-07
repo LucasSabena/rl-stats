@@ -14,6 +14,8 @@ interface MatchFinishedPayload {
   winner?: number | null;
   scoreBlue?: number;
   scoreOrange?: number;
+  /** True when the backend showed the focus prompt window instead. */
+  promptShown?: boolean;
 }
 
 interface PendingMatch {
@@ -48,6 +50,9 @@ export function MatchMoodModal() {
           if (cancelled) return;
           const payload = event.payload;
           if (payload.isTraining) return;
+          // The focus prompt window handles this match — stand down so the
+          // player is never asked twice.
+          if (payload.promptShown) return;
           if (typeof payload.matchId !== "number") return;
           setPending({ matchId: payload.matchId, isTraining: false });
           setSelected(null);

@@ -34,6 +34,9 @@ export const settingsSchema = z.object({
   warnOnProfileMismatch: z.boolean(),
   autoSwitchProfileOnExactMatch: z.boolean(),
   autoSyncOnMatchEnd: z.boolean(),
+  promptFocusEnabled: z.boolean(),
+  promptTimeoutSecs: z.number().int().min(5).max(120),
+  promptOnlyWhenGameRunning: z.boolean(),
 });
 
 export type SettingsFormInput = z.input<typeof settingsSchema>;

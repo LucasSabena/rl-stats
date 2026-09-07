@@ -11,6 +11,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "@/components/layout/AppShell";
 import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
 import { MatchMoodModal } from "@/components/mood/MatchMoodModal";
+import { PromptHost } from "@/components/prompt/PromptHost";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { CURRENT_ONBOARDING_VERSION } from "@/stores/settingsStore";
 import { useAutoUpdateCheck } from "@/hooks/useAutoUpdateCheck";
@@ -102,6 +103,7 @@ function AppContent() {
   );
   const completeOnboarding = useSettingsStore((s) => s.completeOnboarding);
   const [isOverlayWindow, setIsOverlayWindow] = useState(false);
+  const [isPromptWindow, setIsPromptWindow] = useState(false);
   const [detecting, setDetecting] = useState(true);
 
   useAutoUpdateCheck();
@@ -113,6 +115,11 @@ function AppContent() {
       const win = getCurrentWindow();
       if (win.label === "overlay") {
         setIsOverlayWindow(true);
+        document.documentElement.style.backgroundColor = "transparent";
+        document.body.style.backgroundColor = "transparent";
+        document.documentElement.classList.add("overlay-window");
+      } else if (win.label === "prompt") {
+        setIsPromptWindow(true);
         document.documentElement.style.backgroundColor = "transparent";
         document.body.style.backgroundColor = "transparent";
         document.documentElement.classList.add("overlay-window");
@@ -153,6 +160,16 @@ function AppContent() {
     return (
       <Suspense fallback={<AppFallback transparent />}>
         <OverlayView />
+      </Suspense>
+    );
+  }
+
+  // Prompt window: generic focus-taking prompts (mood today), no chrome.
+  // Needs the query client for settings + mutations.
+  if (isPromptWindow) {
+    return (
+      <Suspense fallback={<AppFallback transparent />}>
+        <PromptHost />
       </Suspense>
     );
   }

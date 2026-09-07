@@ -201,6 +201,9 @@ interface RawAppSettings {
   warn_on_profile_mismatch?: boolean;
   auto_switch_profile_on_exact_match?: boolean;
   auto_sync_on_match_end?: boolean;
+  prompt_focus_enabled?: boolean;
+  prompt_timeout_secs?: number;
+  prompt_only_when_game_running?: boolean;
 }
 
 interface RawDailyRollup {
@@ -958,6 +961,9 @@ export async function getSettings(): Promise<AppSettings> {
     autoSwitchProfileOnExactMatch:
       settings.auto_switch_profile_on_exact_match ?? false,
     autoSyncOnMatchEnd: settings.auto_sync_on_match_end ?? true,
+    promptFocusEnabled: settings.prompt_focus_enabled ?? false,
+    promptTimeoutSecs: settings.prompt_timeout_secs ?? 30,
+    promptOnlyWhenGameRunning: settings.prompt_only_when_game_running ?? true,
   };
 }
 
@@ -1008,6 +1014,9 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       auto_switch_profile_on_exact_match:
         settings.autoSwitchProfileOnExactMatch ?? false,
       auto_sync_on_match_end: settings.autoSyncOnMatchEnd ?? true,
+      prompt_focus_enabled: settings.promptFocusEnabled ?? false,
+      prompt_timeout_secs: settings.promptTimeoutSecs ?? 30,
+      prompt_only_when_game_running: settings.promptOnlyWhenGameRunning ?? true,
     },
   });
 }

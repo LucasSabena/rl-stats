@@ -168,5 +168,15 @@
       "latestJsonNotFound": "No se encontro latest.json. Asegurate de haber ejecutado el release de CI.",
       "connectionWithDetail": "Error de conexion. Verifica tu acceso a internet.\nDetalle: {{detail}}"
     }
+  },
+  "prompt": {
+    "title": "Pregunta sobre el juego",
+    "description": "Al terminar cada partido, muestra la pregunta de ánimo encima del juego, controlable con mando, teclado o ratón.",
+    "enabled": "Mostrar sobre el juego",
+    "enabledHint": "Toma el foco al terminar el partido. En pantalla completa exclusiva esto minimiza el juego un momento.",
+    "onlyWhenRunning": "Solo si el juego sigue abierto",
+    "onlyWhenRunningHint": "No molestar si ya cerraste el juego.",
+    "timeout": "Cerrar solo después de (segundos)",
+    "timeoutHint": "Si no respondés, se cierra sin guardar."
   }
 }

@@ -11,6 +11,7 @@ pub mod overlay_window;
 pub mod players;
 pub mod presets;
 pub mod profiles;
+pub mod prompt_window;
 pub mod rlstats;
 pub mod settings;
 pub mod tracker;

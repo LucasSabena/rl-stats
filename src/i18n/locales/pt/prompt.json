@@ -1,0 +1,8 @@
+{
+  "hints": {
+    "gamepad": "Controle: ← → mover · A aceitar · B pular",
+    "keyboard": "Teclado: ← → · Enter · Esc",
+    "mouse": "Mouse: passar + clicar"
+  },
+  "timeout": "Fecha em {{count}}s"
+}

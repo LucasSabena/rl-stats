@@ -541,6 +541,9 @@ export interface AppSettings {
   warnOnProfileMismatch?: boolean;
   autoSwitchProfileOnExactMatch?: boolean;
   autoSyncOnMatchEnd?: boolean;
+  promptFocusEnabled?: boolean;
+  promptTimeoutSecs?: number;
+  promptOnlyWhenGameRunning?: boolean;
 }
 
 // ─── Overlay Window ─────────────────────────────────────────────────────────

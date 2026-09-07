@@ -133,6 +133,9 @@ export function SettingsPanel() {
       warnOnProfileMismatch: true,
       autoSwitchProfileOnExactMatch: false,
       autoSyncOnMatchEnd: true,
+      promptFocusEnabled: false,
+      promptTimeoutSecs: 30,
+      promptOnlyWhenGameRunning: true,
     },
   });
 
@@ -159,6 +162,9 @@ export function SettingsPanel() {
         autoSwitchProfileOnExactMatch:
           settings.autoSwitchProfileOnExactMatch ?? false,
         autoSyncOnMatchEnd: settings.autoSyncOnMatchEnd ?? true,
+        promptFocusEnabled: settings.promptFocusEnabled ?? false,
+        promptTimeoutSecs: settings.promptTimeoutSecs ?? 30,
+        promptOnlyWhenGameRunning: settings.promptOnlyWhenGameRunning ?? true,
       });
     }
   }, [settings, reset]);
@@ -676,6 +682,75 @@ export function SettingsPanel() {
                 />
               )}
             />
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-base px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-text-secondary">
+                {t("settings:prompt.title")}
+              </p>
+              <p className="text-xs text-text-muted">
+                {t("settings:prompt.description")}
+              </p>
+            </div>
+
+            <Controller
+              name="promptFocusEnabled"
+              control={control}
+              render={({ field }) => (
+                <ToggleRow
+                  label={t("settings:prompt.enabled")}
+                  description={t("settings:prompt.enabledHint")}
+                  checked={field.value}
+                  onChange={() => field.onChange(!field.value)}
+                />
+              )}
+            />
+
+            <Controller
+              name="promptOnlyWhenGameRunning"
+              control={control}
+              render={({ field }) => (
+                <ToggleRow
+                  label={t("settings:prompt.onlyWhenRunning")}
+                  description={t("settings:prompt.onlyWhenRunningHint")}
+                  checked={field.value}
+                  onChange={() => field.onChange(!field.value)}
+                />
+              )}
+            />
+
+            <div className="space-y-2">
+              <label
+                htmlFor="promptTimeoutSecs"
+                className="text-sm font-medium text-text-secondary"
+              >
+                {t("settings:prompt.timeout")}
+              </label>
+              <Controller
+                name="promptTimeoutSecs"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    id="promptTimeoutSecs"
+                    type="number"
+                    min={5}
+                    max={120}
+                    value={field.value}
+                    onChange={(e) => field.onChange(Number(e.target.value))}
+                    className={cn(inputClass, "w-28 text-center")}
+                  />
+                )}
+              />
+              <p className="text-xs text-text-muted">
+                {t("settings:prompt.timeoutHint")}
+              </p>
+              {errors.promptTimeoutSecs && (
+                <p className="text-xs text-accent-danger">
+                  {errors.promptTimeoutSecs.message}
+                </p>
+              )}
+            </div>
           </div>
 
           <LanguageSelector />

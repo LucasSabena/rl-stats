@@ -97,4 +97,15 @@ describe("MatchMoodModal", () => {
     expect(screen.queryByText("mood:modal.title")).toBeNull();
     expect(mutateMock).not.toHaveBeenCalled();
   });
+
+  it("stands down when the focus prompt window handles the match", async () => {
+    render(<MatchMoodModal />);
+    await flush();
+
+    await act(async () => {
+      handlers["match-finished"]({ payload: { matchId: 10, isTraining: false, promptShown: true } });
+    });
+    expect(screen.queryByText("mood:modal.title")).toBeNull();
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
 });

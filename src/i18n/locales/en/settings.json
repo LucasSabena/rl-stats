@@ -168,5 +168,15 @@
       "latestJsonNotFound": "latest.json not found. Make sure the CI release has been run.",
       "connectionWithDetail": "Connection error. Check your internet access.\nDetail: {{detail}}"
     }
+  },
+  "prompt": {
+    "title": "In-game prompt",
+    "description": "When each match ends, show the mood question on top of the game, controllable with gamepad, keyboard or mouse.",
+    "enabled": "Show on top of the game",
+    "enabledHint": "Takes focus when the match ends. On exclusive fullscreen this minimizes the game for a moment.",
+    "onlyWhenRunning": "Only while the game is still open",
+    "onlyWhenRunningHint": "Don't bother me if I already closed the game.",
+    "timeout": "Auto-close after (seconds)",
+    "timeoutHint": "If you don't answer, it closes without saving."
   }
 }

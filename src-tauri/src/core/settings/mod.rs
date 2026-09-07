@@ -59,6 +59,9 @@ pub struct AppSettings {
     pub warn_on_profile_mismatch: bool,
     pub auto_switch_profile_on_exact_match: bool,
     pub auto_sync_on_match_end: bool,
+    pub prompt_focus_enabled: bool,
+    pub prompt_timeout_secs: u32,
+    pub prompt_only_when_game_running: bool,
 }
 
 impl Default for AppSettings {
@@ -111,6 +114,9 @@ impl Default for AppSettings {
             warn_on_profile_mismatch: true,
             auto_switch_profile_on_exact_match: false,
             auto_sync_on_match_end: true,
+            prompt_focus_enabled: false,
+            prompt_timeout_secs: 30,
+            prompt_only_when_game_running: true,
         }
     }
 }
@@ -225,6 +231,15 @@ impl AppSettings {
                 "auto_sync_on_match_end",
                 self.auto_sync_on_match_end.to_string(),
             ),
+            (
+                "prompt_focus_enabled",
+                self.prompt_focus_enabled.to_string(),
+            ),
+            ("prompt_timeout_secs", self.prompt_timeout_secs.to_string()),
+            (
+                "prompt_only_when_game_running",
+                self.prompt_only_when_game_running.to_string(),
+            ),
         ]
     }
 }
@@ -338,6 +353,13 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
             }
             "auto_sync_on_match_end" => {
                 settings.auto_sync_on_match_end = value.parse().unwrap_or(true)
+            }
+            "prompt_focus_enabled" => {
+                settings.prompt_focus_enabled = value.parse().unwrap_or(false)
+            }
+            "prompt_timeout_secs" => settings.prompt_timeout_secs = value.parse().unwrap_or(30),
+            "prompt_only_when_game_running" => {
+                settings.prompt_only_when_game_running = value.parse().unwrap_or(true)
             }
             _ => {}
         }
@@ -1085,6 +1107,26 @@ mod tests {
         detect_platform_from_exe, merge_stats_api_config, normalize_install_paths,
         parse_steam_loginusers, platform_for_path, reconcile_install_paths, AppSettings,
     };
+
+    #[test]
+    fn focus_prompt_defaults_to_opt_in_off() {
+        let settings = AppSettings::default();
+        assert!(!settings.prompt_focus_enabled);
+        assert_eq!(settings.prompt_timeout_secs, 30);
+        assert!(settings.prompt_only_when_game_running);
+
+        // The new keys must survive a to_kv/from_kv round trip.
+        let kv = settings.to_kv();
+        let get = |key: &str| {
+            kv.iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(get("prompt_focus_enabled"), "false");
+        assert_eq!(get("prompt_timeout_secs"), "30");
+        assert_eq!(get("prompt_only_when_game_running"), "true");
+    }
 
     #[test]
     fn merges_stats_config_without_removing_other_values() {
