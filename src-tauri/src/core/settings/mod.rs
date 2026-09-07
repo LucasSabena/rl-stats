@@ -1129,6 +1129,28 @@ mod tests {
     }
 
     #[test]
+    fn prompt_settings_survive_a_database_round_trip() {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-settings-test-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pool = crate::core::storage::init_storage(dir.join("test.db")).expect("init storage");
+
+        let mut settings = AppSettings::default();
+        settings.prompt_focus_enabled = true;
+        settings.prompt_timeout_secs = 60;
+        settings.prompt_only_when_game_running = false;
+        super::set_settings(&pool, &settings).expect("save settings");
+
+        let loaded = super::get_settings(&pool).expect("load settings");
+        assert!(loaded.prompt_focus_enabled);
+        assert_eq!(loaded.prompt_timeout_secs, 60);
+        assert!(!loaded.prompt_only_when_game_running);
+    }
+
+    #[test]
     fn merges_stats_config_without_removing_other_values() {
         let input = "[Other]\nEnabled=True\n\n[TAGame.MatchStatsExporter_TA]\nPort=1\n";
         let merged = merge_stats_api_config(input, 49_123, 20);

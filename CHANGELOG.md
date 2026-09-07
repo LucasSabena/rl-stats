@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.7.1 — No perder partidos + settings del prompt que sí guardan
+
+### Fixed
+
+- **Partido perdido al entrar rápido a entrenamiento.** El persist corría
+  con 2 s de delay y un `MatchCreated` en el medio lo borraba (sin
+  historial, sin modal). Ahora se persiste antes del reset mediante el
+  helper `persist_finished_session`, y ese `MatchCreated` no descarta el
+  prompt recién creado: la pregunta aparece aunque ya estés en
+  entrenamiento.
+- **Settings del prompt no se guardaban.** El `onSubmit` omitía los 3
+  campos nuevos; ahora viajan con el resto (probado: el test falla con el
+  código viejo y pasa con el fix). Roundtrip en SQLite verificado.
+
+
 ## v2.7.0 — Pregunta de ánimo sobre el juego (mando + teclado + ratón)
 
 ### Added
