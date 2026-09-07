@@ -54,7 +54,20 @@ pub struct SessionManager {
     round_start_game_time: Option<i32>,
     round_start_wall_time: Option<chrono::DateTime<chrono::Utc>>,
     kickoff_goals_by_player: HashMap<String, i32>,
+    /// Timestamp of the last event processed while the session was live.
+    /// Free Play never emits `MatchEnded` when the player leaves, so this is
+    /// the only signal that the training stint is over.
+    last_activity: Option<chrono::DateTime<chrono::Utc>>,
+    /// Set when the session was finalized by the idle-training sweeper rather
+    /// than by a game event; the true end of the stint is `last_activity`,
+    /// not the moment the sweeper ran.
+    idle_finalized: bool,
 }
+
+/// How long a training (solo) session may go without events before the
+/// sweeper considers it finished. Free Play streams UpdateState constantly
+/// while played, so silence means the player left the mode.
+pub const TRAINING_IDLE_FINALIZE_SECS: i64 = 15;
 
 impl SessionManager {
     pub fn new(kickoff_threshold_seconds: i32) -> Self {
@@ -81,6 +94,8 @@ impl SessionManager {
             round_start_game_time: None,
             round_start_wall_time: None,
             kickoff_goals_by_player: HashMap::new(),
+            last_activity: None,
+            idle_finalized: false,
         }
     }
 
@@ -196,6 +211,10 @@ impl SessionManager {
 
     /// Process an incoming RL event and update session state.
     pub fn handle_event(&mut self, event: RlEvent) {
+        if !matches!(event, RlEvent::Unknown) {
+            self.last_activity = Some(Utc::now());
+            self.idle_finalized = false;
+        }
         match &event {
             RlEvent::MatchCreated | RlEvent::MatchInitialized => {
                 info!("Match created/initialized");
@@ -423,8 +442,14 @@ impl SessionManager {
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let start_time = self.start_time.unwrap_or_else(Utc::now);
-        let end_time = Utc::now();
-        let duration = (end_time - start_time).num_seconds() as i32;
+        // An idle-finalized training stint ended when the events stopped, not
+        // when the sweeper noticed.
+        let end_time = if self.idle_finalized {
+            self.last_activity.unwrap_or(start_time)
+        } else {
+            Utc::now()
+        };
+        let duration = (end_time - start_time).num_seconds().max(0) as i32;
         let arena = self.arena.clone().unwrap_or_else(|| "Unknown".into());
 
         let winner = self.winner_team_num.or({
@@ -797,6 +822,50 @@ impl SessionManager {
         self.round_start_game_time = None;
         self.round_start_wall_time = None;
         self.kickoff_goals_by_player.clear();
+        self.last_activity = None;
+        self.idle_finalized = false;
+    }
+
+    /// Finalize a training (solo) session that went silent: Free Play never
+    /// emits `MatchEnded`/`MatchDestroyed` when the player leaves the mode, so
+    /// without this the stint stayed `Active` forever and the next
+    /// `MatchCreated` wiped it unpersisted.
+    ///
+    /// Returns true when the session was transitioned to `Finished`; the
+    /// caller persists it through the normal path.
+    pub fn check_training_idle_finalize(&mut self) -> bool {
+        self.finalize_training_stint(TRAINING_IDLE_FINALIZE_SECS)
+    }
+
+    /// A new match starting is itself proof that the training stint ended,
+    /// regardless of how recently the last training event arrived.
+    pub fn check_training_superseded_finalize(&mut self) -> bool {
+        self.finalize_training_stint(0)
+    }
+
+    fn finalize_training_stint(&mut self, min_idle_secs: i64) -> bool {
+        if self.phase != MatchPhase::Active || self.max_player_count > 1 {
+            return false;
+        }
+        let Some(last) = self.last_activity else {
+            return false;
+        };
+        let idle_secs = (Utc::now() - last).num_seconds();
+        if idle_secs < min_idle_secs {
+            return false;
+        }
+        info!(
+            idle_seconds = idle_secs,
+            "Training session idle; finalizing stint"
+        );
+        self.idle_finalized = true;
+        self.phase = MatchPhase::Finished;
+        true
+    }
+
+    /// Whether the current live session is a training (solo) session.
+    pub fn is_training_session(&self) -> bool {
+        self.max_player_count <= 1 && self.phase == MatchPhase::Active
     }
 
     fn has_meaningful_match_data(&self) -> bool {
@@ -1187,6 +1256,69 @@ mod tests {
 
         assert_eq!(session.phase(), &MatchPhase::Active);
         assert!(session.players().is_empty());
+    }
+
+    fn solo_training_session() -> SessionManager {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        let mut players = HashMap::new();
+        players.insert("p1".to_string(), live_player("p1", "Alpha"));
+        session.handle_event(update_state_with(0, players));
+        session
+    }
+
+    /// Free Play never emits MatchEnded: after the idle window the sweeper
+    /// must transition the solo session to Finished so it gets persisted
+    /// instead of being wiped by the next MatchCreated.
+    #[test]
+    fn idle_solo_session_finalizes() {
+        let mut session = solo_training_session();
+        assert!(session.is_training_session());
+
+        // Fresh activity: not idle yet.
+        assert!(!session.check_training_idle_finalize());
+        assert_eq!(session.phase(), &MatchPhase::Active);
+
+        // Simulate a silent stint.
+        session.last_activity =
+            Some(Utc::now() - chrono::Duration::seconds(TRAINING_IDLE_FINALIZE_SECS + 5));
+        assert!(session.check_training_idle_finalize());
+        assert_eq!(session.phase(), &MatchPhase::Finished);
+        assert!(session.idle_finalized);
+    }
+
+    /// A multiplayer match never gets idle-finalized: only solo sessions are.
+    #[test]
+    fn multiplayer_session_never_idle_finalizes() {
+        let mut session = started_session(); // two players
+        assert!(!session.is_training_session());
+        assert!(!session.check_training_idle_finalize());
+        assert_eq!(session.phase(), &MatchPhase::Active);
+    }
+
+    /// A new match starting supersedes an active training stint immediately,
+    /// without waiting for the idle window.
+    #[test]
+    fn new_match_supersedes_training_stint() {
+        let mut session = solo_training_session();
+        // No idle time at all — the MatchCreated alone ends the stint.
+        assert!(session.check_training_superseded_finalize());
+        assert_eq!(session.phase(), &MatchPhase::Finished);
+        assert!(session.idle_finalized);
+    }
+
+    /// The idle-finalized stint keeps its real duration: the persisted
+    /// window ends at the last event, not when the sweeper ran.
+    #[test]
+    fn idle_finalized_duration_uses_last_activity() {
+        let mut session = solo_training_session();
+        // Pretend the stint started 10 minutes ago and went silent 5 minutes ago.
+        session.start_time = Some(Utc::now() - chrono::Duration::minutes(10));
+        session.last_activity = Some(Utc::now() - chrono::Duration::minutes(5));
+        session.last_activity =
+            Some(Utc::now() - chrono::Duration::seconds(TRAINING_IDLE_FINALIZE_SECS + 5));
+        assert!(session.check_training_idle_finalize());
+        assert!(session.idle_finalized);
     }
 
     /// Regression: streams that never emit GoalReplayEnd / RoundStarted /

@@ -686,7 +686,42 @@ async fn process_events(
     let mut last_live_publish = Instant::now() - StdDuration::from_secs(1);
     let mut last_identity_check = Instant::now() - StdDuration::from_secs(5);
 
-    while let Some(event) = ingestor.event_rx.recv().await {
+    // Free Play stints end with silence, not with a game event, so the loop
+    // multiplexes the event channel with a periodic tick: without the tick a
+    // fully quiet training stint would never wake this task to persist itself.
+    const IDLE_TICK_SECS: u64 = 5;
+    let mut idle_tick = tokio::time::interval(tokio::time::Duration::from_secs(IDLE_TICK_SECS));
+    idle_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        let event = tokio::select! {
+            event = ingestor.event_rx.recv() => event,
+            _ = idle_tick.tick() => {
+                let mut session = session_manager.write().await;
+                let was_finished = session.phase() == &MatchPhase::Finished;
+                if was_finished {
+                    continue;
+                }
+                if session.check_training_idle_finalize() {
+                    drop(session);
+                    let mut session = session_manager.write().await;
+                    if session.phase() == &MatchPhase::Finished {
+                        persist_finished_session(
+                            &mut session,
+                            &db_pool,
+                            &app_handle,
+                            &mut tally,
+                        )
+                        .await;
+                    }
+                }
+                continue;
+            }
+            else => break,
+        };
+        let Some(event) = event else {
+            break;
+        };
         let mut session = session_manager.write().await;
         let was_finished = session.phase() == &MatchPhase::Finished;
 
@@ -704,6 +739,15 @@ async fn process_events(
                 let interrupted = session.phase() == &MatchPhase::Finished;
                 if interrupted {
                     persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
+                } else if session.is_training_session() {
+                    // The player left training and queued straight into a
+                    // match (or the game moved on): the training stint is
+                    // over even though Free Play never emits MatchEnded.
+                    // Finalize + persist before reset() erases it.
+                    if session.check_training_superseded_finalize() {
+                        persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally)
+                            .await;
+                    }
                 }
                 tally = SessionTally::default();
                 mismatch_state.alerted = false;
