@@ -17,8 +17,34 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
+const mocks = vi.hoisted(() => ({
+  setPosition: vi.fn(),
+  hide: vi.fn(),
+  getPendingPrompt: vi.fn(async (): Promise<unknown> => null),
+}));
+
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ hide: vi.fn() }),
+  getCurrentWindow: () => ({ hide: mocks.hide, setPosition: mocks.setPosition }),
+  cursorPosition: vi.fn(async () => ({ x: 2500, y: 500 })),
+  availableMonitors: vi.fn(async () => [
+    {
+      name: "primary",
+      position: { x: 0, y: 0 },
+      size: { width: 1920, height: 1080 },
+      scaleFactor: 1,
+    },
+    {
+      name: "game",
+      position: { x: 1920, y: 0 },
+      size: { width: 2560, height: 1440 },
+      scaleFactor: 1,
+    },
+  ]),
+  primaryMonitor: vi.fn(async () => null),
+}));
+
+vi.mock("@/lib/api", () => ({
+  getPendingPrompt: mocks.getPendingPrompt,
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -50,6 +76,9 @@ async function flush() {
 describe("PromptHost", () => {
   beforeEach(() => {
     mutateMock.mockClear();
+    mocks.setPosition.mockClear();
+    mocks.getPendingPrompt.mockReset();
+    mocks.getPendingPrompt.mockResolvedValue(null);
     for (const key of Object.keys(handlers)) delete handlers[key];
   });
 
@@ -87,5 +116,27 @@ describe("PromptHost", () => {
       handlers["prompt-open"]({ payload: { kind: "mood" } });
     });
     expect(container.textContent).toBe("");
+  });
+
+  it("pulls the pending payload on mount (cold-start race fix)", async () => {
+    // No push event is ever emitted: the backend stored the payload while
+    // this webview was still loading, which used to mean an empty window.
+    mocks.getPendingPrompt.mockResolvedValueOnce({ kind: "mood", match_id: 77 });
+    render(<PromptHost />);
+    await flush();
+
+    expect(screen.getByText("mood:modal.title")).toBeDefined();
+  });
+
+  it("centers on the cursor monitor, not the primary display", async () => {
+    render(<PromptHost />);
+    await flush();
+
+    // Cursor at x=2500 sits on the "game" monitor (x=1920, 2560 wide):
+    // 1920 + (2560 - 560) / 2 = 2920, (1440 - 480) / 2 = 480.
+    expect(mocks.setPosition).toHaveBeenCalled();
+    const pos = mocks.setPosition.mock.calls[0][0] as { x: number; y: number };
+    expect(pos.x).toBe(2920);
+    expect(pos.y).toBe(480);
   });
 });

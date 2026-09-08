@@ -670,6 +670,19 @@ export async function setMatchMood(matchId: number, mood: string | null): Promis
   });
 }
 
+/**
+ * Pull model for the prompt window: returns the pending prompt payload when
+ * the backend stored one recently (cold-start safe — push events emitted
+ * before this JS mounts are lost, see tauri-apps/tauri#3484).
+ */
+export async function getPendingPrompt(): Promise<{
+  kind: string;
+  match_id?: number;
+  matchId?: number;
+} | null> {
+  return invokeCommand("get_pending_prompt", {});
+}
+
 // Analytics
 export async function getAnalytics(
   period: AnalyticsPeriod,

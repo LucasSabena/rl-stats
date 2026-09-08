@@ -138,6 +138,7 @@ pub fn run() {
             commands::analytics::recompute_kickoff_goals,
             commands::prompt_window::show_prompt,
             commands::prompt_window::hide_prompt,
+            commands::prompt_window::get_pending_prompt,
             commands::prompt_window::get_prompt_state,
             commands::players::get_player_directory,
             commands::players::get_player_detail,
@@ -632,6 +633,7 @@ async fn persist_finished_session(
                         kind: "mood".to_string(),
                         match_id,
                     },
+                    u64::from(prompt_settings.prompt_timeout_secs),
                 )
                 .is_ok();
             let _ = app_handle.emit(
