@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.8.2 — El prompt sobre el juego aparece siempre
+
+### Fixed
+
+- **El prompt tomaba foco pero se veía vacío.** El evento `prompt-open`
+  se emitía mientras el webview aún arrancaba y Tauri pierde esos eventos
+  (tauri#3484): ahora hay pull-model (`get_pending_prompt` al montar, con
+  expiración) además del push.
+- **La ventana se centra en el monitor del cursor**, no en el primario
+  (en multi-monitor quedaba en otra pantalla).
+
+
 ## v2.8.1 — El prompt ya no parpadea al entrar a entrenamiento
 
 ### Fixed
