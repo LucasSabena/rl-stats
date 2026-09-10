@@ -138,7 +138,7 @@ export function TrainingPacksPage() {
               type="button"
               onClick={() => refetch()}
               className="rounded-lg border border-border-subtle bg-bg-panel p-2 text-text-tertiary transition-colors hover:bg-bg-hover hover:text-text-secondary"
-              title="Refresh"
+              title={t("page.refresh")}
             >
               <RotateCw size={15} />
             </button>
@@ -311,7 +311,7 @@ export function TrainingPacksPage() {
                   className="flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-panel px-5 py-2.5 text-sm font-medium text-text-secondary transition-all hover:bg-bg-hover hover:text-text-primary"
                 >
                   <ChevronDown size={16} />
-                  Mostrar más ({visiblePacks.length - INITIAL_COUNT} más)
+                  {t("page.showMore", { remaining: visiblePacks.length - INITIAL_COUNT })}
                 </button>
               </div>
             )}

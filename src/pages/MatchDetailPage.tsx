@@ -127,7 +127,7 @@ export function MatchDetailPage() {
   const shareContext = buildMatchShareContext(
     data,
     friendsInMatch,
-    settings?.playerName ?? "Yo",
+    settings?.playerName ?? t("common:self"),
     settings?.localPrimaryId,
     i18n.language
   );
@@ -206,7 +206,7 @@ export function MatchDetailPage() {
             onClick={() => setShareOpen(true)}
             size="sm"
           >
-            {t("common:share.button", { defaultValue: "Compartir" })}
+            {t("common:buttons.share")}
           </Button>
         </div>
       </div>

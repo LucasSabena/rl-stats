@@ -55,7 +55,7 @@ export function DataManagement() {
       setIsImporting(true);
       const content = await file.text();
       await importDataJson(content);
-      addToast({ type: "success", title: t("settings:data.importSuccess"), message: `Archivo: ${file.name}` });
+      addToast({ type: "success", title: t("settings:data.importSuccess"), message: t("settings:data.importSuccessMessage", { file: file.name }) });
       await invalidateDataQueries(queryClient);
     } catch {
       addToast({ type: "error", title: t("settings:data.importError") });

@@ -159,15 +159,15 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
       <fieldset className="rounded-xl border border-border-subtle p-4">
         <SectionHeader label={t("camera")} enabled={cameraEnabled} onToggle={setCameraEnabled} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <NumField label={t("fields:fov")} value={camera.fov} onChange={(v) => setCamera((c) => ({ ...c, fov: v }))} min={60} max={120} step={1} />
-          <NumField label={t("fields:height")} value={camera.height} onChange={(v) => setCamera((c) => ({ ...c, height: v }))} min={0} max={200} step={1} />
-          <NumField label={t("fields:angle")} value={camera.angle} onChange={(v) => setCamera((c) => ({ ...c, angle: v }))} min={-15} max={0} step={1} />
-          <NumField label={t("fields:distance")} value={camera.distance} onChange={(v) => setCamera((c) => ({ ...c, distance: v }))} min={100} max={400} step={10} />
-          <NumField label={t("fields:stiffness")} value={camera.stiffness} onChange={(v) => setCamera((c) => ({ ...c, stiffness: v }))} min={0} max={1} step={0.05} />
-          <NumField label={t("fields:swivelSpeed")} value={camera.swivelSpeed} onChange={(v) => setCamera((c) => ({ ...c, swivelSpeed: v }))} min={1} max={10} step={0.1} />
-          <NumField label={t("fields:transitionSpeed")} value={camera.transitionSpeed} onChange={(v) => setCamera((c) => ({ ...c, transitionSpeed: v }))} min={1} max={2} step={0.1} />
-          <TextField label={t("fields:ballCamera")} value={camera.ballCamera} onChange={(v) => setCamera((c) => ({ ...c, ballCamera: v }))} />
-          <TextField label={t("fields:cameraShake")} value={camera.cameraShake} onChange={(v) => setCamera((c) => ({ ...c, cameraShake: v }))} />
+          <NumField label={t("fields.fov")} value={camera.fov} onChange={(v) => setCamera((c) => ({ ...c, fov: v }))} min={60} max={120} step={1} />
+          <NumField label={t("fields.height")} value={camera.height} onChange={(v) => setCamera((c) => ({ ...c, height: v }))} min={0} max={200} step={1} />
+          <NumField label={t("fields.angle")} value={camera.angle} onChange={(v) => setCamera((c) => ({ ...c, angle: v }))} min={-15} max={0} step={1} />
+          <NumField label={t("fields.distance")} value={camera.distance} onChange={(v) => setCamera((c) => ({ ...c, distance: v }))} min={100} max={400} step={10} />
+          <NumField label={t("fields.stiffness")} value={camera.stiffness} onChange={(v) => setCamera((c) => ({ ...c, stiffness: v }))} min={0} max={1} step={0.05} />
+          <NumField label={t("fields.swivelSpeed")} value={camera.swivelSpeed} onChange={(v) => setCamera((c) => ({ ...c, swivelSpeed: v }))} min={1} max={10} step={0.1} />
+          <NumField label={t("fields.transitionSpeed")} value={camera.transitionSpeed} onChange={(v) => setCamera((c) => ({ ...c, transitionSpeed: v }))} min={1} max={2} step={0.1} />
+          <TextField label={t("fields.ballCamera")} value={camera.ballCamera} onChange={(v) => setCamera((c) => ({ ...c, ballCamera: v }))} />
+          <TextField label={t("fields.cameraShake")} value={camera.cameraShake} onChange={(v) => setCamera((c) => ({ ...c, cameraShake: v }))} />
         </div>
       </fieldset>
 
@@ -175,11 +175,11 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
       <fieldset className="rounded-xl border border-border-subtle p-4">
         <SectionHeader label={t("deadzone")} enabled={deadzoneEnabled} onToggle={setDeadzoneEnabled} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <TextField label={t("fields:deadzoneShape")} value={deadzone.deadzoneShape} onChange={(v) => setDeadzone((d) => ({ ...d, deadzoneShape: v }))} />
-          <NumField label={t("fields:deadzone")} value={deadzone.deadzone} onChange={(v) => setDeadzone((d) => ({ ...d, deadzone: v }))} min={0} max={1} step={0.01} />
-          <NumField label={t("fields:dodgeDeadzone")} value={deadzone.dodgeDeadzone} onChange={(v) => setDeadzone((d) => ({ ...d, dodgeDeadzone: v }))} min={0} max={1} step={0.01} />
-          <NumField label={t("fields:aerialSensitivity")} value={deadzone.aerialSensitivity} onChange={(v) => setDeadzone((d) => ({ ...d, aerialSensitivity: v }))} min={0.5} max={2} step={0.1} />
-          <NumField label={t("fields:steeringSensitivity")} value={deadzone.steeringSensitivity} onChange={(v) => setDeadzone((d) => ({ ...d, steeringSensitivity: v }))} min={0.5} max={2} step={0.1} />
+          <TextField label={t("fields.deadzoneShape")} value={deadzone.deadzoneShape} onChange={(v) => setDeadzone((d) => ({ ...d, deadzoneShape: v }))} />
+          <NumField label={t("fields.deadzone")} value={deadzone.deadzone} onChange={(v) => setDeadzone((d) => ({ ...d, deadzone: v }))} min={0} max={1} step={0.01} />
+          <NumField label={t("fields.dodgeDeadzone")} value={deadzone.dodgeDeadzone} onChange={(v) => setDeadzone((d) => ({ ...d, dodgeDeadzone: v }))} min={0} max={1} step={0.01} />
+          <NumField label={t("fields.aerialSensitivity")} value={deadzone.aerialSensitivity} onChange={(v) => setDeadzone((d) => ({ ...d, aerialSensitivity: v }))} min={0.5} max={2} step={0.1} />
+          <NumField label={t("fields.steeringSensitivity")} value={deadzone.steeringSensitivity} onChange={(v) => setDeadzone((d) => ({ ...d, steeringSensitivity: v }))} min={0.5} max={2} step={0.1} />
         </div>
       </fieldset>
 
@@ -187,14 +187,14 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
       <fieldset className="rounded-xl border border-border-subtle p-4">
         <SectionHeader label={t("controls")} enabled={controlsEnabled} onToggle={setControlsEnabled} />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <TextField label={t("fields:powerslide")} value={controls.powerslide} onChange={(v) => setControls((c) => ({ ...c, powerslide: v }))} />
-          <TextField label={t("fields:airRollLeft")} value={controls.airRollLeft} onChange={(v) => setControls((c) => ({ ...c, airRollLeft: v }))} />
-          <TextField label={t("fields:airRollRight")} value={controls.airRollRight} onChange={(v) => setControls((c) => ({ ...c, airRollRight: v }))} />
-          <TextField label={t("fields:boost")} value={controls.boost} onChange={(v) => setControls((c) => ({ ...c, boost: v }))} />
-          <TextField label={t("fields:jump")} value={controls.jump} onChange={(v) => setControls((c) => ({ ...c, jump: v }))} />
-          <TextField label={t("fields:ballCam")} value={controls.ballCam} onChange={(v) => setControls((c) => ({ ...c, ballCam: v }))} />
-          <TextField label={t("fields:brake")} value={controls.brake} onChange={(v) => setControls((c) => ({ ...c, brake: v }))} />
-          <TextField label={t("fields:throttle")} value={controls.throttle} onChange={(v) => setControls((c) => ({ ...c, throttle: v }))} />
+          <TextField label={t("fields.powerslide")} value={controls.powerslide} onChange={(v) => setControls((c) => ({ ...c, powerslide: v }))} />
+          <TextField label={t("fields.airRollLeft")} value={controls.airRollLeft} onChange={(v) => setControls((c) => ({ ...c, airRollLeft: v }))} />
+          <TextField label={t("fields.airRollRight")} value={controls.airRollRight} onChange={(v) => setControls((c) => ({ ...c, airRollRight: v }))} />
+          <TextField label={t("fields.boost")} value={controls.boost} onChange={(v) => setControls((c) => ({ ...c, boost: v }))} />
+          <TextField label={t("fields.jump")} value={controls.jump} onChange={(v) => setControls((c) => ({ ...c, jump: v }))} />
+          <TextField label={t("fields.ballCam")} value={controls.ballCam} onChange={(v) => setControls((c) => ({ ...c, ballCam: v }))} />
+          <TextField label={t("fields.brake")} value={controls.brake} onChange={(v) => setControls((c) => ({ ...c, brake: v }))} />
+          <TextField label={t("fields.throttle")} value={controls.throttle} onChange={(v) => setControls((c) => ({ ...c, throttle: v }))} />
         </div>
       </fieldset>
 
@@ -202,9 +202,9 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
       <fieldset className="rounded-xl border border-border-subtle p-4">
         <SectionHeader label={t("hardware")} enabled={hardwareEnabled} onToggle={setHardwareEnabled} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <TextField label={t("fields:controller")} value={hardware.controller} onChange={(v) => setHardware((h) => ({ ...h, controller: v }))} />
-          <TextField label={t("fields:monitor")} value={hardware.monitor} onChange={(v) => setHardware((h) => ({ ...h, monitor: v }))} />
-          <TextField label={t("fields:headset")} value={hardware.headset} onChange={(v) => setHardware((h) => ({ ...h, headset: v }))} />
+          <TextField label={t("fields.controller")} value={hardware.controller} onChange={(v) => setHardware((h) => ({ ...h, controller: v }))} />
+          <TextField label={t("fields.monitor")} value={hardware.monitor} onChange={(v) => setHardware((h) => ({ ...h, monitor: v }))} />
+          <TextField label={t("fields.headset")} value={hardware.headset} onChange={(v) => setHardware((h) => ({ ...h, headset: v }))} />
         </div>
       </fieldset>
 

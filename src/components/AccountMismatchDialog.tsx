@@ -63,7 +63,9 @@ export function AccountMismatchDialog() {
                   handleSwitchProfileAndRestart(mismatch.matchedProfileId!)
                 }
               >
-                Switch to {mismatch.matchedProfileName} and restart
+                {t("accountMismatch.switchAndRestart", {
+                  name: mismatch.matchedProfileName,
+                })}
               </Button>
               <Button
                 variant="secondary"

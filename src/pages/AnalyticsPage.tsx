@@ -248,7 +248,7 @@ function SessionMatchDetail({
                             key={tm.primary_id} 
                             className={`text-[10px] font-medium ${isFriend ? "text-accent-primary" : "text-text-secondary"}`}
                           >
-                            {tm.name}{isFriend ? " (Amigo)" : ""}
+                            {tm.name}{isFriend ? ` (${t("players:directory.badgeFriend", { defaultValue: "Amigo" })})` : ""}
                           </span>
                         );
                       })}
@@ -708,7 +708,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
 
   const { data: friends, isLoading: friendsLoading } = useFriends();
   const { data: settings } = useSettings();
-  const username = settings?.playerName ?? "Yo";
+  const username = settings?.playerName ?? t("common:self");
 
   const friendsPresent = useMemo(() => friends?.map((f) => f.name) ?? [], [friends]);
 
@@ -796,7 +796,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
             onClick={() => setShareOpen(true)}
             disabled={!shareContext || friendsLoading}
           >
-            {t("common:buttons.share", { defaultValue: "Compartir" })}
+            {t("common:buttons.share")}
           </Button>
         </div>
         <div className="rounded-lg border border-border-subtle bg-bg-surface p-2.5">
@@ -975,7 +975,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
                   leftIcon={Share2}
                   onClick={handleShareSession}
                 >
-                  {t("common:buttons.share", { defaultValue: "Compartir" })}
+                  {t("common:buttons.share")}
                 </Button>
                 <button
                   onClick={() => setSelectedSession(null)}

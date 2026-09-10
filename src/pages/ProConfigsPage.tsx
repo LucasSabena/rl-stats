@@ -19,6 +19,16 @@ const continentFlags: Record<Continent, string> = {
   "Sub-Saharan Africa": "🇿🇦",
 };
 
+const continentKeys: Record<Continent, string> = {
+  "Europe": "europe",
+  "North America": "northAmerica",
+  "South America": "southAmerica",
+  "MENA": "mena",
+  "Oceania": "oceania",
+  "Asia-Pacific": "asiaPacific",
+  "Sub-Saharan Africa": "subSaharanAfrica",
+};
+
 function groupByContinentAndTeam(players: ProPlayer[]) {
   const map = new Map<Continent, Map<string, ProPlayer[]>>();
   for (const c of continentOrder) {
@@ -108,7 +118,7 @@ export function ProConfigsPage() {
                   <ChevronRight size={14} />
                 )}
                 <span>{continentFlags[continent]}</span>
-                <span>{continent}</span>
+                <span>{t(`proConfigs:continents.${continentKeys[continent]}`)}</span>
               </button>
 
               {expandedContinents.has(continent) && (

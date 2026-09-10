@@ -146,7 +146,7 @@ export function TrainingPackDetail({
       {pack.tags && pack.tags.length > 0 && (
         <div>
           <span className="text-[10px] font-semibold text-text-muted block mb-1.5">
-            Tags
+            {t("page.tagsLabel")}
           </span>
           <div className="flex flex-wrap gap-2">
             {pack.tags.map((tag) => (

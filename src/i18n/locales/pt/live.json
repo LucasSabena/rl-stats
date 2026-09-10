@@ -108,5 +108,17 @@
   },
   "scoreboard": {
     "live": "Ao vivo"
+  },
+  "share": {
+    "win": "Vitória",
+    "loss": "Derrota",
+    "draw": "Empate",
+    "finished": "Partida finalizada",
+    "goals": "Gols",
+    "assists": "Assistências",
+    "saves": "Defesas",
+    "shots": "Chutes",
+    "score": "Pontuação",
+    "demos": "Demolições"
   }
 }

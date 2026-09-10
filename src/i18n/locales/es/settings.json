@@ -9,7 +9,11 @@
     "game": "Juego",
     "trackerNetwork": "Tracker Network",
     "data": "Datos",
-    "updates": "Actualizaciones"
+    "updates": "Actualizaciones",
+    "gameConfig": "Configuración de juego",
+    "overlay": "Overlay",
+    "streaming": "Streaming",
+    "cloudSync": "Cloud Sync"
   },
   "sections": {
     "rocketLeague": "Rocket League",
@@ -140,7 +144,8 @@
     "importError": "Error al importar",
     "dataDeleted": "Datos eliminados",
     "deleteError": "Error al eliminar datos",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "importSuccessMessage": "Archivo: {{file}}"
   },
   "update": {
     "title": "Actualizaciones",
@@ -157,7 +162,8 @@
     "toasts": {
       "installed": "Actualizacion instalada. Reiniciando...",
       "available": {
-        "title": "Actualizacion disponible: {{version}}"
+        "title": "Actualizacion disponible: {{version}}",
+        "message": "Ve a Ajustes > Actualizaciones para instalarla."
       },
       "upToDate": "Estas en la ultima version",
       "downloadError": {
@@ -174,7 +180,8 @@
       "signatureMismatch": "Error de firma. La clave publica en tauri.conf.json podria no coincidir.",
       "latestJsonNotFound": "No se encontro latest.json. Asegurate de haber ejecutado el release de CI.",
       "connectionWithDetail": "Error de conexion. Verifica tu acceso a internet.\nDetalle: {{detail}}"
-    }
+    },
+    "download": "Descargar e instalar"
   },
   "prompt": {
     "title": "Pregunta sobre el juego",
@@ -185,5 +192,111 @@
     "onlyWhenRunningHint": "No molestar si ya cerraste el juego.",
     "timeout": "Cerrar solo después de (segundos)",
     "timeoutHint": "Si no respondés, se cierra sin guardar."
+  },
+  "language": {
+    "label": "Idioma"
+  },
+  "smartDetection": {
+    "title": "Detección inteligente de perfil",
+    "description": "Detecta cambios de cuenta de Rocket League y mantiene las estadísticas en el perfil correcto.",
+    "warnLabel": "Avisar si el perfil no coincide",
+    "warnDescription": "Muestra una advertencia cuando la cuenta detectada pertenece a otro perfil.",
+    "autoSwitchLabel": "Cambiar automáticamente si coincide exacto",
+    "autoSwitchDescription": "Cuando la cuenta detectada coincide exactamente con otro perfil, cambia de perfil y reinicia automáticamente.",
+    "autoSyncLabel": "Sincronizar automáticamente tras cada partida",
+    "autoSyncDescription": "Si iniciaste sesión con Cloud Sync activado, sube los cambios pendientes después de cada partida."
+  },
+  "tour": {
+    "title": "Recorrido interactivo",
+    "description": "Volvé a recorrer las áreas principales y revisá la detección del juego y tu cuenta.",
+    "start": "Iniciar guía"
+  },
+  "cloud": {
+    "loading": "Cargando Cloud Sync…",
+    "title": "Cloud Sync",
+    "subtitle": "Respaldo local-first de perfiles, partidas, jugadores y ajustes.",
+    "badges": {
+      "supabaseConfigured": "Supabase configurado",
+      "supabaseMissing": "Falta configurar Supabase",
+      "signedIn": "Sesión iniciada",
+      "signedOut": "Sesión cerrada",
+      "ownerTester": "Dueño / tester",
+      "syncEnabled": "Sincronización activa",
+      "manualOff": "Manual/apagado",
+      "active": "Activo"
+    },
+    "plans": {
+      "supporter": "Supporter",
+      "basic": "Basic",
+      "none": "Sin plan",
+      "basicPrice": "US$3/mes",
+      "supporterPrice": "US$6/mes",
+      "basicDescription": "Respaldo y sincronización en la nube de tus datos de RL Stats.",
+      "supporterDescription": "Las mismas funciones, con apoyo extra al desarrollo.",
+      "chooseBasic": "Elegir Basic",
+      "chooseSupporter": "Elegir Supporter",
+      "current": "Plan actual"
+    },
+    "metrics": {
+      "pending": "Pendientes",
+      "failed": "Fallidos",
+      "appQueue": "Cola de la app",
+      "lastSync": "Última sincronización"
+    },
+    "never": "Nunca",
+    "connection": "Conexión",
+    "supabaseUrlPlaceholder": "URL de Supabase",
+    "supabaseAnonKeyPlaceholder": "Clave anon de Supabase",
+    "saveConfig": "Guardar configuración",
+    "refreshStatus": "Actualizar estado",
+    "account": "Cuenta de Cloud",
+    "emailPlaceholder": "email@ejemplo.com",
+    "passwordPlaceholder": "Contraseña",
+    "signIn": "Iniciar sesión",
+    "createAccount": "Crear cuenta",
+    "needAccount": "¿No tenés cuenta? Creá una",
+    "haveAccount": "¿Ya tenés cuenta? Iniciá sesión",
+    "signedInAs": "Sesión iniciada como {{email}}",
+    "subscription": "Suscripción: {{status}}",
+    "status": {
+      "active": "activa",
+      "trialing": "en prueba",
+      "pastDue": "pago pendiente",
+      "canceled": "cancelada",
+      "inactive": "inactiva"
+    },
+    "manageBilling": "Gestionar facturación",
+    "signOut": "Cerrar sesión",
+    "syncProfile": "Sincronizar este perfil",
+    "syncProfileDescription": "Sube un lote acotado desde la cola local. La descarga y mezcla sigue siendo intencionalmente no automática.",
+    "uploadHistory": "Subir historial existente",
+    "syncNow": "Sincronizar ahora",
+    "toasts": {
+      "loadError": "No se pudo cargar el estado de Cloud Sync.",
+      "missingCredentials": "Configurá primero la URL y la clave anon de Supabase.",
+      "connectedTitle": "Cuenta de Cloud conectada",
+      "connectedMessage": "Tu cuenta de RL Stats está lista.",
+      "loginFailedTitle": "Error al iniciar sesión",
+      "loginFailed": "Intentá de nuevo.",
+      "checkoutOpenedTitle": "Checkout abierto",
+      "checkoutOpenedMessage": "Completá el Checkout de Stripe y después actualizá este panel.",
+      "checkoutFailedTitle": "Error al abrir el checkout",
+      "checkoutFailed": "No se pudo abrir el checkout.",
+      "portalFailedTitle": "Error al abrir el portal de facturación",
+      "portalFailed": "No se pudo abrir el portal de facturación.",
+      "lockedTitle": "Cloud Sync bloqueado",
+      "locked": "Elegí un plan antes de sincronizar.",
+      "completeTitle": "Sincronización completa",
+      "completeUploaded": "{{uploaded}} cambios locales subidos.",
+      "completeNoChanges": "No hay cambios pendientes para subir.",
+      "failedTitle": "Error de sincronización",
+      "failed": "No se pudo sincronizar con la nube.",
+      "historyQueuedTitle": "Historial existente en cola",
+      "historyQueued": "{{queued}} registros locales en cola; {{uploaded}} cambios subidos en este lote.",
+      "historyFailedTitle": "Error al subir el historial",
+      "historyFailed": "No se pudo subir el historial existente.",
+      "autoSyncUploaded": "{{uploaded}} cambios subidos después de la partida.",
+      "autoSyncFailed": "No se pudieron subir los datos de la partida."
+    }
   }
 }

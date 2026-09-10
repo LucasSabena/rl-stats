@@ -26,7 +26,10 @@
     "selectPack": "Choose a pack to see details",
     "selectPackDesc": "Select a training pack from the grid to see its details, copy the code, or add it to favorites.",
     "featuredPacks": "Featured Packs",
-    "noFeatured": "No featured packs"
+    "noFeatured": "No featured packs",
+    "refresh": "Refresh",
+    "showMore": "Show more ({{remaining}} more)",
+    "tagsLabel": "Tags"
   },
   "categories": {
     "all": "All",

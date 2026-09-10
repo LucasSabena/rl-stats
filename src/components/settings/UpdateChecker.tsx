@@ -141,13 +141,13 @@ export function UpdateChecker() {
       </div>
 
       {error && !isBusy && (
-        <div className="mt-4 rounded-lg border border-error-border bg-error-bg p-4">
+        <div className="mt-4 rounded-lg border border-accent-danger/30 bg-accent-danger/5 p-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-red-500/10">
-              <AlertCircle size={14} className="text-red-500" />
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent-danger/10">
+              <AlertCircle size={14} className="text-accent-danger" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-red-600">{t("settings:update.errorTitle")}</p>
+              <p className="text-sm font-semibold text-accent-danger">{t("settings:update.errorTitle")}</p>
               <p className="mt-1 text-xs text-text-secondary break-words whitespace-pre-line">{error}</p>
               <p className="mt-2 text-[11px] text-text-tertiary">
                 {t("settings:update.commonCauses")}
@@ -181,7 +181,7 @@ export function UpdateChecker() {
             leftIcon={Download}
             onClick={() => downloadAndInstall(update)}
           >
-            {t("settings:update.retryDownload")}
+            {t("settings:update.download")}
           </Button>
         </div>
       )}

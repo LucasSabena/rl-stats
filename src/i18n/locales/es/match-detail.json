@@ -62,7 +62,8 @@
     "tabTable": "Tabla",
     "tabCompare": "Comparar",
     "emptyData": "No hay datos de jugadores",
-    "selectPlayers": "Selecciona al menos 2 jugadores para comparar"
+    "selectPlayers": "Selecciona al menos 2 jugadores para comparar",
+    "mvp": "MVP"
   },
   "roster": {
     "playerCount": "{{count}} jugador",
@@ -82,7 +83,9 @@
     "assist": "Asistencia",
     "demolish": "Demo",
     "unknownScorer": "Desconocido",
-    "unknownPlayer": "Jugador"
+    "unknownPlayer": "Jugador",
+    "goalsOnly": "Solo goles",
+    "showAll": "Mostrar todo"
   },
   "goals": {
     "title": "Goles"

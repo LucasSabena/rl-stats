@@ -45,7 +45,8 @@
     "retry": "Retry",
     "close": "Close",
     "reload": "Reload app",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "share": "Share"
   },
   "status": {
     "live": "Live",
@@ -79,7 +80,8 @@
     "name": "RL Stats",
     "short": "RL"
   },
-  "share": {
-    "button": "Share"
-  }
+  "actions": {
+    "close": "Close"
+  },
+  "self": "Me"
 }

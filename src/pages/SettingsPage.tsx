@@ -55,21 +55,21 @@ export function SettingsPage() {
               className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
             >
               <Gamepad2 size={14} className="mr-2" />
-              Game Config
+              {t("pageSections.gameConfig")}
             </TabsTrigger>
             <TabsTrigger
               value="overlay"
               className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
             >
               <LayoutTemplate size={14} className="mr-2" />
-              Overlay
+              {t("pageSections.overlay")}
             </TabsTrigger>
             <TabsTrigger
               value="streaming"
               className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
             >
               <MonitorPlay size={14} className="mr-2" />
-              Streaming
+              {t("pageSections.streaming")}
             </TabsTrigger>
             <TabsTrigger
               value="profiles"
@@ -83,7 +83,7 @@ export function SettingsPage() {
               className="data-[state=active]:bg-bg-surface data-[state=active]:border-border-subtle border border-transparent rounded-lg py-2 px-4"
             >
               <Cloud size={14} className="mr-2" />
-              Cloud Sync
+              {t("pageSections.cloudSync")}
             </TabsTrigger>
             <TabsTrigger
               value="data"

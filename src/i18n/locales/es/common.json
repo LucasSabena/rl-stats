@@ -45,7 +45,8 @@
     "retry": "Reintentar",
     "close": "Cerrar",
     "reload": "Recargar aplicación",
-    "confirm": "Confirmar"
+    "confirm": "Confirmar",
+    "share": "Compartir"
   },
   "status": {
     "live": "En directo",
@@ -79,7 +80,8 @@
     "name": "RL Stats",
     "short": "RL"
   },
-  "share": {
-    "button": "Compartir"
-  }
+  "actions": {
+    "close": "Cerrar"
+  },
+  "self": "Yo"
 }

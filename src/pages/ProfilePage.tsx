@@ -87,32 +87,32 @@ export function ProfilePage() {
     (preset: UserPreset) => {
       const stats: ShareStat[] = [];
       if (preset.camera) {
-        stats.push({ label: "FOV", value: String(preset.camera.fov) });
-        stats.push({ label: "Height", value: String(preset.camera.height) });
-        stats.push({ label: "Distance", value: String(preset.camera.distance) });
-        stats.push({ label: "Stiffness", value: String(preset.camera.stiffness) });
-        stats.push({ label: "Swivel Speed", value: String(preset.camera.swivelSpeed) });
-        stats.push({ label: "Transition Speed", value: String(preset.camera.transitionSpeed) });
-        stats.push({ label: "Ball Cam", value: preset.camera.ballCamera });
-        stats.push({ label: "Camera Shake", value: preset.camera.cameraShake });
+        stats.push({ label: t("presets:fields.fov"), value: String(preset.camera.fov) });
+        stats.push({ label: t("presets:fields.height"), value: String(preset.camera.height) });
+        stats.push({ label: t("presets:fields.distance"), value: String(preset.camera.distance) });
+        stats.push({ label: t("presets:fields.stiffness"), value: String(preset.camera.stiffness) });
+        stats.push({ label: t("presets:fields.swivelSpeed"), value: String(preset.camera.swivelSpeed) });
+        stats.push({ label: t("presets:fields.transitionSpeed"), value: String(preset.camera.transitionSpeed) });
+        stats.push({ label: t("presets:fields.ballCam"), value: preset.camera.ballCamera });
+        stats.push({ label: t("presets:fields.cameraShake"), value: preset.camera.cameraShake });
       }
       if (preset.deadzone) {
-        stats.push({ label: "Deadzone Shape", value: preset.deadzone.deadzoneShape });
-        stats.push({ label: "Deadzone", value: String(preset.deadzone.deadzone) });
-        stats.push({ label: "Dodge Deadzone", value: String(preset.deadzone.dodgeDeadzone) });
-        stats.push({ label: "Aerial Sens", value: String(preset.deadzone.aerialSensitivity) });
-        stats.push({ label: "Steering Sens", value: String(preset.deadzone.steeringSensitivity) });
+        stats.push({ label: t("presets:fields.deadzoneShape"), value: preset.deadzone.deadzoneShape });
+        stats.push({ label: t("presets:fields.deadzone"), value: String(preset.deadzone.deadzone) });
+        stats.push({ label: t("presets:fields.dodgeDeadzone"), value: String(preset.deadzone.dodgeDeadzone) });
+        stats.push({ label: t("presets:fields.aerialSensitivity"), value: String(preset.deadzone.aerialSensitivity) });
+        stats.push({ label: t("presets:fields.steeringSensitivity"), value: String(preset.deadzone.steeringSensitivity) });
       }
       if (preset.controls) {
-        stats.push({ label: "Powerslide", value: preset.controls.powerslide });
-        stats.push({ label: "Boost", value: preset.controls.boost });
-        stats.push({ label: "Air Roll Left", value: preset.controls.airRollLeft });
-        stats.push({ label: "Air Roll Right", value: preset.controls.airRollRight });
+        stats.push({ label: t("presets:fields.powerslide"), value: preset.controls.powerslide });
+        stats.push({ label: t("presets:fields.boost"), value: preset.controls.boost });
+        stats.push({ label: t("presets:fields.airRollLeft"), value: preset.controls.airRollLeft });
+        stats.push({ label: t("presets:fields.airRollRight"), value: preset.controls.airRollRight });
       }
       if (preset.hardware) {
-        stats.push({ label: "Controller", value: preset.hardware.controller });
-        stats.push({ label: "Monitor", value: preset.hardware.monitor });
-        stats.push({ label: "Headset", value: preset.hardware.headset });
+        stats.push({ label: t("presets:fields.controller"), value: preset.hardware.controller });
+        stats.push({ label: t("presets:fields.monitor"), value: preset.hardware.monitor });
+        stats.push({ label: t("presets:fields.headset"), value: preset.hardware.headset });
       }
 
       const ctx: ShareContext = {
@@ -125,7 +125,7 @@ export function ProfilePage() {
       setShareContext(ctx);
       setShareOpen(true);
     },
-    [i18n.language]
+    [i18n.language, t]
   );
 
   const handleExport = useCallback(

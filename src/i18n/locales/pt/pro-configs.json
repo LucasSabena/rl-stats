@@ -46,5 +46,14 @@
       "monitor": "Monitor",
       "headset": "Headset"
     }
+  },
+  "continents": {
+    "europe": "Europa",
+    "northAmerica": "América do Norte",
+    "southAmerica": "América do Sul",
+    "mena": "MENA",
+    "oceania": "Oceania",
+    "asiaPacific": "Ásia-Pacífico",
+    "subSaharanAfrica": "África Subsaariana"
   }
 }

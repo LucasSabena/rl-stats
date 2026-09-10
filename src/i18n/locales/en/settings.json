@@ -9,7 +9,11 @@
     "game": "Game",
     "trackerNetwork": "Tracker Network",
     "data": "Data",
-    "updates": "Updates"
+    "updates": "Updates",
+    "gameConfig": "Game Config",
+    "overlay": "Overlay",
+    "streaming": "Streaming",
+    "cloudSync": "Cloud Sync"
   },
   "sections": {
     "rocketLeague": "Rocket League",
@@ -140,7 +144,8 @@
     "importError": "Import failed",
     "dataDeleted": "Data deleted",
     "deleteError": "Failed to delete data",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "importSuccessMessage": "File: {{file}}"
   },
   "update": {
     "title": "Updates",
@@ -157,7 +162,8 @@
     "toasts": {
       "installed": "Update installed. Restarting...",
       "available": {
-        "title": "Update available: {{version}}"
+        "title": "Update available: {{version}}",
+        "message": "Go to Settings > Updates to install it."
       },
       "upToDate": "You're on the latest version",
       "downloadError": {
@@ -174,7 +180,8 @@
       "signatureMismatch": "Signature error. The public key in tauri.conf.json may not match.",
       "latestJsonNotFound": "latest.json not found. Make sure the CI release has been run.",
       "connectionWithDetail": "Connection error. Check your internet access.\nDetail: {{detail}}"
-    }
+    },
+    "download": "Download & install"
   },
   "prompt": {
     "title": "In-game prompt",
@@ -185,5 +192,111 @@
     "onlyWhenRunningHint": "Don't bother me if I already closed the game.",
     "timeout": "Auto-close after (seconds)",
     "timeoutHint": "If you don't answer, it closes without saving."
+  },
+  "language": {
+    "label": "Language"
+  },
+  "smartDetection": {
+    "title": "Smart profile detection",
+    "description": "Detect Rocket League account mismatches and keep stats under the right profile.",
+    "warnLabel": "Warn on profile mismatch",
+    "warnDescription": "Show a warning when the detected Rocket League account belongs to another profile.",
+    "autoSwitchLabel": "Auto-switch exact profile matches",
+    "autoSwitchDescription": "When the detected account exactly matches another profile, switch profiles and restart automatically.",
+    "autoSyncLabel": "Auto-sync after each match",
+    "autoSyncDescription": "If signed in with Cloud Sync enabled, upload pending changes after every completed match."
+  },
+  "tour": {
+    "title": "Interactive tour",
+    "description": "Walk through the main areas again and review game and account detection.",
+    "start": "Start tour"
+  },
+  "cloud": {
+    "loading": "Loading Cloud Sync…",
+    "title": "Cloud Sync",
+    "subtitle": "Local-first backup for profiles, matches, players and settings.",
+    "badges": {
+      "supabaseConfigured": "Supabase configured",
+      "supabaseMissing": "Missing Supabase config",
+      "signedIn": "Signed in",
+      "signedOut": "Signed out",
+      "ownerTester": "Owner / tester",
+      "syncEnabled": "Sync enabled",
+      "manualOff": "Manual/off",
+      "active": "Active"
+    },
+    "plans": {
+      "supporter": "Supporter",
+      "basic": "Basic",
+      "none": "No plan",
+      "basicPrice": "$3/mo",
+      "supporterPrice": "$6/mo",
+      "basicDescription": "Cloud backup and sync for your RL Stats data.",
+      "supporterDescription": "Same features, extra support for development.",
+      "chooseBasic": "Choose Basic",
+      "chooseSupporter": "Choose Supporter",
+      "current": "Current plan"
+    },
+    "metrics": {
+      "pending": "Pending",
+      "failed": "Failed",
+      "appQueue": "App queue",
+      "lastSync": "Last sync"
+    },
+    "never": "Never",
+    "connection": "Connection",
+    "supabaseUrlPlaceholder": "Supabase URL",
+    "supabaseAnonKeyPlaceholder": "Supabase anon key",
+    "saveConfig": "Save cloud config",
+    "refreshStatus": "Refresh status",
+    "account": "Cloud account",
+    "emailPlaceholder": "email@example.com",
+    "passwordPlaceholder": "Password",
+    "signIn": "Sign in",
+    "createAccount": "Create account",
+    "needAccount": "Need an account? Create one",
+    "haveAccount": "Already have an account? Sign in",
+    "signedInAs": "Signed in as {{email}}",
+    "subscription": "Subscription: {{status}}",
+    "status": {
+      "active": "active",
+      "trialing": "trialing",
+      "pastDue": "past due",
+      "canceled": "canceled",
+      "inactive": "inactive"
+    },
+    "manageBilling": "Manage billing",
+    "signOut": "Sign out",
+    "syncProfile": "Sync this profile",
+    "syncProfileDescription": "Uploads a bounded batch from the local outbox. Pull/merge is still intentionally not automatic.",
+    "uploadHistory": "Upload existing history",
+    "syncNow": "Sync now",
+    "toasts": {
+      "loadError": "Could not load Cloud Sync status.",
+      "missingCredentials": "Set the Supabase URL and anon key first.",
+      "connectedTitle": "Cloud account connected",
+      "connectedMessage": "Your RL Stats account is ready.",
+      "loginFailedTitle": "Cloud login failed",
+      "loginFailed": "Please try again.",
+      "checkoutOpenedTitle": "Checkout opened",
+      "checkoutOpenedMessage": "Complete Stripe Checkout, then refresh this panel.",
+      "checkoutFailedTitle": "Checkout failed",
+      "checkoutFailed": "Could not open checkout.",
+      "portalFailedTitle": "Billing portal failed",
+      "portalFailed": "Could not open billing portal.",
+      "lockedTitle": "Cloud Sync locked",
+      "locked": "Choose a plan before syncing.",
+      "completeTitle": "Cloud sync complete",
+      "completeUploaded": "{{uploaded}} local changes uploaded.",
+      "completeNoChanges": "No pending changes to upload.",
+      "failedTitle": "Cloud sync failed",
+      "failed": "Cloud sync failed.",
+      "historyQueuedTitle": "Existing history queued",
+      "historyQueued": "{{queued}} local records queued; {{uploaded}} changes uploaded in this batch.",
+      "historyFailedTitle": "History upload failed",
+      "historyFailed": "Could not upload existing history.",
+      "autoSyncUploaded": "{{uploaded}} changes uploaded after the match.",
+      "autoSyncFailed": "Could not upload match data."
+    }
   }
 }

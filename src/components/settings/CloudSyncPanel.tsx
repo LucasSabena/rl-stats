@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Cloud,
@@ -57,11 +58,19 @@ function isActiveSubscription(subscription: CloudSubscription | null): boolean {
   );
 }
 
-function planLabel(planCode?: string | null): string {
-  if (planCode === "cloud_supporter") return "Supporter";
-  if (planCode === "cloud_basic") return "Basic";
-  return "No plan";
+function planKey(planCode?: string | null): string {
+  if (planCode === "cloud_supporter") return "cloud.plans.supporter";
+  if (planCode === "cloud_basic") return "cloud.plans.basic";
+  return "cloud.plans.none";
 }
+
+const STATUS_KEYS: Record<string, string> = {
+  active: "cloud.status.active",
+  trialing: "cloud.status.trialing",
+  past_due: "cloud.status.pastDue",
+  canceled: "cloud.status.canceled",
+  inactive: "cloud.status.inactive",
+};
 
 function getCredentials(config: CloudConfig) {
   const supabaseUrl = config.supabase_url?.trim();
@@ -71,6 +80,7 @@ function getCredentials(config: CloudConfig) {
 }
 
 export function CloudSyncPanel() {
+  const { t, i18n } = useTranslation("settings");
   const addToast = useUIStore((state) => state.addToast);
   const [config, setConfigState] = useState<CloudConfig | null>(null);
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus | null>(null);
@@ -95,6 +105,10 @@ export function CloudSyncPanel() {
     hasCloudAccess ||
     isActiveSubscription(subscription) ||
     config?.plan_status === "active";
+  const planStatus = subscription?.status ?? config?.plan_status ?? "inactive";
+  const planStatusLabel = STATUS_KEYS[planStatus]
+    ? t(STATUS_KEYS[planStatus])
+    : planStatus;
 
   const refresh = useCallback(async () => {
     const [nextConfig, nextCloudStatus, nextProfileStatus] = await Promise.all([
@@ -147,14 +161,14 @@ export function CloudSyncPanel() {
     refresh().catch((error: unknown) => {
       addToast({
         type: "error",
-        title: "Cloud sync",
+        title: t("cloud.title"),
         message:
           error instanceof Error
             ? error.message
-            : "Could not load cloud status",
+            : t("cloud.toasts.loadError"),
       });
     });
-  }, [addToast, refresh]);
+  }, [addToast, refresh, t]);
 
   const saveConfig = async (patch: Partial<CloudConfig>) => {
     if (!config) return;
@@ -168,8 +182,8 @@ export function CloudSyncPanel() {
     if (!credentials) {
       addToast({
         type: "warning",
-        title: "Cloud sync",
-        message: "Set Supabase URL and anon key first.",
+        title: t("cloud.title"),
+        message: t("cloud.toasts.missingCredentials"),
       });
       return;
     }
@@ -183,14 +197,17 @@ export function CloudSyncPanel() {
       await saveConfig({ enabled: false });
       addToast({
         type: "success",
-        title: "Cloud account connected",
-        message: "Your RL Stats account is ready.",
+        title: t("cloud.toasts.connectedTitle"),
+        message: t("cloud.toasts.connectedMessage"),
       });
     } catch (error) {
       addToast({
         type: "error",
-        title: "Cloud login failed",
-        message: error instanceof Error ? error.message : "Please try again.",
+        title: t("cloud.toasts.loginFailedTitle"),
+        message:
+          error instanceof Error
+            ? error.message
+            : t("cloud.toasts.loginFailed"),
       });
     } finally {
       setBusyAction(null);
@@ -219,15 +236,17 @@ export function CloudSyncPanel() {
       await openUrl(url);
       addToast({
         type: "info",
-        title: "Checkout opened",
-        message: "Complete Stripe Checkout, then refresh this panel.",
+        title: t("cloud.toasts.checkoutOpenedTitle"),
+        message: t("cloud.toasts.checkoutOpenedMessage"),
       });
     } catch (error) {
       addToast({
         type: "error",
-        title: "Checkout failed",
+        title: t("cloud.toasts.checkoutFailedTitle"),
         message:
-          error instanceof Error ? error.message : "Could not open checkout.",
+          error instanceof Error
+            ? error.message
+            : t("cloud.toasts.checkoutFailed"),
       });
     } finally {
       setBusyAction(null);
@@ -243,11 +262,11 @@ export function CloudSyncPanel() {
     } catch (error) {
       addToast({
         type: "error",
-        title: "Billing portal failed",
+        title: t("cloud.toasts.portalFailedTitle"),
         message:
           error instanceof Error
             ? error.message
-            : "Could not open billing portal.",
+            : t("cloud.toasts.portalFailed"),
       });
     } finally {
       setBusyAction(null);
@@ -259,8 +278,8 @@ export function CloudSyncPanel() {
     if (!hasActivePlan) {
       addToast({
         type: "warning",
-        title: "Cloud sync locked",
-        message: "Choose a plan before syncing.",
+        title: t("cloud.toasts.lockedTitle"),
+        message: t("cloud.toasts.locked"),
       });
       return;
     }
@@ -270,17 +289,18 @@ export function CloudSyncPanel() {
       const result = await syncCurrentProfileToCloud();
       addToast({
         type: "success",
-        title: "Cloud sync complete",
+        title: t("cloud.toasts.completeTitle"),
         message:
           result.uploaded > 0
-            ? `${result.uploaded} local changes uploaded.`
-            : "No pending changes to upload.",
+            ? t("cloud.toasts.completeUploaded", { uploaded: result.uploaded })
+            : t("cloud.toasts.completeNoChanges"),
       });
     } catch (error) {
       addToast({
         type: "error",
-        title: "Cloud sync failed",
-        message: error instanceof Error ? error.message : "Cloud sync failed.",
+        title: t("cloud.toasts.failedTitle"),
+        message:
+          error instanceof Error ? error.message : t("cloud.toasts.failed"),
       });
     } finally {
       setBusyAction(null);
@@ -295,17 +315,20 @@ export function CloudSyncPanel() {
       const result = await syncCurrentProfileToCloud();
       addToast({
         type: "success",
-        title: "Existing history queued",
-        message: `${enqueued} local records queued; ${result.uploaded} changes uploaded in this batch.`,
+        title: t("cloud.toasts.historyQueuedTitle"),
+        message: t("cloud.toasts.historyQueued", {
+          queued: enqueued,
+          uploaded: result.uploaded,
+        }),
       });
     } catch (error) {
       addToast({
         type: "error",
-        title: "History upload failed",
+        title: t("cloud.toasts.historyFailedTitle"),
         message:
           error instanceof Error
             ? error.message
-            : "Could not upload existing history.",
+            : t("cloud.toasts.historyFailed"),
       });
     } finally {
       setBusyAction(null);
@@ -316,7 +339,7 @@ export function CloudSyncPanel() {
   if (!config || !cloudStatus || !profileStatus) {
     return (
       <div className="rounded-xl border border-border-subtle bg-bg-surface/60 p-5 text-sm text-text-secondary">
-        Loading cloud sync…
+        {t("cloud.loading")}
       </div>
     );
   }
@@ -333,53 +356,58 @@ export function CloudSyncPanel() {
               </div>
               <div>
                 <h3 className="text-base font-semibold text-text-primary">
-                  Cloud Sync
+                  {t("cloud.title")}
                 </h3>
                 <p className="text-xs text-text-tertiary">
-                  Local-first backup for profiles, matches, players and
-                  settings.
+                  {t("cloud.subtitle")}
                 </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant={credentials ? "success" : "danger"}>
                 {credentials
-                  ? "Supabase configured"
-                  : "Missing Supabase config"}
+                  ? t("cloud.badges.supabaseConfigured")
+                  : t("cloud.badges.supabaseMissing")}
               </Badge>
               <Badge variant={session ? "success" : "default"}>
-                {session ? (session.user.email ?? "Signed in") : "Signed out"}
+                {session
+                  ? (session.user.email ?? t("cloud.badges.signedIn"))
+                  : t("cloud.badges.signedOut")}
               </Badge>
               <Badge variant={hasActivePlan ? "success" : "accent"}>
                 {hasCloudAccess
-                  ? "Owner / tester"
-                  : planLabel(subscription?.plan_code ?? config.plan_code)}
+                  ? t("cloud.badges.ownerTester")
+                  : t(planKey(subscription?.plan_code ?? config.plan_code))}
               </Badge>
               <Badge variant={config.enabled ? "live" : "default"}>
-                {config.enabled ? "Sync enabled" : "Manual/off"}
+                {config.enabled
+                  ? t("cloud.badges.syncEnabled")
+                  : t("cloud.badges.manualOff")}
               </Badge>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 text-right text-xs sm:grid-cols-4 lg:min-w-105">
             <StatusMetric
-              label="Pending"
+              label={t("cloud.metrics.pending")}
               value={profileStatus.pending_changes}
             />
             <StatusMetric
-              label="Failed"
+              label={t("cloud.metrics.failed")}
               value={profileStatus.failed_changes}
               danger={profileStatus.failed_changes > 0}
             />
             <StatusMetric
-              label="App queue"
+              label={t("cloud.metrics.appQueue")}
               value={cloudStatus.pending_app_changes}
             />
             <StatusMetric
-              label="Last sync"
+              label={t("cloud.metrics.lastSync")}
               value={
                 config.last_sync_at
-                  ? new Date(config.last_sync_at).toLocaleDateString()
-                  : "Never"
+                  ? new Date(config.last_sync_at).toLocaleDateString(
+                      i18n.language,
+                    )
+                  : t("cloud.never")
               }
             />
           </div>
@@ -390,7 +418,7 @@ export function CloudSyncPanel() {
         <div className="mb-4 flex items-center gap-2.5">
           <ShieldCheck className="h-4 w-4 text-accent-primary" />
           <h4 className="text-sm font-semibold text-text-secondary">
-            Connection
+            {t("cloud.connection")}
           </h4>
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
@@ -400,7 +428,7 @@ export function CloudSyncPanel() {
             onChange={(event) =>
               setConfigState({ ...config, supabase_url: event.target.value })
             }
-            placeholder="Supabase URL"
+            placeholder={t("cloud.supabaseUrlPlaceholder")}
           />
           <input
             className={inputClass}
@@ -411,7 +439,7 @@ export function CloudSyncPanel() {
                 supabase_anon_key: event.target.value,
               })
             }
-            placeholder="Supabase anon key"
+            placeholder={t("cloud.supabaseAnonKeyPlaceholder")}
           />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -426,7 +454,7 @@ export function CloudSyncPanel() {
               })
             }
           >
-            Save cloud config
+            {t("cloud.saveConfig")}
           </Button>
           <Button
             type="button"
@@ -435,7 +463,7 @@ export function CloudSyncPanel() {
             leftIcon={RefreshCw}
             onClick={refresh}
           >
-            Refresh status
+            {t("cloud.refreshStatus")}
           </Button>
         </div>
       </section>
@@ -445,7 +473,7 @@ export function CloudSyncPanel() {
           <div className="mb-4 flex items-center gap-2.5">
             <UserRound className="h-4 w-4 text-accent-primary" />
             <h4 className="text-sm font-semibold text-text-secondary">
-              Cloud account
+              {t("cloud.account")}
             </h4>
           </div>
           <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
@@ -454,21 +482,23 @@ export function CloudSyncPanel() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="email@example.com"
+              placeholder={t("cloud.emailPlaceholder")}
             />
             <input
               className={inputClass}
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Password"
+              placeholder={t("cloud.passwordPlaceholder")}
             />
             <Button
               type="button"
               isLoading={busyAction === "auth"}
               onClick={handleAuth}
             >
-              {authMode === "sign-in" ? "Sign in" : "Create account"}
+              {authMode === "sign-in"
+                ? t("cloud.signIn")
+                : t("cloud.createAccount")}
             </Button>
           </div>
           <button
@@ -479,8 +509,8 @@ export function CloudSyncPanel() {
             }
           >
             {authMode === "sign-in"
-              ? "Need an account? Create one"
-              : "Already have an account? Sign in"}
+              ? t("cloud.needAccount")
+              : t("cloud.haveAccount")}
           </button>
         </section>
       ) : (
@@ -488,11 +518,12 @@ export function CloudSyncPanel() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-text-primary">
-                Signed in as {session.user.email ?? session.user.id}
+                {t("cloud.signedInAs", {
+                  email: session.user.email ?? session.user.id,
+                })}
               </p>
               <p className="text-xs text-text-tertiary">
-                Subscription:{" "}
-                {subscription?.status ?? config.plan_status ?? "inactive"}
+                {t("cloud.subscription", { status: planStatusLabel })}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -504,7 +535,7 @@ export function CloudSyncPanel() {
                 onClick={openPortal}
                 isLoading={busyAction === "portal"}
               >
-                Manage billing
+                {t("cloud.manageBilling")}
               </Button>
               <Button
                 type="button"
@@ -514,7 +545,7 @@ export function CloudSyncPanel() {
                 onClick={handleSignOut}
                 isLoading={busyAction === "sign-out"}
               >
-                Sign out
+                {t("cloud.signOut")}
               </Button>
             </div>
           </div>
@@ -523,19 +554,19 @@ export function CloudSyncPanel() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <PlanCard
-          title="Basic"
-          price="$3/mo"
-          description="Cloud backup and sync for your RL Stats data."
-          action="Choose Basic"
+          title={t("cloud.plans.basic")}
+          price={t("cloud.plans.basicPrice")}
+          description={t("cloud.plans.basicDescription")}
+          action={t("cloud.plans.chooseBasic")}
           active={subscription?.plan_code === "cloud_basic"}
           loading={busyAction === "cloud_basic"}
           onClick={() => openCheckout("cloud_basic")}
         />
         <PlanCard
-          title="Supporter"
-          price="$6/mo"
-          description="Same features, extra support for development."
-          action="Choose Supporter"
+          title={t("cloud.plans.supporter")}
+          price={t("cloud.plans.supporterPrice")}
+          description={t("cloud.plans.supporterDescription")}
+          action={t("cloud.plans.chooseSupporter")}
           active={subscription?.plan_code === "cloud_supporter"}
           loading={busyAction === "cloud_supporter"}
           onClick={() => openCheckout("cloud_supporter")}
@@ -548,11 +579,10 @@ export function CloudSyncPanel() {
             <DatabaseZap className="mt-0.5 h-5 w-5 text-accent-primary" />
             <div>
               <h4 className="text-sm font-semibold text-text-primary">
-                Sync this profile
+                {t("cloud.syncProfile")}
               </h4>
               <p className="text-xs text-text-tertiary">
-                Uploads a bounded batch from the local outbox. Pull/merge is
-                still intentionally not automatic.
+                {t("cloud.syncProfileDescription")}
               </p>
             </div>
           </div>
@@ -564,7 +594,7 @@ export function CloudSyncPanel() {
               disabled={!session || !credentials || !hasActivePlan}
               onClick={uploadExistingHistory}
             >
-              Upload existing history
+              {t("cloud.uploadHistory")}
             </Button>
             <Button
               type="button"
@@ -574,7 +604,7 @@ export function CloudSyncPanel() {
               disabled={!session || !credentials}
               onClick={syncNow}
             >
-              Sync now
+              {t("cloud.syncNow")}
             </Button>
           </div>
         </div>
@@ -626,6 +656,7 @@ function PlanCard({
   loading: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation("settings");
   return (
     <div
       className={cn(
@@ -643,7 +674,9 @@ function PlanCard({
           </div>
           <p className="mt-2 text-2xl font-bold text-text-primary">{price}</p>
         </div>
-        {active && <Badge variant="success">Active</Badge>}
+        {active && (
+          <Badge variant="success">{t("cloud.badges.active")}</Badge>
+        )}
       </div>
       <p className="mb-5 text-sm text-text-tertiary">{description}</p>
       <Button
@@ -654,7 +687,7 @@ function PlanCard({
         onClick={onClick}
         disabled={active}
       >
-        {active ? "Current plan" : action}
+        {active ? t("cloud.plans.current") : action}
       </Button>
     </div>
   );

@@ -108,5 +108,17 @@
     "connecting": "Conectando...",
     "disconnected": "Desconectado",
     "gameNotRunning": "Juego cerrado"
+  },
+  "share": {
+    "win": "Victoria",
+    "loss": "Derrota",
+    "draw": "Empate",
+    "finished": "Partida finalizada",
+    "goals": "Goles",
+    "assists": "Asistencias",
+    "saves": "Saves",
+    "shots": "Shots",
+    "score": "Score",
+    "demos": "Demos"
   }
 }

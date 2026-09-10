@@ -38,13 +38,20 @@
     "totalKickoffGoalsScored": "Kickoff goals scored",
     "totalKickoffGoalsConceded": "Kickoff goals conceded",
     "avgKickoffGoalsScored": "Kickoff goals / match",
-    "avgKickoffGoalsConceded": "Kickoff goals conceded / match"
+    "avgKickoffGoalsConceded": "Kickoff goals conceded / match",
+    "goals": "Goals",
+    "assists": "Assists",
+    "saves": "Saves",
+    "shots": "Shots",
+    "demos": "Demos"
   },
   "streaks": {
     "label": "Streak",
     "current": "Current streak",
     "best": "Best streak",
-    "bestSuffix": "best"
+    "bestSuffix": "best",
+    "currentWins": "win streak",
+    "currentLosses": "losing streak"
   },
   "chart": {
     "evolution": "Evolution",
@@ -105,7 +112,8 @@
     "winsLabel": "W",
     "lossesLabel": "L",
     "assistsTitle": "Assists",
-    "demosTitle": "Demolitions"
+    "demosTitle": "Demolitions",
+    "periodLabel": "Session summary"
   },
   "matchDetail": {
     "loading": "Loading matches...",
@@ -116,7 +124,9 @@
     "goals": "goals",
     "assists": "assists",
     "saves": "saves",
-    "shots": "shots"
+    "shots": "shots",
+    "empty": "No matches in this session.",
+    "error": "Could not load this session's matches."
   },
   "empty": {
     "noData": {
@@ -262,5 +272,24 @@
     "recounting": "Recounting…",
     "recountDone": "Done: {{found}} goals in {{updated}} matches.",
     "recountError": "Could not recount."
+  },
+  "hoursWheel": {
+    "ariaLabel": "Win rate by hour of day",
+    "matches": "{{count}} matches",
+    "matches_one": "{{count}} match",
+    "matches_other": "{{count}} matches",
+    "title": "Win rate by hour",
+    "help": "Each spoke is an hour of the day. Longer means a better win rate. The dashed line marks 50%.",
+    "above": "Above 50%",
+    "below": "Below 50%",
+    "lowSample": "Fewer than {{count}} matches",
+    "lowSample_one": "Fewer than {{count}} match",
+    "lowSample_other": "Fewer than {{count}} matches",
+    "hideTable": "Hide table",
+    "showTable": "View as table",
+    "colHour": "Hour",
+    "colPlayed": "Matches",
+    "colWon": "Won",
+    "colWinRate": "Win rate"
   }
 }

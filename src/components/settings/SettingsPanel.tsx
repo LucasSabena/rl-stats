@@ -666,11 +666,10 @@ export function SettingsPanel() {
           <div className="space-y-3 rounded-lg border border-border-subtle bg-bg-base px-4 py-3">
             <div>
               <p className="text-sm font-medium text-text-secondary">
-                Smart profile detection
+                {t("settings:smartDetection.title")}
               </p>
               <p className="text-xs text-text-muted">
-                Detect Rocket League account mismatches and keep stats under the
-                right profile.
+                {t("settings:smartDetection.description")}
               </p>
             </div>
 
@@ -679,8 +678,8 @@ export function SettingsPanel() {
               control={control}
               render={({ field }) => (
                 <ToggleRow
-                  label="Warn on profile mismatch"
-                  description="Show a warning when the detected Rocket League account belongs to another profile."
+                  label={t("settings:smartDetection.warnLabel")}
+                  description={t("settings:smartDetection.warnDescription")}
                   checked={field.value}
                   onChange={() => field.onChange(!field.value)}
                 />
@@ -692,8 +691,8 @@ export function SettingsPanel() {
               control={control}
               render={({ field }) => (
                 <ToggleRow
-                  label="Auto-switch exact profile matches"
-                  description="When the detected account exactly matches another profile, switch profiles and restart automatically."
+                  label={t("settings:smartDetection.autoSwitchLabel")}
+                  description={t("settings:smartDetection.autoSwitchDescription")}
                   checked={field.value}
                   onChange={() => field.onChange(!field.value)}
                 />
@@ -705,8 +704,8 @@ export function SettingsPanel() {
               control={control}
               render={({ field }) => (
                 <ToggleRow
-                  label="Auto-sync after each match"
-                  description="If signed in with Cloud Sync enabled, upload pending changes after every completed match."
+                  label={t("settings:smartDetection.autoSyncLabel")}
+                  description={t("settings:smartDetection.autoSyncDescription")}
                   checked={field.value}
                   onChange={() => field.onChange(!field.value)}
                 />
@@ -789,14 +788,14 @@ export function SettingsPanel() {
             <div>
               <p className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                 <Sparkles size={15} className="text-accent-primary" />
-                Recorrido interactivo
+                {t("settings:tour.title")}
               </p>
               <p className="mt-1 text-xs text-text-muted">
-                Volvé a recorrer las áreas principales y revisá la detección del juego y tu cuenta.
+                {t("settings:tour.description")}
               </p>
             </div>
             <Button type="button" variant="secondary" size="sm" onClick={restartOnboarding}>
-              Iniciar guía
+              {t("settings:tour.start")}
             </Button>
           </div>
         </div>

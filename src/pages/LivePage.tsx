@@ -8,6 +8,7 @@ import { ShareModal } from "@/components/share/ShareModal";
 import { useFriends } from "@/hooks/useFriends";
 import { useLiveStore } from "@/stores/liveStore";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Share2 } from "lucide-react";
 import type { ShareContext } from "@/lib/types";
 
@@ -19,15 +20,15 @@ function buildPlaceholderMatchContext(lastMatch: {
   local_primary_id: string | null;
   local_team_num: number | null;
   players: { primary_id: string; name: string; team_num: number; stats: Record<string, unknown> }[];
-}, friends: string[]): ShareContext | null {
+}, friends: string[], t: TFunction, locale: string): ShareContext | null {
   if (!lastMatch) return null;
   const localTeam = lastMatch.local_team_num;
   const isWin = localTeam !== null && lastMatch.winner === localTeam;
   const title = lastMatch.winner === null
-    ? "Empate"
+    ? t("live:share.draw")
     : localTeam === null
-      ? "Partida finalizada"
-      : isWin ? "Victoria" : "Derrota";
+      ? t("live:share.finished")
+      : isWin ? t("live:share.win") : t("live:share.loss");
   const myPlayer = lastMatch.players.find((p) => p.primary_id === lastMatch.local_primary_id)
     ?? lastMatch.players.find((p) => p.team_num === localTeam)
     ?? lastMatch.players[0];
@@ -42,19 +43,19 @@ function buildPlaceholderMatchContext(lastMatch: {
     type: "match",
     title,
     stats: [
-      { label: "Goles", value: String(goals), highlight: true },
-      { label: "Asistencias", value: String(assists) },
-      { label: "Saves", value: String(saves) },
-      { label: "Shots", value: String(shots) },
-      { label: "Score", value: String(score), highlight: true },
-      { label: "Demos", value: String(demos) },
+      { label: t("live:share.goals"), value: String(goals), highlight: true },
+      { label: t("live:share.assists"), value: String(assists) },
+      { label: t("live:share.saves"), value: String(saves) },
+      { label: t("live:share.shots"), value: String(shots) },
+      { label: t("live:share.score"), value: String(score), highlight: true },
+      { label: t("live:share.demos"), value: String(demos) },
     ],
     friendsPresent: friends,
     username: myPlayer?.name,
     teamScore: localTeam === 1 ? lastMatch.score_orange : lastMatch.score_blue,
     opponentScore: localTeam === 1 ? lastMatch.score_blue : lastMatch.score_orange,
     win: localTeam === null || lastMatch.winner === null ? undefined : isWin,
-    dateLabel: new Date().toLocaleDateString("es-AR", {
+    dateLabel: new Date().toLocaleDateString(locale, {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -75,7 +76,7 @@ function buildPlaceholderMatchContext(lastMatch: {
 
 export function LivePage() {
   useLiveMatch();
-  const { t } = useTranslation(["live", "common"]);
+  const { t, i18n } = useTranslation(["live", "common"]);
 
   const [shareOpen, setShareOpen] = useState(false);
   const { data: friends, isLoading: friendsLoading } = useFriends();
@@ -89,8 +90,8 @@ export function LivePage() {
 
   const shareContext = useMemo(() => {
     if (!lastMatchSummary) return null;
-    return buildPlaceholderMatchContext(lastMatchSummary, friendsPresent);
-  }, [lastMatchSummary, friendsPresent]);
+    return buildPlaceholderMatchContext(lastMatchSummary, friendsPresent, t, i18n.language);
+  }, [lastMatchSummary, friendsPresent, t, i18n.language]);
 
   return (
     <PageContainer>
@@ -103,7 +104,7 @@ export function LivePage() {
             onClick={() => setShareOpen(true)}
             disabled={friendsLoading}
           >
-            {t("common:buttons.share", { defaultValue: "Compartir" })}
+            {t("common:buttons.share")}
           </Button>
         </div>
       )}

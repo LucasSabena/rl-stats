@@ -169,7 +169,7 @@ export function HistoryPage() {
   const { data: rollupsData } = useDailyRollups("week");
 
   const friendsPresent = useMemo(() => friends?.map((f) => f.name) ?? [], [friends]);
-  const username = settings?.playerName ?? "Yo";
+  const username = settings?.playerName ?? t("common:self");
 
   const shareDate = useMemo(() => {
     if (filters.dateFrom && filters.dateTo && filters.dateFrom === filters.dateTo) {
@@ -213,7 +213,7 @@ export function HistoryPage() {
           onClick={() => setShareOpen(true)}
           disabled={!shareContext || friendsLoading}
         >
-          {t("common:buttons.share", { defaultValue: "Compartir" })}
+          {t("common:buttons.share")}
         </Button>
       </div>
 

@@ -171,7 +171,7 @@ export function AddPackModal({ open, onClose, onSave }: AddPackModalProps) {
         {/* Name */}
         <div>
           <label htmlFor="pack-name" className={labelClass}>
-            {t("page.title")}
+            {t("page.name")}
           </label>
           <input
             id="pack-name"

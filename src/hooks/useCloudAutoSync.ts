@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { syncCurrentProfileToCloud } from "@/lib/cloudSync";
 import { useUIStore } from "@/stores/uiStore";
+import i18n from "@/i18n";
 
 interface MatchSummaryPayload {
   match_guid?: string;
@@ -37,15 +38,20 @@ export function useCloudAutoSync() {
           if (result.uploaded > 0) {
             addToast({
               type: "success",
-              title: "Cloud Sync",
-              message: `${result.uploaded} changes uploaded after the match.`,
+              title: i18n.t("settings:cloud.title"),
+              message: i18n.t("settings:cloud.toasts.autoSyncUploaded", {
+                uploaded: result.uploaded,
+              }),
             });
           }
         } catch (error) {
           addToast({
             type: "error",
-            title: "Cloud Sync failed",
-            message: error instanceof Error ? error.message : "Could not upload match data.",
+            title: i18n.t("settings:cloud.toasts.failedTitle"),
+            message:
+              error instanceof Error
+                ? error.message
+                : i18n.t("settings:cloud.toasts.autoSyncFailed"),
           });
         } finally {
           syncingRef.current = false;

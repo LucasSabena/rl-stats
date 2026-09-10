@@ -108,5 +108,17 @@
   },
   "scoreboard": {
     "live": "Live"
+  },
+  "share": {
+    "win": "Victory",
+    "loss": "Defeat",
+    "draw": "Draw",
+    "finished": "Match finished",
+    "goals": "Goals",
+    "assists": "Assists",
+    "saves": "Saves",
+    "shots": "Shots",
+    "score": "Score",
+    "demos": "Demos"
   }
 }

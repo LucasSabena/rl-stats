@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { useUIStore } from "@/stores/uiStore";
+import i18n from "@/i18n";
 
 /**
  * Automatically checks for updates once when the app starts.
@@ -26,8 +27,10 @@ export function useAutoUpdateCheck() {
         if (result) {
           addToast({
             type: "info",
-            title: `Actualizacion disponible: ${result.version}`,
-            message: "Ve a Ajustes > Actualizaciones para instalarla.",
+            title: i18n.t("settings:update.toasts.available.title", {
+              version: result.version,
+            }),
+            message: i18n.t("settings:update.toasts.available.message"),
           });
         }
       } catch {

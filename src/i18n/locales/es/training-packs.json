@@ -26,7 +26,10 @@
     "selectPack": "Elegí un pack para ver los detalles",
     "selectPackDesc": "Seleccioná un pack de entrenamiento de la grilla para ver sus detalles, copiar el código o agregarlo a favoritos.",
     "featuredPacks": "Packs Destacados",
-    "noFeatured": "No hay packs destacados"
+    "noFeatured": "No hay packs destacados",
+    "refresh": "Actualizar",
+    "showMore": "Mostrar más ({{remaining}} más)",
+    "tagsLabel": "Etiquetas"
   },
   "categories": {
     "all": "Todas",

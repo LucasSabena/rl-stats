@@ -38,13 +38,20 @@
     "totalKickoffGoalsScored": "Gols de saque (marcados)",
     "totalKickoffGoalsConceded": "Gols de saque (sofridos)",
     "avgKickoffGoalsScored": "Gols de saque / partida",
-    "avgKickoffGoalsConceded": "Gols de saque sofridos / partida"
+    "avgKickoffGoalsConceded": "Gols de saque sofridos / partida",
+    "goals": "Gols",
+    "assists": "Assistências",
+    "saves": "Defesas",
+    "shots": "Chutes",
+    "demos": "Demolições"
   },
   "streaks": {
     "label": "Sequência",
     "current": "Sequência atual",
     "best": "Melhor sequência",
-    "bestSuffix": "melhor"
+    "bestSuffix": "melhor",
+    "currentWins": "vitórias seguidas",
+    "currentLosses": "derrotas seguidas"
   },
   "chart": {
     "evolution": "Evolução",
@@ -105,7 +112,8 @@
     "winsLabel": "V",
     "lossesLabel": "D",
     "assistsTitle": "Assistências",
-    "demosTitle": "Demolições"
+    "demosTitle": "Demolições",
+    "periodLabel": "Resumo de sessões"
   },
   "matchDetail": {
     "loading": "Carregando partidas...",
@@ -116,7 +124,9 @@
     "goals": "gols",
     "assists": "assistências",
     "saves": "defesas",
-    "shots": "chutes"
+    "shots": "chutes",
+    "empty": "Nenhuma partida nesta sessão.",
+    "error": "Não foi possível carregar as partidas desta sessão."
   },
   "empty": {
     "noData": {
@@ -262,5 +272,24 @@
     "recounting": "Recalculando…",
     "recountDone": "Pronto: {{found}} gols em {{updated}} partidas.",
     "recountError": "Não foi possível recalcular."
+  },
+  "hoursWheel": {
+    "ariaLabel": "Taxa de vitórias por hora do dia",
+    "matches": "{{count}} partidas",
+    "matches_one": "{{count}} partida",
+    "matches_other": "{{count}} partidas",
+    "title": "Taxa de vitórias por hora",
+    "help": "Cada raio é uma hora do dia. Mais longo = melhor taxa de vitórias. A linha tracejada marca os 50%.",
+    "above": "Acima de 50%",
+    "below": "Abaixo de 50%",
+    "lowSample": "Menos de {{count}} partidas",
+    "lowSample_one": "Menos de {{count}} partida",
+    "lowSample_other": "Menos de {{count}} partidas",
+    "hideTable": "Ocultar tabela",
+    "showTable": "Ver como tabela",
+    "colHour": "Hora",
+    "colPlayed": "Partidas",
+    "colWon": "Vitórias",
+    "colWinRate": "Taxa de vitórias"
   }
 }

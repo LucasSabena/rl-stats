@@ -9,7 +9,7 @@ const LANGUAGES: SelectOption[] = [
 ];
 
 export function LanguageSelector() {
-  const { i18n } = useTranslation("settings");
+  const { t, i18n } = useTranslation("settings");
 
   const handleChange = (value: string) => {
     i18n.changeLanguage(value);
@@ -20,7 +20,7 @@ export function LanguageSelector() {
       <div className="flex items-center gap-2.5">
         <Globe size={16} className="text-text-muted" />
         <div>
-          <p className="text-sm font-medium text-text-secondary">Idioma / Language</p>
+          <p className="text-sm font-medium text-text-secondary">{t("language.label")}</p>
         </div>
       </div>
       <Select

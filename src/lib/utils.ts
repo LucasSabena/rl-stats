@@ -5,9 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const LOCALE_BY_LANGUAGE: Record<string, string> = {
+  es: "es-ES",
+  en: "en-US",
+  pt: "pt-BR",
+};
+
+function activeLocale(): string {
+  let language = "es";
+  try {
+    const stored =
+      typeof localStorage !== "undefined" ? localStorage.getItem("rl-lang") : null;
+    if (stored) language = stored;
+  } catch {
+    language = "es";
+  }
+  return LOCALE_BY_LANGUAGE[language.split("-")[0]] ?? "es-ES";
+}
+
 export function formatDate(timestamp: number | string | Date): string {
   const date = typeof timestamp === "number" ? new Date(timestamp) : new Date(timestamp);
-  return date.toLocaleDateString("es-ES", {
+  return date.toLocaleDateString(activeLocale(), {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -16,7 +34,7 @@ export function formatDate(timestamp: number | string | Date): string {
 
 export function formatDateTime(timestamp: number | string | Date): string {
   const date = typeof timestamp === "number" ? new Date(timestamp) : new Date(timestamp);
-  return date.toLocaleDateString("es-ES", {
+  return date.toLocaleDateString(activeLocale(), {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -73,7 +91,7 @@ export function calculateTrend(values: number[]): "up" | "down" | "flat" {
 }
 
 export function formatNumber(value: number): string {
-  return new Intl.NumberFormat("es-ES").format(value);
+  return new Intl.NumberFormat(activeLocale()).format(value);
 }
 
 export function classNames(...classes: (string | false | null | undefined)[]) {
