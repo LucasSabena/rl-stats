@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.10.0] - 2026-09-10
+
+### Fixed
+- Settings no longer clobber real configuration: saving used to force port 49123, theme "dark", language "es" and 90-day retention, silently reverting a custom Stats API port and resetting Parse.bot/MMR-scraper options. The Game Config port is now persisted (with a restart hint) and the dead enable checkbox is gone.
+- Data import is atomic again: presets were inserted through a second pooled connection while the import transaction was open (`SQLITE_BUSY` and partial imports). Settings and "delete all data" now write in transactions too.
+- History win/loss filtering happens in SQL using the local player's team, so filter pages are complete and pagination is correct; "Load more" exposes matches beyond the first 50.
+- The preset editor showed raw keys (`swivelSpeed`, `deadzoneShape`…) because it queried a non-existent i18n namespace.
+- Deleting a match no longer fails silently; player, analytics, profile, storage and training-pack errors show retry states instead of pretending there is no data.
+- The onboarding tour backdrop lets the app receive clicks again.
+- Overlay `GET /api/state` actually caches the latest match state.
+
+### Changed
+- Performance: daily rollup rebuilds/reads use one bulk query instead of two per match; profile settings lookups skip migrations and WAL checkpoints; kickoff recompute and imports are transactional; new indexes for `match_players(player_id)`, `match_events(event_type)`, `sessions(match_id)` and `players(name)`.
+- Startup bundle: recharts/d3 (~105 KB gzip) is no longer preloaded in every window; `clsx`/`tailwind-merge` moved to their own chunk.
+- The navigation header/sidebar no longer re-render at 20 Hz during live matches; the account-mismatch listener is registered once (it could restart the app twice) and background update/cloud checks only run in the main window.
+- Player directory search is debounced with previous results kept; cloud requests time out after 15 s.
+- Accessibility: tablist semantics and arrow-key navigation, keyboard-sortable table headers with `aria-sort`, keyboard-activatable cards, `aria-busy` buttons, labelled checkboxes and tooltips, live-region toasts.
+- UI consistency: hardcoded colors replaced with design tokens (accent, success, warning, info), fixing unreadable white-on-tint text in light theme.
+- i18n: ~200 keys added across es/en/pt (career, hours wheel, share, cloud panel, update checker), hardcoded strings removed, dates/numbers follow the active language.
+- Removed ~950 lines of dead components/hooks and stopped shipping the tracking of unused onboarding steps.
+
 ## [2.9.0] - 2026-09-10
 
 ### Added
