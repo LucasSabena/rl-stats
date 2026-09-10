@@ -32,6 +32,9 @@ pub struct AppSettings {
     pub parsebot_scraper_id: Option<String>,
     pub parsebot_endpoint: Option<String>,
     pub parsebot_enabled: bool,
+    /// Enables the local embedded-webview rlstats.net scrape as the primary
+    /// live-MMR source. When off, resolution falls back to history/estimates.
+    pub mmr_scraper_enabled: bool,
     pub tracker_auto_refresh: bool,
     pub tracker_refresh_interval_min: u32,
     pub session_gap_minutes: u32,
@@ -90,6 +93,7 @@ impl Default for AppSettings {
             parsebot_scraper_id: None,
             parsebot_endpoint: None,
             parsebot_enabled: false,
+            mmr_scraper_enabled: true,
             tracker_auto_refresh: true,
             tracker_refresh_interval_min: 5,
             session_gap_minutes: 30,
@@ -181,6 +185,7 @@ impl AppSettings {
                 self.parsebot_endpoint.clone().unwrap_or_default(),
             ),
             ("parsebot_enabled", self.parsebot_enabled.to_string()),
+            ("mmr_scraper_enabled", self.mmr_scraper_enabled.to_string()),
             (
                 "tracker_auto_refresh",
                 self.tracker_auto_refresh.to_string(),
@@ -323,6 +328,7 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
                 settings.parsebot_endpoint = if value.is_empty() { None } else { Some(value) };
             }
             "parsebot_enabled" => settings.parsebot_enabled = value.parse().unwrap_or(false),
+            "mmr_scraper_enabled" => settings.mmr_scraper_enabled = value.parse().unwrap_or(true),
             "tracker_auto_refresh" => settings.tracker_auto_refresh = value.parse().unwrap_or(true),
             "tracker_refresh_interval_min" => {
                 settings.tracker_refresh_interval_min = value.parse().unwrap_or(5)

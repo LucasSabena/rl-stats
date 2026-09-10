@@ -13,10 +13,16 @@ use std::collections::HashMap;
 use tokio::task::JoinSet;
 use tracing::warn;
 
+pub mod playlists;
+pub mod webview;
+
 type RankInfoMap = HashMap<String, (Option<String>, Option<String>, Option<i32>)>;
 
 const TRACKER_PROVIDER: &str = "tracker";
 const RLSTATS_PROVIDER: &str = "rlstats";
+/// Identifier of the embedded-webview RLStats provider, exposed so Settings can
+/// probe it by name.
+pub const RLSTATS_WEBVIEW_PROVIDER: &str = "rlstats-webview";
 const RAPIDAPI_PROVIDER: &str = "rapidapi";
 const LOCAL_ESTIMATE_PROVIDER: &str = "local-estimate";
 const HISTORY_PROVIDER: &str = "history";
@@ -141,9 +147,11 @@ pub async fn resolve_lobby_mmr(
     parsebot_enabled: bool,
     local_primary_id: Option<String>,
     prefer_local_estimate: bool,
+    exact_playlist: Option<String>,
+    scraper: Option<std::sync::Arc<webview::RlstatsScraper>>,
     players: Vec<LivePlayer>,
 ) -> AppResult<LiveMmrSnapshot> {
-    let inference = infer_playlist(players.iter());
+    let inference = infer_playlist(players.iter(), exact_playlist.as_deref());
     let fetched_at = Utc::now().to_rfc3339();
     let local_identity = local_primary_id.clone();
 
@@ -157,6 +165,7 @@ pub async fn resolve_lobby_mmr(
         let parsebot_endpoint = parsebot_endpoint.clone();
         let inference = inference.clone();
         let local_primary_id = local_primary_id.clone();
+        let scraper = scraper.clone();
 
         join_set.spawn(async move {
             resolve_player_mmr(
@@ -170,6 +179,7 @@ pub async fn resolve_lobby_mmr(
                 parsebot_enabled,
                 local_primary_id,
                 prefer_local_estimate,
+                scraper,
                 player,
                 inference,
             )
@@ -277,6 +287,7 @@ async fn resolve_player_mmr(
     parsebot_enabled: bool,
     local_primary_id: Option<String>,
     prefer_local_estimate: bool,
+    scraper: Option<std::sync::Arc<webview::RlstatsScraper>>,
     player: LivePlayer,
     inference: PlaylistInference,
 ) -> LivePlayerMmr {
@@ -354,8 +365,52 @@ async fn resolve_player_mmr(
         let mut tracker_failed = false;
         let mut parsebot_failed = false;
         let mut rlstats_failed = false;
+        let mut rlstats_webview_failed = false;
 
         for playlist_key in &inference.candidates {
+            // Primary source: local webview scrape of rlstats.net. Exact public
+            // MMR without any account or paid API, cached for 30 minutes.
+            if let Some(ref scraper) = scraper {
+                if !rlstats_webview_failed {
+                    let started = std::time::Instant::now();
+                    let result =
+                        resolve_with_rlstats_webview(&db_pool, scraper, &identity, playlist_key)
+                            .await;
+                    record_provider_health(&db_pool, RLSTATS_WEBVIEW_PROVIDER, started, &result);
+                    match result {
+                        Ok(entry) if entry.mmr.is_some() => {
+                            if is_local_player {
+                                let _ = sync_local_trusted_mmr(
+                                    &db_pool,
+                                    &identity.source_primary_id,
+                                    playlist_key,
+                                    entry.mmr,
+                                );
+                            }
+                            return build_player_result(
+                                identity,
+                                Some(playlist_key.clone()),
+                                entry,
+                                maybe_confidence_warning(
+                                    &inference,
+                                    resolved_playlist,
+                                    playlist_key,
+                                ),
+                            );
+                        }
+                        Ok(_) => attempted_errors.push(format!(
+                            "RLStats (webview) [{}]: el perfil no tiene MMR para esta playlist",
+                            playlist_key
+                        )),
+                        Err(error) => {
+                            attempted_errors
+                                .push(format!("RLStats (webview) [{}]: {}", playlist_key, error));
+                            rlstats_webview_failed = true;
+                        }
+                    }
+                }
+            }
+
             if rapidapi_enabled && rapidapi_key.is_some() && !rapidapi_failed {
                 match resolve_with_rapidapi(
                     &db_pool,
@@ -912,6 +967,131 @@ async fn resolve_with_rlstats(
         division: entry.division,
         matches_played: entry.matches_played,
     })
+}
+
+/// Primary provider: scrapes rlstats.net from an embedded WebView2 window,
+/// which clears Cloudflare the way a real browser does. The whole profile is
+/// cached, so a single navigation serves every player/playlist lookup.
+async fn resolve_with_rlstats_webview(
+    db_pool: &DbPool,
+    scraper: &webview::RlstatsScraper,
+    identity: &ProviderIdentity,
+    playlist_key: &str,
+) -> AppResult<ResolvedMmrEntry> {
+    // Hold the scrape lock across the cache read so a whole lobby shares one
+    // navigation instead of one scrape per player.
+    let _guard = scraper.lock_scrape().await;
+
+    if let Some(cached) = read_cached_profile(
+        db_pool,
+        RLSTATS_WEBVIEW_PROVIDER,
+        &identity.tracker_platform,
+        &identity.identifier,
+        RLSTATS_CACHE_TTL_MINUTES,
+    )? {
+        if let Some(entry) = cached.playlists.get(playlist_key) {
+            return Ok(ResolvedMmrEntry {
+                source: RLSTATS_WEBVIEW_PROVIDER.into(),
+                cached: true,
+                mmr: entry.mmr,
+                rank_name: entry.rank_name.clone(),
+                division: entry.division.clone(),
+                matches_played: entry.matches_played,
+            });
+        }
+    }
+
+    let extracted = scraper
+        .fetch_profile_unlocked(&identity.rlstats_platform, &identity.identifier)
+        .await?;
+
+    let cached_profile =
+        map_webview_profile(&extracted, &identity.tracker_platform, &identity.identifier);
+    store_cached_profile(db_pool, &cached_profile)?;
+
+    let entry = cached_profile
+        .playlists
+        .get(playlist_key)
+        .cloned()
+        .unwrap_or_default();
+
+    Ok(ResolvedMmrEntry {
+        source: RLSTATS_WEBVIEW_PROVIDER.into(),
+        cached: false,
+        mmr: entry.mmr,
+        rank_name: entry.rank_name,
+        division: entry.division,
+        matches_played: entry.matches_played,
+    })
+}
+
+/// Converts the webview payload into the cached profile shape used by every
+/// provider. Labels that do not map to a known playlist are ignored.
+fn map_webview_profile(
+    extracted: &webview::ExtractedProfile,
+    platform: &str,
+    identifier: &str,
+) -> CachedMmrProfile {
+    let mut playlists = HashMap::new();
+    for item in &extracted.playlists {
+        let Some(key) = playlists::rlstats_label_to_key(&item.label) else {
+            continue;
+        };
+        playlists.insert(
+            key.to_string(),
+            CachedPlaylistMmr {
+                mmr: item.mmr.map(|value| value.round() as i32),
+                rank_name: item.rank.clone(),
+                division: item.division.clone(),
+                matches_played: item.matches,
+            },
+        );
+    }
+
+    if let Some(casual) = extracted.casual {
+        playlists
+            .entry("casual".to_string())
+            .or_insert_with(|| CachedPlaylistMmr {
+                mmr: Some(casual.round() as i32),
+                rank_name: None,
+                division: None,
+                matches_played: None,
+            });
+    }
+
+    CachedMmrProfile {
+        provider: RLSTATS_WEBVIEW_PROVIDER.into(),
+        platform: platform.into(),
+        identifier: identifier.into(),
+        fetched_at: Utc::now().to_rfc3339(),
+        playlists,
+    }
+}
+
+/// Persists the outcome of a provider attempt for the Settings health panel.
+fn record_provider_health(
+    db_pool: &DbPool,
+    provider: &str,
+    started: std::time::Instant,
+    result: &AppResult<ResolvedMmrEntry>,
+) {
+    let latency_ms = i64::try_from(started.elapsed().as_millis()).ok();
+    let (status, error) = match result {
+        Ok(_) => ("ok", None),
+        Err(error) => (
+            "error",
+            Some(error.to_string().chars().take(300).collect::<String>()),
+        ),
+    };
+    if let Err(record_error) = crate::core::storage::record_mmr_provider_attempt(
+        db_pool,
+        provider,
+        status,
+        error.as_deref(),
+        latency_ms,
+    ) {
+        warn!(%record_error, provider, "Failed to record MMR provider health");
+    }
 }
 
 async fn resolve_with_rapidapi(
@@ -1667,13 +1847,7 @@ fn normalize_playlist_key(label: &str) -> Option<&'static str> {
 }
 
 pub fn playlist_label_to_key(label: &str) -> Option<&'static str> {
-    match label.trim() {
-        "Duel" => Some("duel"),
-        "Doubles" => Some("doubles"),
-        "Standard" => Some("standard"),
-        "Chaos" => Some("quads"),
-        _ => None,
-    }
+    playlists::normalize_label_to_key(label)
 }
 
 fn resolve_local_estimate(
@@ -1784,6 +1958,42 @@ fn write_local_mmr_state(
     )
 }
 
+/// Resolves the rlstats.net `(platform, identifier)` pair to use for provider
+/// diagnostics, preferring the live local PrimaryId and falling back to the
+/// tracker profile configured in Settings.
+pub fn resolve_rlstats_test_target(
+    settings: &crate::core::settings::AppSettings,
+) -> AppResult<(String, String)> {
+    if let Some(primary_id) = settings
+        .local_primary_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+    {
+        let identity = parse_primary_id(primary_id, "")?;
+        return Ok((identity.rlstats_platform, identity.identifier));
+    }
+
+    if let (Some(platform), Some(username)) = (
+        settings
+            .tracker_platform
+            .as_deref()
+            .filter(|p| !p.is_empty()),
+        settings
+            .tracker_username
+            .as_deref()
+            .filter(|u| !u.is_empty()),
+    ) {
+        let synthetic = format!("{platform}|{username}|0");
+        let identity = parse_primary_id(&synthetic, "")?;
+        return Ok((identity.rlstats_platform, identity.identifier));
+    }
+
+    Err(AppError::ConfigError(
+        "Configura tu perfil local (o plataforma y usuario) para probar el proveedor de MMR."
+            .into(),
+    ))
+}
+
 fn parse_primary_id(primary_id: &str, player_name: &str) -> AppResult<ProviderIdentity> {
     let mut parts = primary_id.split('|');
     let platform_raw = parts
@@ -1815,7 +2025,20 @@ fn parse_primary_id(primary_id: &str, player_name: &str) -> AppResult<ProviderId
     })
 }
 
-fn infer_playlist<'a>(players: impl Iterator<Item = &'a LivePlayer>) -> PlaylistInference {
+fn infer_playlist<'a>(
+    players: impl Iterator<Item = &'a LivePlayer>,
+    exact_playlist: Option<&str>,
+) -> PlaylistInference {
+    // The Stats API reports Game.PlaylistId, which is authoritative. Only fall
+    // back to team-size inference when the stream did not include it.
+    if let Some(key) = exact_playlist.filter(|key| !key.is_empty()) {
+        return PlaylistInference {
+            primary: Some(key.to_string()),
+            candidates: vec![key.to_string()],
+            confidence: "high",
+        };
+    }
+
     let (blue_count, orange_count) = players.fold((0usize, 0usize), |(blue, orange), player| {
         match player.team {
             0 => (blue + 1, orange),
@@ -1929,8 +2152,8 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
 mod tests {
     use super::{
         apply_lobby_estimates, extract_last_quoted_literal, extract_rlstats_columns,
-        infer_playlist, parse_primary_id, parse_rapidapi_profile, parse_rlstats_profile,
-        LivePlayerMmr,
+        infer_playlist, map_webview_profile, parse_primary_id, parse_rapidapi_profile,
+        parse_rlstats_profile, webview, LivePlayerMmr, RLSTATS_WEBVIEW_PROVIDER,
     };
     use crate::core::models::LivePlayer;
 
@@ -2003,7 +2226,7 @@ mod tests {
             },
         ];
 
-        let inference = infer_playlist(players.iter());
+        let inference = infer_playlist(players.iter(), None);
         assert_eq!(inference.primary.as_deref(), Some("doubles"));
         assert_eq!(inference.confidence, "low");
     }
@@ -2025,7 +2248,7 @@ mod tests {
             },
         ];
 
-        let inference = infer_playlist(players.iter());
+        let inference = infer_playlist(players.iter(), None);
         assert_eq!(inference.primary, None);
         assert_eq!(inference.confidence, "unknown");
     }
@@ -2055,7 +2278,7 @@ mod tests {
             },
         ];
 
-        let inference = infer_playlist(players.iter());
+        let inference = infer_playlist(players.iter(), None);
         assert_eq!(inference.primary, None);
         assert_eq!(inference.confidence, "unknown");
     }
@@ -2124,5 +2347,43 @@ mod tests {
             extract_last_quoted_literal(statement).as_deref(),
             Some("Doubles")
         );
+    }
+
+    #[test]
+    fn maps_webview_extraction_to_cached_playlists() {
+        let extracted = webview::ExtractedProfile {
+            ok: true,
+            reason: None,
+            season: Some(25),
+            playlists: vec![
+                webview::ExtractedPlaylist {
+                    label: "1v1 Solo Duel".into(),
+                    rank: Some("Diamond III".into()),
+                    division: Some("Division I".into()),
+                    mmr: Some(938.4),
+                    matches: Some(34),
+                    streak: Some("Loss Streak: 3".into()),
+                },
+                webview::ExtractedPlaylist {
+                    label: "Playlist Desconocida".into(),
+                    rank: None,
+                    division: None,
+                    mmr: Some(1.0),
+                    matches: None,
+                    streak: None,
+                },
+            ],
+            casual: Some(1202.0),
+        };
+
+        let profile = map_webview_profile(&extracted, "epic", "abc");
+        assert_eq!(profile.provider, RLSTATS_WEBVIEW_PROVIDER);
+        assert_eq!(profile.playlists["duel"].mmr, Some(938));
+        assert_eq!(
+            profile.playlists["duel"].rank_name.as_deref(),
+            Some("Diamond III")
+        );
+        assert_eq!(profile.playlists["casual"].mmr, Some(1202));
+        assert_eq!(profile.playlists.len(), 2);
     }
 }

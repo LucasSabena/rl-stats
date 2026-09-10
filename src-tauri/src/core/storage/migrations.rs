@@ -269,6 +269,20 @@ pub static MIGRATIONS: &[Migration] = &[
         name: "add_mood_to_matches",
         sql: "ALTER TABLE matches ADD COLUMN mood TEXT;",
     },
+    Migration {
+        version: 23,
+        name: "create_mmr_provider_health",
+        sql: "CREATE TABLE IF NOT EXISTS mmr_provider_health (
+            provider TEXT PRIMARY KEY,
+            last_status TEXT NOT NULL,
+            last_error TEXT,
+            last_ok_at TEXT,
+            last_attempt_at TEXT NOT NULL,
+            latency_ms INTEGER,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            failure_count INTEGER NOT NULL DEFAULT 0
+        );",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

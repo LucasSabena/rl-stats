@@ -176,6 +176,11 @@ fn parse_game_state(data: &Value) -> GameState {
             .and_then(|v| v.get("Name"))
             .and_then(|v| v.as_str())
             .map(ToOwned::to_owned),
+        playlist_id: game
+            .get("PlaylistId")
+            .or_else(|| game.get("playlistId"))
+            .and_then(|v| v.as_i64())
+            .and_then(|v| i32::try_from(v).ok()),
     }
 }
 
@@ -748,6 +753,23 @@ mod tests {
             assert_eq!(p.name, "Test");
             assert_eq!(p.boost, 85);
             assert_eq!(p.goals, 1);
+        } else {
+            panic!("Expected UpdateState");
+        }
+    }
+
+    #[test]
+    fn test_parse_update_state_parses_playlist_id() {
+        let json = r#"{
+            "event":"UpdateState",
+            "data":{
+                "Game":{"TimeSeconds":300,"PlaylistId":27,"Teams":[{"Score":0},{"Score":0}]},
+                "Players":[]
+            }
+        }"#;
+        let ev = parse_event(json).unwrap();
+        if let RlEvent::UpdateState { game, .. } = ev {
+            assert_eq!(game.playlist_id, Some(27));
         } else {
             panic!("Expected UpdateState");
         }

@@ -69,6 +69,9 @@ pub struct MatchQuery<'a> {
     pub date_from: Option<&'a str>,
     pub date_to: Option<&'a str>,
     pub search: Option<&'a str>,
+    /// Local player identity, needed to turn the `result` filter into SQL.
+    pub local_primary_id: Option<&'a str>,
+    pub local_player_names: &'a [String],
 }
 
 pub struct MatchUpsert<'a> {
@@ -637,10 +640,39 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
     }
 
     if let Some(result) = filters.result {
-        match result {
-            "win" => sql.push_str(" AND winner = 0"),
-            "loss" => sql.push_str(" AND winner = 1"),
-            _ => {}
+        if result == "win" || result == "loss" {
+            // Resolve the local player's team per match in SQL so the filter
+            // applies before LIMIT/OFFSET. Mirrors get_local_team_num_from_conn:
+            // the primary id wins, then the configured player names.
+            let mut ors: Vec<String> = Vec::new();
+            if let Some(primary_id) = filters.local_primary_id {
+                ors.push("p.primary_id = ?".to_string());
+                args.push(Box::new(primary_id.to_string()));
+            }
+            for name in filters.local_player_names {
+                ors.push("LOWER(TRIM(p.name)) = ?".to_string());
+                args.push(Box::new(normalize_player_name(name)));
+            }
+
+            if ors.is_empty() {
+                // Without a local identity there is no way to tell who won.
+                sql.push_str(" AND 0 = 1");
+            } else {
+                let team_expr = format!(
+                    "(SELECT mp.team_num FROM match_players mp JOIN players p ON p.id = mp.player_id \
+                     WHERE mp.match_id = matches.id AND ({}) LIMIT 1)",
+                    ors.join(" OR ")
+                );
+                if result == "win" {
+                    sql.push_str(&format!(
+                        " AND winner IS NOT NULL AND winner = {team_expr}"
+                    ));
+                } else {
+                    sql.push_str(&format!(
+                        " AND winner IS NOT NULL AND winner != {team_expr}"
+                    ));
+                }
+            }
         }
     }
 
@@ -2537,6 +2569,88 @@ pub fn delete_mmr_cache(
     Ok(())
 }
 
+/// Persisted health snapshot for an MMR provider, surfaced in Settings.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MmrProviderHealth {
+    pub provider: String,
+    pub last_status: String,
+    pub last_error: Option<String>,
+    pub last_ok_at: Option<String>,
+    pub last_attempt_at: String,
+    pub latency_ms: Option<i64>,
+    pub success_count: i64,
+    pub failure_count: i64,
+}
+
+/// Records the outcome of a single provider attempt, upserting counters.
+/// `status` is a short machine tag: `ok`, `error`, `not_configured`, `blocked`.
+pub fn record_mmr_provider_attempt(
+    pool: &DbPool,
+    provider: &str,
+    status: &str,
+    error: Option<&str>,
+    latency_ms: Option<i64>,
+) -> AppResult<()> {
+    let conn = get_conn(pool)?;
+    let now = Utc::now().to_rfc3339();
+    let ok_at = if status == "ok" {
+        Some(now.clone())
+    } else {
+        None
+    };
+    let success = i64::from(status == "ok");
+    let failure = i64::from(status != "ok");
+    conn.execute(
+        "INSERT INTO mmr_provider_health
+            (provider, last_status, last_error, last_ok_at, last_attempt_at, latency_ms,
+             success_count, failure_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(provider) DO UPDATE SET
+            last_status = excluded.last_status,
+            last_error = excluded.last_error,
+            last_ok_at = COALESCE(excluded.last_ok_at, mmr_provider_health.last_ok_at),
+            last_attempt_at = excluded.last_attempt_at,
+            latency_ms = excluded.latency_ms,
+            success_count = mmr_provider_health.success_count + excluded.success_count,
+            failure_count = mmr_provider_health.failure_count + excluded.failure_count",
+        params![provider, status, error, ok_at, now, latency_ms, success, failure],
+    )
+    .map_err(|e| AppError::StorageError(e.to_string()))?;
+    Ok(())
+}
+
+pub fn list_mmr_provider_health(pool: &DbPool) -> AppResult<Vec<MmrProviderHealth>> {
+    let conn = get_conn(pool)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT provider, last_status, last_error, last_ok_at, last_attempt_at, latency_ms,
+                    success_count, failure_count
+             FROM mmr_provider_health ORDER BY provider ASC",
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(MmrProviderHealth {
+                provider: row.get(0)?,
+                last_status: row.get(1)?,
+                last_error: row.get(2)?,
+                last_ok_at: row.get(3)?,
+                last_attempt_at: row.get(4)?,
+                latency_ms: row.get(5)?,
+                success_count: row.get(6)?,
+                failure_count: row.get(7)?,
+            })
+        })
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    }
+    Ok(out)
+}
+
 pub fn get_latest_player_mmr_for_playlist(
     pool: &DbPool,
     primary_id: &str,
@@ -4222,6 +4336,8 @@ mod mood_roundtrip_tests {
                     date_from: None,
                     date_to: None,
                     search: None,
+                    local_primary_id: None,
+                    local_player_names: &[],
                 },
             )
             .unwrap();

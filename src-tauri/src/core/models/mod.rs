@@ -92,6 +92,10 @@ pub struct GameState {
     pub ball: Option<BallState>,
     pub arena: Option<String>,
     pub target: Option<String>,
+    /// Numeric playlist id reported by the official Stats API (`Game.PlaylistId`).
+    /// This is the authoritative playlist for the current match, unlike the
+    /// team-size inference that used to be the only source.
+    pub playlist_id: Option<i32>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -115,6 +119,8 @@ pub struct LiveMatchState {
     pub player_count: usize,
     pub match_type: Option<String>,
     pub last_touch_team: Option<i32>,
+    /// Numeric playlist id from the Stats API, when the stream reports it.
+    pub playlist_id: Option<i32>,
 }
 
 /// Represents a statfeed event payload (e.g., "Shot on Goal", "Save").

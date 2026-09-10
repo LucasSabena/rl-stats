@@ -41,6 +41,9 @@ pub struct AppState {
     pub game_running: Arc<std::sync::atomic::AtomicBool>,
     pub overlay_server: Arc<tokio::sync::Mutex<Option<OverlayServer>>>,
     pub overlay_handle: Arc<std::sync::Mutex<Option<tauri::WebviewWindow>>>,
+    /// Hidden WebView2-backed rlstats.net scraper used by the primary MMR
+    /// provider. Lazily creates its window on first lookup.
+    pub rlstats_scraper: Arc<core::mmr::webview::RlstatsScraper>,
 }
 
 pub(crate) fn diagnostics_log_directory() -> PathBuf {
@@ -119,6 +122,8 @@ pub fn run() {
             commands::mmr::fetch_live_mmr_snapshot,
             commands::mmr::set_session_mmr_snapshot,
             commands::mmr::set_local_mmr,
+            commands::mmr::get_mmr_provider_health,
+            commands::mmr::test_mmr_provider,
             commands::history::get_matches,
             commands::history::get_match_detail,
             commands::history::delete_match_cmd,
@@ -446,6 +451,9 @@ pub fn run() {
                 game_running: game_running_flag,
                 overlay_server: Arc::new(tokio::sync::Mutex::new(None)),
                 overlay_handle: Arc::new(std::sync::Mutex::new(None)),
+                rlstats_scraper: core::mmr::webview::RlstatsScraper::new(
+                    app.handle().clone(),
+                ),
             });
 
             // Store tray in app state so it stays alive. We move it into a "leaked" Box to

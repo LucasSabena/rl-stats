@@ -515,6 +515,7 @@ export interface AppSettings {
   parsebotScraperId?: string | null;
   parsebotEndpoint?: string | null;
   parsebotEnabled?: boolean;
+  mmrScraperEnabled?: boolean;
   trackerAutoRefresh?: boolean;
   trackerRefreshIntervalMin?: number;
   sessionGapMinutes?: number;
@@ -748,6 +749,33 @@ export interface LiveMmrSnapshot {
   historicalCount: number;
   estimatedCount: number;
   unavailableCount: number;
+}
+
+export interface MmrProviderHealth {
+  provider: string;
+  lastStatus: string;
+  lastError: string | null;
+  lastOkAt: string | null;
+  lastAttemptAt: string;
+  latencyMs: number | null;
+  successCount: number;
+  failureCount: number;
+}
+
+export interface MmrProviderTestEntry {
+  playlist: string;
+  mmr: number | null;
+  rankName: string | null;
+  division: string | null;
+  matchesPlayed: number | null;
+}
+
+export interface MmrProviderTestResult {
+  provider: string;
+  ok: boolean;
+  message: string;
+  latencyMs: number;
+  entries: MmrProviderTestEntry[];
 }
 
 export interface RlInstallation {

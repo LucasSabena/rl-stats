@@ -1,3 +1,4 @@
+use crate::core::mmr::playlists::playlist_id_to_match_label;
 use crate::core::mmr::{playlist_label_to_key, update_local_mmr_estimate};
 use crate::core::models::{
     LiveMatchState, LivePlayer, Player, PlayerStats, RlEvent, SessionSummary,
@@ -38,6 +39,9 @@ pub struct SessionManager {
     events: Vec<(String, String, chrono::DateTime<chrono::Utc>, Option<i32>)>, // (event_type, json, occurred_at, game clock)
     ball_speed: f64,
     match_type: Option<String>,
+    /// Numeric playlist id reported by the Stats API for the current match.
+    /// `None` for streams that do not emit it.
+    playlist_id: Option<i32>,
     winner_team_num: Option<i32>,
     max_player_count: usize,
     last_touch_team: Option<i32>,
@@ -92,6 +96,7 @@ impl SessionManager {
             events: Vec::new(),
             ball_speed: 0.0,
             match_type: Some("ranked".into()),
+            playlist_id: None,
             winner_team_num: None,
             max_player_count: 0,
             last_touch_team: None,
@@ -212,6 +217,7 @@ impl SessionManager {
             player_count,
             match_type: self.match_type.clone(),
             last_touch_team: self.last_touch_team,
+            playlist_id: self.playlist_id,
         }
     }
 
@@ -245,6 +251,9 @@ impl SessionManager {
                     self.arena.clone_from(&game.arena);
                     self.is_overtime = game.is_overtime;
                     self.time_remaining = game.time;
+                    if game.playlist_id.is_some() {
+                        self.playlist_id = game.playlist_id;
+                    }
                     // Anchor the opening kickoff. Streams don't reliably emit a
                     // round-start marker before the first goal, so without this
                     // the opening kickoff could never be detected.
@@ -512,7 +521,12 @@ impl SessionManager {
         let playlist = if is_training {
             None
         } else {
-            infer_playlist(self.players.values())
+            // Prefer the authoritative PlaylistId; fall back to team size only
+            // when the stream did not report one.
+            self.playlist_id
+                .and_then(playlist_id_to_match_label)
+                .map(str::to_string)
+                .or_else(|| infer_playlist(self.players.values()))
         };
 
         let conn = get_conn(pool)?;
@@ -831,6 +845,7 @@ impl SessionManager {
         self.events.clear();
         self.ball_speed = 0.0;
         self.winner_team_num = None;
+        self.playlist_id = None;
         self.max_player_count = 0;
         self.last_touch_team = None;
         self.mmr_snapshot = None;
@@ -1055,6 +1070,7 @@ mod tests {
                 ball: None,
                 arena: Some("stadium_p".into()),
                 target: None,
+                playlist_id: None,
             },
             players,
         }
@@ -1353,6 +1369,7 @@ mod tests {
                 ball: None,
                 arena: Some("stadium_p".into()),
                 target: None,
+                playlist_id: None,
             },
             players,
         });
@@ -1466,6 +1483,7 @@ mod tests {
                 ball: None,
                 arena: Some("stadium_p".into()),
                 target: None,
+                playlist_id: None,
             },
             players: {
                 let mut players = HashMap::new();

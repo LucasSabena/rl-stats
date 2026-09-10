@@ -26,6 +26,8 @@ import {
   type StorageStats,
   type TrackerProfile,
   type LiveMmrSnapshot,
+  type MmrProviderHealth,
+  type MmrProviderTestResult,
   type RlInstallation,
   type InstallSyncResult,
   type DetectedAccount,
@@ -1264,6 +1266,20 @@ export async function setLocalMmr(
   mmr: number,
 ): Promise<void> {
   return invokeCommand<void>("set_local_mmr", { playlist, mmr });
+}
+
+export async function getMmrProviderHealth(): Promise<MmrProviderHealth[]> {
+  return invokeCommand<MmrProviderHealth[]>("get_mmr_provider_health");
+}
+
+export async function testMmrProvider(
+  provider: string,
+): Promise<MmrProviderTestResult> {
+  return invokeCommand<MmrProviderTestResult>(
+    "test_mmr_provider",
+    { provider },
+    { timeoutMs: 60_000 },
+  );
 }
 
 // ─── RLStats Profile ─────────────────────────────────────────────────────────

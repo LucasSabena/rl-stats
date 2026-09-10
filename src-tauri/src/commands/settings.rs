@@ -151,6 +151,8 @@ fn export_data_json_internal(pool: &storage::DbPool) -> Result<String, String> {
             date_from: None,
             date_to: None,
             search: None,
+            local_primary_id: None,
+            local_player_names: &[],
         },
     )
     .map_err(|e| e.to_string())?;

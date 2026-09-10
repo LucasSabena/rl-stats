@@ -416,6 +416,34 @@ export function installMockBackend() {
         return null;
       case "set_local_mmr":
         return null;
+      case "get_mmr_provider_health": {
+        const now = new Date().toISOString();
+        return [
+          {
+            provider: "rlstats-webview",
+            lastStatus: "ok",
+            lastError: null,
+            lastOkAt: now,
+            lastAttemptAt: now,
+            latencyMs: 1840,
+            successCount: 12,
+            failureCount: 1,
+          },
+        ];
+      }
+      case "test_mmr_provider":
+        return {
+          provider: "rlstats-webview",
+          ok: true,
+          message: "6 playlists leidas en 1840 ms (Epic/demo).",
+          latencyMs: 1840,
+          entries: [
+            { playlist: "1v1 Solo Duel", mmr: 938, rankName: "Diamond III", division: "Division I", matchesPlayed: 34 },
+            { playlist: "2v2 Doubles", mmr: 1423, rankName: "Champion III", division: "Division IV", matchesPlayed: 449 },
+            { playlist: "3v3 Standard", mmr: 1261, rankName: "Champion II", division: "Division III", matchesPlayed: 86 },
+            { playlist: "3v3 Rumble", mmr: 803, rankName: "Platinum III", division: "Division IV", matchesPlayed: 0 },
+          ],
+        };
       case "get_matches":
         return { matches: applyFilters(args as Record<string, unknown> | undefined).map(rawSummary) };
       case "get_match_detail": {

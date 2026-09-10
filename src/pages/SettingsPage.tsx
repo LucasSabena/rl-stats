@@ -7,6 +7,7 @@ import { UpdateChecker } from "@/components/settings/UpdateChecker";
 import { OverlayConfig } from "@/components/settings/OverlayConfig";
 import { OverlayStreaming } from "@/components/settings/OverlayStreaming";
 import { TrackerSetup } from "@/components/settings/TrackerSetup";
+import { MmrSourcesSetup } from "@/components/settings/MmrSourcesSetup";
 import { RapidApiSetup } from "@/components/settings/RapidApiSetup";
 import { ParseBotSetup } from "@/components/settings/ParseBotSetup";
 import { ProfileManagement } from "@/components/settings/ProfileManagement";
@@ -100,6 +101,7 @@ export function SettingsPage() {
 
           <TabsContent value="game" className="space-y-6">
             <IniHelper />
+            <MmrSourcesSetup />
             <RapidApiSetup />
             <TrackerSetup />
             <ParseBotSetup />

@@ -47,10 +47,12 @@ pub async fn get_matches(
             arena,
             match_type,
             playlist,
-            result: None,
+            result: result_filter,
             date_from,
             date_to,
             search,
+            local_primary_id,
+            local_player_names: &player_names,
         },
     ) {
         Ok(matches) => {
@@ -63,26 +65,6 @@ pub async fn get_matches(
                 let local_team = local_stats_by_match
                     .get(&m.id)
                     .and_then(|stats| stats.local_team_num);
-
-                if let Some(rf) = result_filter {
-                    match rf {
-                        "win"
-                            if m.winner.is_none()
-                                || local_team.is_none()
-                                || m.winner != local_team =>
-                        {
-                            continue;
-                        }
-                        "loss"
-                            if m.winner.is_none()
-                                || local_team.is_none()
-                                || m.winner == local_team =>
-                        {
-                            continue;
-                        }
-                        _ => {}
-                    }
-                }
 
                 result.push(serde_json::json!({
                     "id": m.id,
