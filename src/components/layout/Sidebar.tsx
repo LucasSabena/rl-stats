@@ -63,10 +63,10 @@ export function Sidebar() {
   const { t } = useTranslation("common");
   const expanded = useUIStore((state) => state.sidebarExpanded);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
-  const connectionStatus = useLiveStore((state) => state.connectionStatus);
-  const currentMatch = useLiveStore((state) => state.currentMatch);
-
-  const isLive = connectionStatus === "connected" && currentMatch !== null;
+  // Boolean selector: avoid re-rendering the nav 20x/s on live match updates.
+  const isLive = useLiveStore(
+    (state) => state.connectionStatus === "connected" && state.currentMatch !== null,
+  );
 
   const renderItem = (item: NavItem) => {
     const showLiveDot = item.path === "/" && isLive;

@@ -118,7 +118,8 @@
       "error": {
         "title": "Error",
         "message": "Could not configure the RL file."
-      }
+      },
+      "restartRequired": "Restart Rocket League and RL Stats for the new port to take effect."
     }
   },
   "data": {

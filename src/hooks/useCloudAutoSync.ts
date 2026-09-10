@@ -15,9 +15,10 @@ export function useCloudAutoSync() {
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
+    let disposed = false;
 
     async function setup() {
-      unlisten = await listen<MatchSummaryPayload>("match-summary", async (event) => {
+      const un = await listen<MatchSummaryPayload>("match-summary", async (event) => {
         const matchGuid = event.payload.match_guid ?? event.payload.guid;
         if (matchGuid && syncedMatchesRef.current.has(matchGuid)) return;
         if (syncingRef.current) return;
@@ -25,7 +26,14 @@ export function useCloudAutoSync() {
         syncingRef.current = true;
         try {
           const result = await syncCurrentProfileToCloud();
-          if (matchGuid) syncedMatchesRef.current.add(matchGuid);
+          if (matchGuid) {
+            syncedMatchesRef.current.add(matchGuid);
+            // Bound the dedupe set: it lives for the whole process.
+            if (syncedMatchesRef.current.size > 500) {
+              const oldest = syncedMatchesRef.current.values().next().value;
+              if (oldest !== undefined) syncedMatchesRef.current.delete(oldest);
+            }
+          }
           if (result.uploaded > 0) {
             addToast({
               type: "success",
@@ -43,6 +51,12 @@ export function useCloudAutoSync() {
           syncingRef.current = false;
         }
       });
+
+      if (disposed) {
+        un();
+        return;
+      }
+      unlisten = un;
     }
 
     setup().catch(() => {
@@ -50,6 +64,7 @@ export function useCloudAutoSync() {
     });
 
     return () => {
+      disposed = true;
       if (unlisten) unlisten();
     };
   }, [addToast]);

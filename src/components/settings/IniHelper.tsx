@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslation } from "react-i18next";
-import { configureRlIniAll } from "@/lib/api";
+import { configureRlIniAll, setSettings } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { useUIStore } from "@/stores/uiStore";
 import { useSettings } from "@/hooks/useSettings";
@@ -21,8 +21,10 @@ export function IniHelper() {
   } = useForm<IniSettingsFormValues>({
     resolver: zodResolver(iniSettingsSchema),
     defaultValues: {
-      port: 49123,
-      enabled: true,
+      port: settings?.port ?? 49123,
+    },
+    values: {
+      port: settings?.port ?? 49123,
     },
   });
 
@@ -38,6 +40,12 @@ export function IniHelper() {
       }
 
       await configureRlIniAll(paths, data.port);
+
+      const portChanged = settings != null && settings.port !== data.port;
+      if (settings && portChanged) {
+        await setSettings({ ...settings, port: data.port });
+      }
+
       addToast({
         type: "success",
         title: t("settings:ini.toasts.applied.title"),
@@ -46,12 +54,23 @@ export function IniHelper() {
           count: paths.length,
         }),
       });
+      if (portChanged) {
+        addToast({
+          type: "info",
+          title: t("settings:ini.toasts.applied.title"),
+          message: t("settings:ini.toasts.restartRequired"),
+        });
+      }
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : t("settings:ini.toasts.error.message");
-      addToast({ type: "error", title: t("common:errors.title"), message });
+      addToast({
+        type: "error",
+        title: t("settings:ini.toasts.error.title"),
+        message,
+      });
     }
   };
 
@@ -80,43 +99,24 @@ export function IniHelper() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="ini-port"
-                  className="text-xs font-medium text-text-secondary"
-                >
-                  {t("settings:ini.port")}
-                </label>
-                <input
-                  id="ini-port"
-                  type="number"
-                  min={1}
-                  max={65535}
-                  {...register("port", { valueAsNumber: true })}
-                  className={inputClass}
-                />
-                {errors.port && (
-                  <p className={errorClass}>{errors.port.message}</p>
-                )}
-              </div>
-
-              <div className="flex items-end">
-                <label
-                  htmlFor="ini-enabled"
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border-subtle bg-bg-base px-4 py-2.5 transition-all duration-200 hover:border-border-default"
-                >
-                  <input
-                    id="ini-enabled"
-                    type="checkbox"
-                    {...register("enabled")}
-                    className="h-4 w-4 rounded border-border-highlight bg-bg-surface accent-accent-primary transition-colors"
-                  />
-                  <span className="text-sm text-text-secondary">
-                    {t("settings:ini.enable")}
-                  </span>
-                </label>
-              </div>
+            <div className="max-w-xs space-y-1.5">
+              <label
+                htmlFor="ini-port"
+                className="text-xs font-medium text-text-secondary"
+              >
+                {t("settings:ini.port")}
+              </label>
+              <input
+                id="ini-port"
+                type="number"
+                min={1}
+                max={65535}
+                {...register("port", { valueAsNumber: true })}
+                className={inputClass}
+              />
+              {errors.port && (
+                <p className={errorClass}>{errors.port.message}</p>
+              )}
             </div>
 
             <Button

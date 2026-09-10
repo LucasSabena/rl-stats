@@ -45,7 +45,6 @@ export type SettingsFormValues = z.infer<typeof settingsSchema>;
 
 export const iniSettingsSchema = z.object({
   port: z.number().int().min(1).max(65535),
-  enabled: z.boolean(),
 });
 
 export type IniSettingsFormValues = z.infer<typeof iniSettingsSchema>;

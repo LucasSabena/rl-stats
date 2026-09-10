@@ -36,6 +36,10 @@ export default defineConfig(async () => ({
           if (id.includes("@tauri-apps")) return "tauri";
           if (id.includes("@tanstack")) return "query";
           if (id.includes("i18next")) return "i18n";
+          // clsx/tailwind-merge are shared by the entry (cn util) and recharts.
+          // Without an explicit home they landed in the charts chunk, which
+          // forced every window to preload all of recharts at startup.
+          if (id.includes("clsx") || id.includes("tailwind-merge")) return "ui";
           if (id.includes("react") || id.includes("scheduler")) return "react";
           return undefined;
         },

@@ -118,7 +118,8 @@
       "error": {
         "title": "Error",
         "message": "No se pudo configurar el archivo RL."
-      }
+      },
+      "restartRequired": "Reiniciá Rocket League y RL Stats para que el nuevo puerto tenga efecto."
     }
   },
   "data": {

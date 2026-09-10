@@ -143,18 +143,20 @@ export function useLiveMatch() {
 
       // Listen for real-time Tauri events from the Rust backend
       try {
-        unlisten = await listen<RawLiveUpdate>("live-update", (event) => {
+        const un = await listen<RawLiveUpdate>("live-update", (event) => {
           if (cancelled) return;
           const liveState = mapLiveUpdate(event.payload);
           setMatch(liveState);
         });
+        if (cancelled) un();
+        else unlisten = un;
       } catch {
         // Event listening failed — fall back to polling
       }
 
       // Listen for match-summary events
       try {
-        unlisten2 = await listen<RawSessionSummary>("match-summary", (event) => {
+        const un = await listen<RawSessionSummary>("match-summary", (event) => {
           if (cancelled) return;
           const summary = mapSessionSummary(event.payload);
           setMatchSummary(summary);
@@ -165,15 +167,19 @@ export function useLiveMatch() {
           void queryClient.invalidateQueries({ queryKey: ["insights"] });
           void queryClient.invalidateQueries({ queryKey: ["storageStats"] });
         });
+        if (cancelled) un();
+        else unlisten2 = un;
       } catch {
         // match-summary listening failed — non-critical
       }
 
       try {
-        unlisten3 = await listen<RawLiveEvent>("live-event", (event) => {
+        const un = await listen<RawLiveEvent>("live-event", (event) => {
           if (cancelled) return;
           addEvent(event.payload);
         });
+        if (cancelled) un();
+        else unlisten3 = un;
       } catch {
         // live-event listening failed — non-critical
       }

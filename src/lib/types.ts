@@ -501,6 +501,10 @@ export interface AppSettings {
   playerName?: string;
   localPrimaryId?: string | null;
   autoStart: boolean;
+  port?: number;
+  dataRetentionDays?: number;
+  theme?: string;
+  language?: string;
   rlPath: string | null;
   rlPaths?: string[];
   platform: "steam" | "epic" | null;

@@ -27,9 +27,10 @@ export function useAccountMismatch() {
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
+    let disposed = false;
 
     async function setup() {
-      unlisten = await listen<RawMismatchPayload>(
+      const un = await listen<RawMismatchPayload>(
         "account-mismatch",
         (event) => {
           const payload = event.payload;
@@ -56,6 +57,13 @@ export function useAccountMismatch() {
           }
         },
       );
+
+      // The component can unmount before the async listen() resolves.
+      if (disposed) {
+        un();
+        return;
+      }
+      unlisten = un;
 
       // Steam exposes the currently active local account before the first
       // match packet arrives, so profile mismatches can be resolved up front.
@@ -99,6 +107,7 @@ export function useAccountMismatch() {
     setup();
 
     return () => {
+      disposed = true;
       if (unlisten) unlisten();
     };
   }, [setMismatch]);

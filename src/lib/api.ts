@@ -178,6 +178,11 @@ interface RawAppSettings {
   tracker_username?: string | null;
   rapidapi_key?: string | null;
   rapidapi_enabled?: boolean;
+  parsebot_api_key?: string | null;
+  parsebot_scraper_id?: string | null;
+  parsebot_endpoint?: string | null;
+  parsebot_enabled?: boolean;
+  mmr_scraper_enabled?: boolean;
   tracker_auto_refresh?: boolean;
   tracker_refresh_interval_min?: number;
   session_gap_minutes?: number;
@@ -948,6 +953,10 @@ export async function getSettings(): Promise<AppSettings> {
     playerName: settings.player_name,
     localPrimaryId: settings.local_primary_id ?? null,
     autoStart: settings.auto_start,
+    port: settings.port ?? 49123,
+    dataRetentionDays: settings.data_retention_days ?? 90,
+    theme: settings.theme ?? "dark",
+    language: settings.language ?? "es",
     rlPath: settings.rl_path ?? null,
     rlPaths: settings.rl_paths ?? (settings.rl_path ? [settings.rl_path] : []),
     platform:
@@ -968,6 +977,11 @@ export async function getSettings(): Promise<AppSettings> {
     trackerUsername: settings.tracker_username ?? null,
     rapidApiKey: settings.rapidapi_key ?? null,
     rapidApiEnabled: settings.rapidapi_enabled ?? false,
+    parsebotApiKey: settings.parsebot_api_key ?? null,
+    parsebotScraperId: settings.parsebot_scraper_id ?? null,
+    parsebotEndpoint: settings.parsebot_endpoint ?? null,
+    parsebotEnabled: settings.parsebot_enabled ?? false,
+    mmrScraperEnabled: settings.mmr_scraper_enabled ?? true,
     trackerAutoRefresh: settings.tracker_auto_refresh ?? true,
     trackerRefreshIntervalMin: settings.tracker_refresh_interval_min ?? 5,
     sessionGapMinutes: settings.session_gap_minutes ?? 30,
@@ -1010,20 +1024,25 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       player_name: settings.playerName ?? "",
       local_primary_id: settings.localPrimaryId ?? null,
       auto_start: settings.autoStart,
-      port: 49123,
-      data_retention_days: 90,
+      port: settings.port ?? 49123,
+      data_retention_days: settings.dataRetentionDays ?? 90,
       rl_path: settings.rlPath ?? null,
       rl_paths: settings.rlPaths ?? [],
       platform: settings.platform ?? null,
       active_platform: settings.activePlatform ?? null,
-      theme: "dark",
-      language: "es",
+      theme: settings.theme ?? "dark",
+      language: settings.language ?? "es",
       default_match_type: settings.defaultMatchType,
       tracker_api_key: settings.trackerApiKey ?? null,
       tracker_platform: settings.trackerPlatform ?? null,
       tracker_username: settings.trackerUsername ?? null,
       rapidapi_key: settings.rapidApiKey ?? null,
       rapidapi_enabled: settings.rapidApiEnabled ?? false,
+      parsebot_api_key: settings.parsebotApiKey ?? null,
+      parsebot_scraper_id: settings.parsebotScraperId ?? null,
+      parsebot_endpoint: settings.parsebotEndpoint ?? null,
+      parsebot_enabled: settings.parsebotEnabled ?? false,
+      mmr_scraper_enabled: settings.mmrScraperEnabled ?? true,
       tracker_auto_refresh: settings.trackerAutoRefresh ?? true,
       tracker_refresh_interval_min: settings.trackerRefreshIntervalMin ?? 5,
       session_gap_minutes: settings.sessionGapMinutes ?? 30,

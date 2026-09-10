@@ -15,7 +15,6 @@ import { PromptHost } from "@/components/prompt/PromptHost";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { CURRENT_ONBOARDING_VERSION } from "@/stores/settingsStore";
 import { useAutoUpdateCheck } from "@/hooks/useAutoUpdateCheck";
-import { useAccountMismatch } from "@/hooks/useAccountMismatch";
 import { useCloudAutoSync } from "@/hooks/useCloudAutoSync";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { reportFrontendError } from "@/lib/api";
@@ -95,6 +94,17 @@ function AppFallback({ transparent = false }: { transparent?: boolean }) {
   );
 }
 
+/**
+ * Window-scoped background work: update checks and cloud auto-sync only make
+ * sense in the main window. Overlay/prompt webviews mount the same bundle, so
+ * running them there duplicated network calls per window.
+ */
+function MainWindowHooks() {
+  useAutoUpdateCheck();
+  useCloudAutoSync();
+  return null;
+}
+
 function AppContent() {
   const hasCompletedOnboarding = useSettingsStore(
     (s) =>
@@ -105,10 +115,6 @@ function AppContent() {
   const [isOverlayWindow, setIsOverlayWindow] = useState(false);
   const [isPromptWindow, setIsPromptWindow] = useState(false);
   const [detecting, setDetecting] = useState(true);
-
-  useAutoUpdateCheck();
-  useAccountMismatch();
-  useCloudAutoSync();
 
   useEffect(() => {
     try {
@@ -177,6 +183,7 @@ function AppContent() {
   return (
     <BrowserRouter>
       <>
+        <MainWindowHooks />
         <Suspense fallback={<AppFallback />}>
           <Routes>
             <Route

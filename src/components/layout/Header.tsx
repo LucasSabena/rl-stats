@@ -35,7 +35,11 @@ export function Header() {
   const location = useLocation();
 
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
-  const currentMatch = useLiveStore((state) => state.currentMatch);
+  // Derive the boolean in the selector: currentMatch is a new object at 20 Hz
+  // during a match, and subscribing to it re-rendered the whole header.
+  const isLive = useLiveStore(
+    (state) => state.connectionStatus === "connected" && state.currentMatch !== null,
+  );
 
   const profiles = useProfileStore((state) => state.profiles);
   const activeProfile = useProfileStore((state) => state.activeProfile);
@@ -53,7 +57,6 @@ export function Header() {
     fetchProfiles();
   }, [fetchProfiles]);
 
-  const isLive = connectionStatus === "connected" && currentMatch !== null;
   const profileOptions = profiles.map((p) => ({ value: p.id, label: p.name }));
 
   // One connection indicator, not two. Previously the header showed both a
