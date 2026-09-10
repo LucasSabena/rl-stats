@@ -664,9 +664,7 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
                     ors.join(" OR ")
                 );
                 if result == "win" {
-                    sql.push_str(&format!(
-                        " AND winner IS NOT NULL AND winner = {team_expr}"
-                    ));
+                    sql.push_str(&format!(" AND winner IS NOT NULL AND winner = {team_expr}"));
                 } else {
                     sql.push_str(&format!(
                         " AND winner IS NOT NULL AND winner != {team_expr}"
@@ -4162,7 +4160,15 @@ pub fn insert_user_preset(
     hardware: &Option<HardwareSettings>,
 ) -> AppResult<i64> {
     let conn = get_conn(pool)?;
-    insert_user_preset_conn(&conn, name, description, camera, controls, deadzone, hardware)
+    insert_user_preset_conn(
+        &conn,
+        name,
+        description,
+        camera,
+        controls,
+        deadzone,
+        hardware,
+    )
 }
 
 /// Insert a preset on an existing connection, so callers inside a transaction
