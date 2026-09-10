@@ -1438,36 +1438,9 @@ fn get_local_match_stats_from_conn(
         return Ok(HashMap::new());
     }
 
-    let placeholders = vec!["?"; match_ids.len()].join(", ");
-    let sql = format!(
-        "SELECT mp.match_id, mp.team_num, mp.shots, mp.saves, mp.assists, mp.demos, mp.goals, mp.score, p.primary_id, p.name, mp.kickoff_goals
-         FROM match_players mp
-         JOIN players p ON mp.player_id = p.id
-         WHERE mp.match_id IN ({})",
-        placeholders
-    );
-
-    let params_refs: Vec<&dyn rusqlite::ToSql> = match_ids
-        .iter()
-        .map(|match_id| match_id as &dyn rusqlite::ToSql)
-        .collect();
-
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(&*params_refs, |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, i32>(1)?,
-            row.get::<_, i32>(2)?,
-            row.get::<_, i32>(3)?,
-            row.get::<_, i32>(4)?,
-            row.get::<_, i32>(5)?,
-            row.get::<_, i32>(6)?,
-            row.get::<_, i32>(7)?,
-            row.get::<_, String>(8)?,
-            row.get::<_, String>(9)?,
-            row.get::<_, i32>(10)?,
-        ))
-    })?;
+    // SQLite caps bound variables per statement (32k by default) and the
+    // analytics/rollup paths pass the whole history here, so query in chunks.
+    const MATCH_ID_CHUNK: usize = 500;
 
     let normalized_names: HashSet<String> = player_names
         .iter()
@@ -1475,8 +1448,41 @@ fn get_local_match_stats_from_conn(
         .collect();
 
     let mut all_rows = Vec::new();
-    for row in rows {
-        all_rows.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    for chunk in match_ids.chunks(MATCH_ID_CHUNK) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let sql = format!(
+            "SELECT mp.match_id, mp.team_num, mp.shots, mp.saves, mp.assists, mp.demos, mp.goals, mp.score, p.primary_id, p.name, mp.kickoff_goals
+             FROM match_players mp
+             JOIN players p ON mp.player_id = p.id
+             WHERE mp.match_id IN ({})",
+            placeholders
+        );
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = chunk
+            .iter()
+            .map(|match_id| match_id as &dyn rusqlite::ToSql)
+            .collect();
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(&*params_refs, |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i32>(1)?,
+                row.get::<_, i32>(2)?,
+                row.get::<_, i32>(3)?,
+                row.get::<_, i32>(4)?,
+                row.get::<_, i32>(5)?,
+                row.get::<_, i32>(6)?,
+                row.get::<_, i32>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, i32>(10)?,
+            ))
+        })?;
+
+        for row in rows {
+            all_rows.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+        }
     }
 
     let mut stats_by_match: HashMap<i64, LocalMatchStats> = HashMap::new();
@@ -3615,49 +3621,55 @@ fn load_goal_timelines(
         return Ok(HashMap::new());
     }
 
-    let placeholders = vec!["?"; match_ids.len()].join(", ");
-    let sql = format!(
-        "SELECT match_id, event_data
-         FROM match_events
-         WHERE event_type = 'GoalScored' AND match_id IN ({placeholders})
-         ORDER BY occurred_at ASC, id ASC"
-    );
-
-    let mut stmt = conn.prepare(&sql)?;
-    let iter = stmt.query_map(
-        rusqlite::params_from_iter(match_ids.iter().copied()),
-        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-    )?;
+    // Chunk the IN list: insights/player analytics pass whole periods here and
+    // SQLite caps bound variables per statement (~32k).
+    const MATCH_ID_CHUNK: usize = 500;
 
     let mut running: HashMap<i64, (i32, i32)> = HashMap::new();
     let mut flags: HashMap<i64, (bool, bool)> = HashMap::new();
 
-    for entry in iter {
-        let (match_id, event_data) = entry.map_err(|e| AppError::StorageError(e.to_string()))?;
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&event_data) else {
-            continue;
-        };
-        let Some(team_num) = value
-            .get("scorer")
-            .or_else(|| value.get("Scorer"))
-            .and_then(|scorer| scorer.get("teamNum").or_else(|| scorer.get("TeamNum")))
-            .and_then(|team| team.as_i64())
-        else {
-            continue;
-        };
+    for chunk in match_ids.chunks(MATCH_ID_CHUNK) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
+        let sql = format!(
+            "SELECT match_id, event_data
+             FROM match_events
+             WHERE event_type = 'GoalScored' AND match_id IN ({placeholders})
+             ORDER BY occurred_at ASC, id ASC"
+        );
 
-        let scores = running.entry(match_id).or_insert((0, 0));
-        if team_num == 0 {
-            scores.0 += 1;
-        } else {
-            scores.1 += 1;
-        }
+        let mut stmt = conn.prepare(&sql)?;
+        let iter = stmt.query_map(rusqlite::params_from_iter(chunk.iter().copied()), |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
 
-        let flag = flags.entry(match_id).or_insert((false, false));
-        if scores.0 > scores.1 {
-            flag.0 = true; // blue ahead
-        } else if scores.1 > scores.0 {
-            flag.1 = true; // orange ahead
+        for entry in iter {
+            let (match_id, event_data) =
+                entry.map_err(|e| AppError::StorageError(e.to_string()))?;
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(&event_data) else {
+                continue;
+            };
+            let Some(team_num) = value
+                .get("scorer")
+                .or_else(|| value.get("Scorer"))
+                .and_then(|scorer| scorer.get("teamNum").or_else(|| scorer.get("TeamNum")))
+                .and_then(|team| team.as_i64())
+            else {
+                continue;
+            };
+
+            let scores = running.entry(match_id).or_insert((0, 0));
+            if team_num == 0 {
+                scores.0 += 1;
+            } else {
+                scores.1 += 1;
+            }
+
+            let flag = flags.entry(match_id).or_insert((false, false));
+            if scores.0 > scores.1 {
+                flag.0 = true; // blue ahead
+            } else if scores.1 > scores.0 {
+                flag.1 = true; // orange ahead
+            }
         }
     }
 

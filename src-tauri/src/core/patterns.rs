@@ -969,11 +969,13 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
     if !matches_touched.is_empty() {
         let tx = conn.unchecked_transaction()?;
         let touched_ids: Vec<i64> = matches_touched.keys().copied().collect();
-        let placeholders = vec!["?"; touched_ids.len()].join(", ");
-        let zero_sql = format!(
-            "UPDATE match_players SET kickoff_goals = 0 WHERE match_id IN ({placeholders})"
-        );
-        tx.execute(&zero_sql, rusqlite::params_from_iter(touched_ids.iter()))?;
+        for chunk in touched_ids.chunks(500) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let zero_sql = format!(
+                "UPDATE match_players SET kickoff_goals = 0 WHERE match_id IN ({placeholders})"
+            );
+            tx.execute(&zero_sql, rusqlite::params_from_iter(chunk.iter()))?;
+        }
         for (row_id, count) in &recounts {
             tx.execute(
                 "UPDATE match_players SET kickoff_goals = ?1 WHERE id = ?2",
