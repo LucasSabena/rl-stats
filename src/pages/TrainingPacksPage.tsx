@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useTrainingPacks } from "@/hooks/useTrainingPacks";
 import { CategoryFilter } from "@/components/training-packs/CategoryFilter";
 import { TrainingPackDetail } from "@/components/training-packs/TrainingPackDetail";
@@ -64,6 +65,20 @@ export function TrainingPacksPage() {
   const visiblePacks = favoritesOnly
     ? allPacks.filter((p) => favorites.has(p.id))
     : allPacks;
+
+  const hasActiveFilters =
+    search.trim().length > 0 ||
+    activeCategory !== null ||
+    activeDifficulty !== null ||
+    favoritesOnly;
+
+  const clearFilters = useCallback(() => {
+    setSearch("");
+    setActiveCategory(null);
+    setActiveDifficulty(null);
+    setFavoritesOnly(false);
+    setShowAll(false);
+  }, []);
 
   const INITIAL_COUNT = 12;
   const displayedPacks = showAll
@@ -202,14 +217,17 @@ export function TrainingPacksPage() {
 
         {/* Grid */}
         {visiblePacks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-bg-panel border border-border-subtle mb-4">
-              <Target size={28} className="text-text-tertiary" />
-            </div>
-            <p className="text-sm font-medium text-text-secondary">
-              {t("page.noResults")}
-            </p>
-          </div>
+          <EmptyState
+            icon={Target}
+            title={t("page.noResults")}
+            description={
+              hasActiveFilters ? t("page.noResultsFiltered") : undefined
+            }
+            actionLabel={
+              hasActiveFilters ? t("page.clearFilters") : undefined
+            }
+            onAction={hasActiveFilters ? clearFilters : undefined}
+          />
         ) : (
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -244,6 +262,11 @@ export function TrainingPacksPage() {
                       <button
                         type="button"
                         onClick={(e) => handleToggleFavorite(pack.id, e)}
+                        aria-label={
+                          fav
+                            ? t("page.removeFavorite", { name: pack.name })
+                            : t("page.addFavorite", { name: pack.name })
+                        }
                         className={cn(
                           "rounded-lg p-1 transition-all",
                           fav

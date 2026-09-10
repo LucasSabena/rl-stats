@@ -7,6 +7,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useUpdateMatch } from "@/hooks/useUpdateMatch";
 import { useDeleteMatch } from "@/hooks/useDeleteMatch";
 import { useSetMatchMood } from "@/hooks/useSetMatchMood";
+import { useUIStore } from "@/stores/uiStore";
 import { MoodPicker } from "@/components/mood/MoodPicker";
 import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import { MatchHeader } from "@/components/match-detail/MatchHeader";
@@ -40,9 +41,11 @@ export function MatchDetailPage() {
   const [editPlaylist, setEditPlaylist] = useState("");
   const [editMood, setEditMood] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const updateMutation = useUpdateMatch();
   const deleteMutation = useDeleteMatch();
   const moodMutation = useSetMatchMood();
+  const addToast = useUIStore((state) => state.addToast);
 
   useEffect(() => {
     if (editing && data) {
@@ -164,10 +167,21 @@ export function MatchDetailPage() {
   };
 
   const confirmDelete = () => {
+    setDeleteError(null);
     deleteMutation.mutate(id, {
       onSuccess: () => {
         setDeleting(false);
+        addToast({ type: "success", title: t("matchDetail:page.deleteSuccess") });
         navigate("/history");
+      },
+      onError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setDeleteError(message);
+        addToast({
+          type: "error",
+          title: t("matchDetail:page.deleteError"),
+          message,
+        });
       },
     });
   };
@@ -194,7 +208,10 @@ export function MatchDetailPage() {
           <Button
             variant="ghost"
             leftIcon={Trash2}
-            onClick={() => setDeleting(true)}
+            onClick={() => {
+              setDeleteError(null);
+              setDeleting(true);
+            }}
             size="sm"
             className="text-accent-danger hover:bg-accent-danger-subtle hover:text-accent-danger"
           >
@@ -279,7 +296,11 @@ export function MatchDetailPage() {
             </Button>
           </div>
         }
-      />
+      >
+        {deleteError && (
+          <p className="text-xs text-accent-danger">{deleteError}</p>
+        )}
+      </Modal>
 
       {/* Scoreboard first — it is what the page is about. */}
       <div className="animate-rise-in">

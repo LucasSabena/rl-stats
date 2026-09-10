@@ -108,6 +108,8 @@
     "wins": "Vitórias",
     "byHour": "Seus melhores horários",
     "emptyTitle": "Ainda não há partidas",
-    "emptyDescription": "Jogue uma partida com o Rocket League aberto e sua carreira se monta sozinha daqui."
+    "emptyDescription": "Jogue uma partida com o Rocket League aberto e sua carreira se monta sozinha daqui.",
+    "errorTitle": "Não foi possível carregar sua carreira",
+    "errorDescription": "Houve um problema ao carregar suas estatísticas."
   }
 }

@@ -75,9 +75,31 @@ export function DataTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
+                scope="col"
+                aria-sort={
+                  col.sortable
+                    ? sortKey === col.key
+                      ? sortDir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                    : undefined
+                }
+                tabIndex={col.sortable ? 0 : undefined}
+                onKeyDown={
+                  col.sortable
+                    ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleSort(col.key, col.sortable);
+                        }
+                      }
+                    : undefined
+                }
                 className={cn(
                   "px-4 py-3 text-left text-[11px] font-semibold text-text-tertiary",
-                  col.sortable && "cursor-pointer select-none hover:text-text-primary transition-colors",
+                  col.sortable &&
+                    "cursor-pointer select-none hover:text-text-primary transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]",
                   col.className
                 )}
                 onClick={() => handleSort(col.key, col.sortable)}

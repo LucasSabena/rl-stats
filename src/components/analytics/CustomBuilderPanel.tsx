@@ -133,7 +133,7 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
     () => ({ playlist, matchType, scope, playerId }),
     [playlist, matchType, scope, playerId],
   );
-  const { data, isLoading } = useCustomBreakdown(period, dimension, filters);
+  const { data, isLoading, isError, refetch } = useCustomBreakdown(period, dimension, filters);
 
   const displayLabel = (bucket: { label: string }): string => {
     if (dimension === "mood") {
@@ -271,6 +271,13 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-lg" />
+      ) : isError ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-surface/60 px-4 py-3">
+          <p className="text-xs text-accent-danger">{t("analytics:panelError.message")}</p>
+          <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+            {t("analytics:panelError.retry")}
+          </Button>
+        </div>
       ) : chartData.length === 0 ? (
         <p className="rounded-lg border border-border-subtle bg-bg-surface/60 px-4 py-6 text-center text-xs text-text-muted">
           {t("analytics:builder.noData")}

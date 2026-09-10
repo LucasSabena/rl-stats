@@ -130,6 +130,7 @@
     "title": "Almacenamiento",
     "statsTemplate": "{{totalMatches}} partidas · {{size}} MB",
     "loading": "Cargando...",
+    "statsError": "No se pudieron cargar los datos de almacenamiento.",
     "copyPath": "Copiar ruta",
     "export": "Exportar",
     "import": "Importar",

@@ -1,4 +1,5 @@
 import { forwardRef } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
@@ -60,6 +61,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref,
   ) => {
     const iconSize = ICON_SIZES[size];
+    const { t } = useTranslation("common");
 
     return (
       <button
@@ -74,13 +76,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           className,
         )}
         disabled={disabled || isLoading}
+        aria-busy={isLoading || undefined}
         {...props}
       >
         {isLoading && (
-          <span
-            aria-hidden="true"
-            className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
-          />
+          <>
+            <span
+              aria-hidden="true"
+              className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+            />
+            <span className="sr-only">{t("accessibility.loading")}</span>
+          </>
         )}
         {!isLoading && LeftIcon && <LeftIcon size={iconSize} aria-hidden="true" />}
         {children}

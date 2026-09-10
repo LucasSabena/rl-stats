@@ -108,6 +108,8 @@
     "wins": "Wins",
     "byHour": "Your best hours",
     "emptyTitle": "No matches yet",
-    "emptyDescription": "Play a match with Rocket League open and your career builds itself from here."
+    "emptyDescription": "Play a match with Rocket League open and your career builds itself from here.",
+    "errorTitle": "Could not load your career",
+    "errorDescription": "There was a problem loading your stats."
   }
 }

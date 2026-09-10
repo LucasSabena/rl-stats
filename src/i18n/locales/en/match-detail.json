@@ -63,6 +63,7 @@
     "tabCompare": "Compare",
     "emptyData": "No player data",
     "selectPlayers": "Select at least 2 players to compare",
+    "selectPlayer": "Select {{name}}",
     "mvp": "MVP"
   },
   "roster": {
@@ -97,6 +98,8 @@
     "noDataTitle": "No match data",
     "noDataDescription": "This match contains no player data or events.",
     "editMatch": "Edit",
-    "deleteMatch": "Delete"
+    "deleteMatch": "Delete",
+    "deleteSuccess": "Match deleted",
+    "deleteError": "Could not delete the match."
   }
 }

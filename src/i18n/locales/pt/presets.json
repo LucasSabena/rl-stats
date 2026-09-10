@@ -19,9 +19,11 @@
   "importSuccess": "Preset importado com sucesso",
   "exportSuccess": "Preset exportado",
   "deleteConfirm": "Tem certeza de que deseja excluir este preset?",
+  "deleteConfirmTitle": "Excluir preset",
   "errors": {
     "saveFailed": "Erro ao salvar o preset.",
     "loadFailed": "Erro ao carregar presets.",
+    "deleteFailed": "Erro ao excluir o preset.",
     "exportFailed": "Erro ao exportar preset.",
     "importFailed": "Erro ao importar preset."
   },

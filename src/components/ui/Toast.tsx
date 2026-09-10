@@ -23,7 +23,7 @@ export function ToastContainer() {
   const removeToast = useUIStore((state) => state.removeToast);
 
   return (
-    <div className="fixed right-4 top-4 z-50 flex flex-col gap-3">
+    <div className="fixed right-4 top-4 z-50 flex flex-col gap-3" aria-live="polite">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
       ))}
@@ -57,7 +57,7 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
         "flex w-80 items-start gap-3 rounded-xl border p-4 shadow-level-3 animate-slide-in-right",
         styles[toast.type]
       )}
-      role="alert"
+      role={toast.type === "error" ? "alert" : undefined}
     >
       <Icon size={18} className="mt-0.5 shrink-0" />
       <div className="flex-1">

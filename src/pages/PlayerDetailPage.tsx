@@ -12,7 +12,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
+  AlertTriangle,
   ArrowLeft,
   Shield,
   Swords,
@@ -60,7 +62,7 @@ export function PlayerDetailPage() {
     ? Number(routeId)
     : decodeURIComponent(routeId);
 
-  const { data: player, isLoading } = usePlayerDetail(lookup);
+  const { data: player, isLoading, isError, error, refetch } = usePlayerDetail(lookup);
   const id = player?.player_id ?? 0;
   const { data: friends } = useFriends();
   const addFriend = useAddFriend();
@@ -110,7 +112,29 @@ export function PlayerDetailPage() {
         </div>
       )}
 
-      {!isLoading && !player && (
+      {!isLoading && isError && (
+        <>
+          <EmptyState
+            icon={AlertTriangle}
+            title={t("players:detail.errorTitle")}
+            description={
+              error instanceof Error
+                ? error.message
+                : t("players:detail.errorDescription")
+            }
+          />
+          <div className="mt-4 flex justify-center gap-2">
+            <Button variant="secondary" onClick={() => void refetch()}>
+              {t("common:buttons.retry")}
+            </Button>
+            <Button variant="ghost" onClick={() => navigate("/players")}>
+              {t("players:detail.backToDirectory")}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {!isLoading && !isError && !player && (
         <Card className="p-8 text-center">
           <p className="text-text-secondary">{t("players:detail.notFound")}</p>
         </Card>

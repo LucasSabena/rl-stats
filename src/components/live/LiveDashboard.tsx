@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useLiveStore } from "@/stores/liveStore";
 import { TeamPanel } from "./TeamPanel";
 import { PlayerCard } from "./PlayerCard";
@@ -6,6 +7,8 @@ import { EventFeed } from "./EventFeed";
 import { ScoreDisplay } from "./ScoreDisplay";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/Button";
+import { getMatches } from "@/lib/api";
 import { useLiveMmr } from "@/hooks/useLiveMmr";
 import { useSettings } from "@/hooks/useSettings";
 import { useLiveHeadToHead } from "@/hooks/useLiveHeadToHead";
@@ -30,10 +33,12 @@ function getMatchSizeLabel(t: (key: string, options?: Record<string, unknown>) =
 
 function MatchEndBanner() {
   const { t } = useTranslation(["live", "common"]);
+  const navigate = useNavigate();
   const lastMatchSummary = useLiveStore((state) => state.lastMatchSummary);
   const summaryTimestamp = useLiveStore((state) => state.matchSummaryTimestamp);
   const clearMatchSummary = useLiveStore((state) => state.clearMatchSummary);
   const [visible, setVisible] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
     if (lastMatchSummary) {
@@ -64,6 +69,25 @@ function MatchEndBanner() {
     clearMatchSummary();
     setVisible(false);
   }, [clearMatchSummary]);
+
+  const handleViewSummary = useCallback(async () => {
+    if (!lastMatchSummary) return;
+    setResolving(true);
+    let target = "/history";
+    try {
+      const matches = await getMatches({ limit: 20 });
+      const match = matches.find(
+        (m) => m.matchGuid === lastMatchSummary.match_guid
+      );
+      if (match) target = `/history/${match.id}`;
+    } catch {
+      // Fall back to the history list when the lookup fails.
+    }
+    setResolving(false);
+    clearMatchSummary();
+    setVisible(false);
+    navigate(target);
+  }, [lastMatchSummary, clearMatchSummary, navigate]);
 
   if (!visible || !lastMatchSummary) return null;
 
@@ -99,24 +123,36 @@ function MatchEndBanner() {
           {t("live:matchEnd.summary", { duration: durationStr, count: players.length })}
         </span>
       </p>
-      <button
-        onClick={handleDismiss}
-        className="flex h-5 w-5 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        aria-label={t("live:matchEnd.dismiss")}
-      >
-        <X size={12} />
-      </button>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void handleViewSummary()}
+          isLoading={resolving}
+        >
+          {t("live:matchEnd.viewSummary")}
+        </Button>
+        <button
+          onClick={handleDismiss}
+          className="flex h-5 w-5 items-center justify-center rounded text-text-muted transition-colors hover:bg-surface-hover hover:text-text-secondary"
+          aria-label={t("live:matchEnd.dismiss")}
+        >
+          <X size={12} />
+        </button>
+      </div>
     </div>
   );
 }
 
 export function LiveDashboard() {
   const { t } = useTranslation(["live", "common"]);
+  const navigate = useNavigate();
   const currentMatch = useLiveStore((state) => state.currentMatch);
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
   const { data: liveMmr, isFetching: isFetchingMmr, forceRefresh } = useLiveMmr();
   const { data: liveHeadToHead } = useLiveHeadToHead();
   const { data: settings } = useSettings();
+  const statsApiPort = settings?.port ?? 49123;
 
   const bluePlayers = currentMatch?.players.filter((player) => player.team === 0) ?? [];
   const orangePlayers = currentMatch?.players.filter((player) => player.team === 1) ?? [];
@@ -136,7 +172,9 @@ export function LiveDashboard() {
           <EmptyState
             icon={Radio}
             title={t("live:emptyState.title")}
-            description={t("live:emptyState.description")}
+            description={`${t("live:emptyState.description")} ${t("live:emptyState.hint", { port: statsApiPort })}`}
+            actionLabel={t("live:emptyState.openSettings")}
+            onAction={() => navigate("/settings")}
           />
         </div>
       </div>

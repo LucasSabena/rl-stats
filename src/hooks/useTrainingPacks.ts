@@ -1,6 +1,8 @@
-import { useMemo } from "react";
-import type { TrainingPack } from "@/lib/trainingPacksTypes";
+import { useCallback, useMemo } from "react";
+import type { TrainingPack, UserTrainingPack } from "@/lib/trainingPacksTypes";
 import { useTrainingPacksStore } from "@/stores/trainingPacksStore";
+
+const PERSISTED_PACKS_KEY = "rl-training-packs";
 
 const CURATED_PACKS: TrainingPack[] = [
   // ── Speedflip ──
@@ -382,6 +384,24 @@ const CURATED_PACKS: TrainingPack[] = [
 export function useTrainingPacks() {
   const userPacks = useTrainingPacksStore((state) => state.userPacks);
 
+  const refetch = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(PERSISTED_PACKS_KEY);
+      const parsed = raw
+        ? (JSON.parse(raw) as {
+            userPacks?: UserTrainingPack[];
+            favorites?: string[];
+          })
+        : {};
+      useTrainingPacksStore.setState({
+        userPacks: parsed.userPacks ?? [],
+        favorites: new Set<string>(parsed.favorites ?? []),
+      });
+    } catch {
+      // Corrupted or unreadable storage — keep the in-memory packs.
+    }
+  }, []);
+
   const packs = useMemo<TrainingPack[]>(() => {
     const merged: TrainingPack[] = [...CURATED_PACKS, ...userPacks];
 
@@ -438,6 +458,6 @@ export function useTrainingPacks() {
     isLoading: false,
     isError: false,
     filteredPacks,
-    refetch: () => {},
+    refetch,
   };
 }

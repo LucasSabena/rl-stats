@@ -1,6 +1,7 @@
 {
   "search": {
-    "placeholder": "Search player or team..."
+    "placeholder": "Search player or team...",
+    "noResults": "No results found"
   },
   "emptyState": {
     "title": "Pro Player Configs",

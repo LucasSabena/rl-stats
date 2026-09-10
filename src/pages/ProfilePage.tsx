@@ -4,6 +4,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PlaylistCard } from "@/components/tracker/PlaylistCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { ShareModal } from "@/components/share/ShareModal";
 import { CareerOverview } from "@/components/profile/CareerOverview";
@@ -18,7 +19,8 @@ import {
   useExportPreset,
   useImportPreset,
 } from "@/hooks/useUserPresets";
-import { User, Plus, Upload, RefreshCw } from "lucide-react";
+import { User, Plus, Upload, RefreshCw, AlertTriangle } from "lucide-react";
+import { useUIStore } from "@/stores/uiStore";
 import type { UserPreset, UserPresetInput, ShareContext, ShareStat } from "@/lib/types";
 
 type TabValue = "profile" | "configs";
@@ -28,18 +30,30 @@ export function ProfilePage() {
   // Cached tracker data only; nothing re-fetches it now that the API key
   // can no longer be obtained.
   const { data: profile } = useTrackerProfile();
-  const { data: analytics, isLoading: analyticsLoading } = useAnalytics("alltime");
+  const {
+    data: analytics,
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+    refetch: refetchAnalytics,
+  } = useAnalytics("alltime");
   const { data: insights } = useInsights("alltime");
 
-  const { data: presets = [], isLoading: presetsLoading } = useUserPresets();
+  const {
+    data: presets = [],
+    isLoading: presetsLoading,
+    isError: presetsError,
+    refetch: refetchPresets,
+  } = useUserPresets();
   const savePreset = useSaveUserPreset();
   const deletePreset = useDeleteUserPreset();
   const exportPreset = useExportPreset();
   const importPreset = useImportPreset();
+  const addToast = useUIStore((state) => state.addToast);
 
   const [activeTab, setActiveTab] = useState<TabValue>("profile");
   const [editingPreset, setEditingPreset] = useState<UserPreset | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [presetToDelete, setPresetToDelete] = useState<UserPreset | null>(null);
 
   const [shareContext, setShareContext] = useState<ShareContext | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -76,12 +90,19 @@ export function ProfilePage() {
 
   const handleDelete = useCallback(
     (id: number) => {
-      if (confirm(t("presets:deleteConfirm"))) {
-        deletePreset.mutate(id);
-      }
+      setPresetToDelete(presets.find((p) => p.id === id) ?? null);
     },
-    [deletePreset, t]
+    [presets]
   );
+
+  const confirmDelete = useCallback(() => {
+    if (!presetToDelete) return;
+    deletePreset.mutate(presetToDelete.id, {
+      onSuccess: () => setPresetToDelete(null),
+      onError: () =>
+        addToast({ type: "error", title: t("presets:errors.deleteFailed") }),
+    });
+  }, [presetToDelete, deletePreset, addToast, t]);
 
   const handleShare = useCallback(
     (preset: UserPreset) => {
@@ -139,10 +160,13 @@ export function ProfilePage() {
           a.download = `${preset.name.replace(/\s+/g, "_")}_preset.json`;
           a.click();
           URL.revokeObjectURL(url);
+          addToast({ type: "success", title: t("presets:exportSuccess") });
         },
+        onError: () =>
+          addToast({ type: "error", title: t("presets:errors.exportFailed") }),
       });
     },
-    [exportPreset]
+    [exportPreset, addToast, t]
   );
 
   const handleImportClick = useCallback(() => {
@@ -157,13 +181,18 @@ export function ProfilePage() {
       reader.onload = (ev) => {
         const json = String(ev.target?.result || "");
         if (json) {
-          importPreset.mutate(json);
+          importPreset.mutate(json, {
+            onSuccess: () =>
+              addToast({ type: "success", title: t("presets:importSuccess") }),
+            onError: () =>
+              addToast({ type: "error", title: t("presets:errors.importFailed") }),
+          });
         }
       };
       reader.readAsText(file);
       e.target.value = "";
     },
-    [importPreset]
+    [importPreset, addToast, t]
   );
 
   return (
@@ -183,7 +212,17 @@ export function ProfilePage() {
             isLoading={analyticsLoading}
           />
 
-          {!analyticsLoading && (analytics?.data.totalMatches ?? 0) === 0 && (
+          {analyticsError && (
+            <EmptyState
+              icon={AlertTriangle}
+              title={t("profiles:career.errorTitle")}
+              description={t("profiles:career.errorDescription")}
+              actionLabel={t("common:buttons.retry")}
+              onAction={() => void refetchAnalytics()}
+            />
+          )}
+
+          {!analyticsLoading && !analyticsError && (analytics?.data.totalMatches ?? 0) === 0 && (
             <EmptyState
               icon={User}
               title={t("profiles:career.emptyTitle", {
@@ -219,7 +258,14 @@ export function ProfilePage() {
 
         <TabsContent value="configs">
           <div className="space-y-4">
-            {!isCreating ? (
+            {presetsError && !isCreating ? (
+              <EmptyState
+                icon={AlertTriangle}
+                title={t("presets:errors.loadFailed")}
+                actionLabel={t("common:buttons.retry")}
+                onAction={() => void refetchPresets()}
+              />
+            ) : !isCreating ? (
               <>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -267,6 +313,27 @@ export function ProfilePage() {
       </Tabs>
 
       <ShareModal isOpen={shareOpen} onClose={() => setShareOpen(false)} context={shareContext} />
+
+      <Modal
+        isOpen={!!presetToDelete}
+        onClose={() => setPresetToDelete(null)}
+        title={t("presets:deleteConfirmTitle")}
+        description={t("presets:deleteConfirm")}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setPresetToDelete(null)}>
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmDelete}
+              isLoading={deletePreset.isPending}
+            >
+              {t("presets:delete")}
+            </Button>
+          </div>
+        }
+      />
     </PageContainer>
   );
 }

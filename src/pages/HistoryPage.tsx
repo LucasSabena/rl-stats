@@ -20,8 +20,9 @@ import { Select } from "@/components/ui/Select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildDayShareContext } from "@/lib/shareContext";
+import { useUIStore } from "@/stores/uiStore";
 import type { MatchFilters, MatchSummary } from "@/lib/types";
-import { Gamepad2, Share2, Dumbbell } from "lucide-react";
+import { Gamepad2, Share2, Dumbbell, AlertTriangle } from "lucide-react";
 
 function toISODate(ts?: number | null): string | null {
   if (!ts) return null;
@@ -69,38 +70,50 @@ export function HistoryPage() {
     initialFilters.matchType === "training" ? "training" : "matches",
   );
 
-  const { data, isLoading, isError } = useMatchHistory(filters);
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useMatchHistory(filters);
+
+  const addToast = useUIStore((state) => state.addToast);
+
+  const matches = useMemo(() => data?.pages.flat() ?? [], [data]);
 
   // Tabs: "matches" hides training rows, "training" shows only those and
   // "all" shows everything. Training rows are matched by the stored
   // match_type ("training") the backend assigns to solo sessions.
   const visibleData = useMemo(() => {
-    if (!data) return data;
     if (viewTab === "training") {
-      return data.filter((m) => m.matchType === "training");
+      return matches.filter((m) => m.matchType === "training");
     }
     if (viewTab === "matches") {
-      return data.filter((m) => m.matchType !== "training");
+      return matches.filter((m) => m.matchType !== "training");
     }
-    return data;
-  }, [data, viewTab]);
+    return matches;
+  }, [matches, viewTab]);
 
   const trainingCount = useMemo(
-    () => (data ?? []).filter((m) => m.matchType === "training").length,
-    [data],
+    () => matches.filter((m) => m.matchType === "training").length,
+    [matches],
   );
 
   const [editingMatch, setEditingMatch] = useState<MatchSummary | null>(null);
   const [deletingMatchId, setDeletingMatchId] = useState<number | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const [editMatchType, setEditMatchType] = useState<string>("");
   const [editPlaylist, setEditPlaylist] = useState<string>("");
   const [editMood, setEditMood] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const deleteMutation = useDeleteMatch();
-  const updateMutation = useUpdateMatch();
-  const moodMutation = useSetMatchMood();
+  const { mutate: deleteMatch, isPending: isDeleting } = useDeleteMatch();
+  const { mutateAsync: updateMatchAsync, isPending: isUpdating } = useUpdateMatch();
+  const { mutateAsync: setMatchMoodAsync, isPending: isSettingMood } = useSetMatchMood();
 
   const matchTypeOptions: { value: string; label: string }[] = [
     { value: "ranked", label: t("history:matchTypes.ranked") },
@@ -136,33 +149,62 @@ export function HistoryPage() {
     }
   }, [editingMatch]);
 
-  const handleDelete = (matchId: number) => setDeletingMatchId(matchId);
+  const handleDelete = useCallback((matchId: number) => setDeletingMatchId(matchId), []);
 
-  const confirmDelete = () => {
-    if (deletingMatchId) {
-      deleteMutation.mutate(deletingMatchId);
-      setDeletingMatchId(null);
-    }
-  };
+  const cancelDelete = useCallback(() => setDeletingMatchId(null), []);
 
-  const handleEdit = (match: MatchSummary) => setEditingMatch(match);
+  const confirmDelete = useCallback(() => {
+    if (deletingMatchId === null) return;
+    deleteMatch(deletingMatchId, {
+      onSuccess: () => {
+        setDeletingMatchId(null);
+        addToast({ type: "success", title: t("history:toasts.deleted") });
+      },
+      onError: (error) => {
+        addToast({
+          type: "error",
+          title: t("history:toasts.deleteError"),
+          message: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
+  }, [deletingMatchId, deleteMatch, addToast, t]);
 
-  const saveEdit = async (data: { matchType: string | null; playlist: string | null }) => {
-    if (!editingMatch) return;
-    setEditError(null);
-    try {
-      await updateMutation.mutateAsync({ matchId: editingMatch.id, data });
-      await moodMutation.mutateAsync({ matchId: editingMatch.id, mood: editMood });
-      setEditingMatch(null);
-    } catch (error) {
-      // Keep the dialog open so the failure is visible instead of silently
-      // dropping the mood while the rest of the edit looks saved.
-      setEditError(error instanceof Error ? error.message : String(error));
-    }
-  };
+  const handleEdit = useCallback((match: MatchSummary) => setEditingMatch(match), []);
 
+  const closeEdit = useCallback(() => setEditingMatch(null), []);
 
-  const [shareOpen, setShareOpen] = useState(false);
+  const saveEdit = useCallback(
+    async (values: { matchType: string | null; playlist: string | null }) => {
+      if (!editingMatch) return;
+      setEditError(null);
+      try {
+        await updateMatchAsync({ matchId: editingMatch.id, data: values });
+        await setMatchMoodAsync({ matchId: editingMatch.id, mood: editMood });
+        setEditingMatch(null);
+      } catch (error) {
+        // Keep the dialog open so the failure is visible instead of silently
+        // dropping the mood while the rest of the edit looks saved.
+        setEditError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [editingMatch, updateMatchAsync, setMatchMoodAsync, editMood],
+  );
+
+  const handleShare = useCallback(() => setShareOpen(true), []);
+
+  const closeShare = useCallback(() => setShareOpen(false), []);
+
+  const hasActiveFilters = Boolean(
+    filters.search ||
+      filters.result ||
+      filters.matchType ||
+      filters.mode ||
+      filters.dateFrom ||
+      filters.dateTo,
+  );
+
+  const clearFilters = useCallback(() => handleFiltersChange({}), [handleFiltersChange]);
 
   const { data: friends, isLoading: friendsLoading } = useFriends();
   const { data: settings } = useSettings();
@@ -210,7 +252,7 @@ export function HistoryPage() {
           variant="ghost"
           size="sm"
           leftIcon={Share2}
-          onClick={() => setShareOpen(true)}
+          onClick={handleShare}
           disabled={!shareContext || friendsLoading}
         >
           {t("common:buttons.share")}
@@ -253,48 +295,69 @@ export function HistoryPage() {
 
       {isError && (
         <EmptyState
-          icon={Gamepad2}
+          icon={AlertTriangle}
           title={t("history:errors.loadFailed.title")}
           description={t("history:errors.loadFailed.description")}
+          actionLabel={t("common:buttons.retry")}
+          onAction={() => void refetch()}
         />
       )}
 
-      {!isLoading && !isError && (!visibleData || visibleData.length === 0) && (
+      {!isLoading && !isError && visibleData.length === 0 && (
         <EmptyState
           icon={viewTab === "training" ? Dumbbell : Gamepad2}
           title={
             viewTab === "training"
               ? t("history:empty.noTraining.title")
-              : t("history:empty.noMatches.title")
+              : hasActiveFilters
+                ? t("history:empty.filtered.title")
+                : t("history:empty.noMatches.title")
           }
           description={
             viewTab === "training"
               ? t("history:empty.noTraining.description")
-              : t("history:empty.noMatches.description")
+              : hasActiveFilters
+                ? t("history:empty.filtered.description")
+                : t("history:empty.noMatches.description")
           }
+          actionLabel={hasActiveFilters ? t("history:filters.clearAll") : undefined}
+          onAction={hasActiveFilters ? clearFilters : undefined}
         />
       )}
 
-      {!isLoading && !isError && visibleData && visibleData.length > 0 && (
-        <MatchList
-          matches={visibleData}
-          onEditMatch={handleEdit}
-          onDeleteMatch={handleDelete}
-        />
+      {!isLoading && !isError && visibleData.length > 0 && (
+        <div className="space-y-6">
+          <MatchList
+            matches={visibleData}
+            onEditMatch={handleEdit}
+            onDeleteMatch={handleDelete}
+          />
+          {hasNextPage && (
+            <div className="flex justify-center">
+              <Button
+                variant="secondary"
+                onClick={() => void fetchNextPage()}
+                isLoading={isFetchingNextPage}
+              >
+                {t("history:loadMore")}
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Delete confirmation modal */}
       <Modal
         isOpen={deletingMatchId !== null}
-        onClose={() => setDeletingMatchId(null)}
+        onClose={cancelDelete}
         title={t("history:modals.delete.title")}
         description={t("history:modals.delete.description")}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setDeletingMatchId(null)}>
+            <Button variant="ghost" onClick={cancelDelete}>
               {t("common:buttons.cancel")}
             </Button>
-            <Button variant="danger" onClick={confirmDelete} isLoading={deleteMutation.isPending}>
+            <Button variant="danger" onClick={confirmDelete} isLoading={isDeleting}>
               {t("common:buttons.delete")}
             </Button>
           </div>
@@ -304,11 +367,11 @@ export function HistoryPage() {
       {/* Edit modal */}
       <Modal
         isOpen={editingMatch !== null}
-        onClose={() => setEditingMatch(null)}
+        onClose={closeEdit}
         title={t("history:modals.edit.title")}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setEditingMatch(null)}>
+            <Button variant="ghost" onClick={closeEdit}>
               {t("common:buttons.cancel")}
             </Button>
             <Button
@@ -319,7 +382,7 @@ export function HistoryPage() {
                   playlist: editPlaylist || null,
                 })
               }
-              isLoading={updateMutation.isPending || moodMutation.isPending}
+              isLoading={isUpdating || isSettingMood}
             >
               {t("common:buttons.save")}
             </Button>
@@ -357,7 +420,7 @@ export function HistoryPage() {
 
       <ShareModal
         isOpen={shareOpen}
-        onClose={() => setShareOpen(false)}
+        onClose={closeShare}
         context={shareContext}
       />
     </PageContainer>

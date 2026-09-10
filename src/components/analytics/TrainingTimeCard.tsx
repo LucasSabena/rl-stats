@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTrainingAnalytics } from "@/hooks/useTrainingAnalytics";
 import type { AnalyticsPeriod } from "@/lib/types";
@@ -20,12 +21,23 @@ function formatDurationShort(totalSeconds: number, i18nLanguage: string): string
 
 export function TrainingTimeCard({ period }: { period: AnalyticsPeriod }) {
   const { t, i18n } = useTranslation(["analytics"]);
-  const { data, isLoading } = useTrainingAnalytics(period);
+  const { data, isLoading, isError, refetch } = useTrainingAnalytics(period);
 
   if (period === "session") return null;
 
   if (isLoading) {
     return <Skeleton className="h-28 w-full rounded-lg" />;
+  }
+
+  if (isError) {
+    return (
+      <Card className="flex items-center justify-between gap-3 p-4">
+        <p className="text-xs text-accent-danger">{t("analytics:panelError.message")}</p>
+        <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+          {t("analytics:panelError.retry")}
+        </Button>
+      </Card>
+    );
   }
 
   if (!data || (data.enabled === false && data.totalSessions === 0)) {

@@ -63,7 +63,7 @@ export const FatiguePanel = memo(function FatiguePanel({
     () => ({ playlist, matchType, scope, playerId }),
     [playlist, matchType, scope, playerId],
   );
-  const { data: curve, isLoading } = useSessionCurve(period, filters);
+  const { data: curve, isLoading, isError, refetch } = useSessionCurve(period, filters);
 
   const shareContext: ShareContext | null = useMemo(() => {
     if (!curve?.available || !curve.byGameNumber) return null;
@@ -82,6 +82,16 @@ export const FatiguePanel = memo(function FatiguePanel({
 
   if (isLoading) {
     return <Skeleton className="h-96 w-full rounded-lg" />;
+  }
+  if (isError) {
+    return (
+      <Card className="flex items-center justify-between gap-3 p-4">
+        <p className="text-xs text-accent-danger">{t("analytics:panelError.message")}</p>
+        <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+          {t("analytics:panelError.retry")}
+        </Button>
+      </Card>
+    );
   }
   if (!curve?.available || !curve.byGameNumber || curve.byGameNumber.length === 0) {
     return null;

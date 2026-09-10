@@ -4,7 +4,9 @@
   },
   "emptyState": {
     "title": "Aguardando partida...",
-    "description": "Comece uma partida no Rocket League para ver os dados ao vivo."
+    "description": "Comece uma partida no Rocket League para ver os dados ao vivo.",
+    "hint": "A Stats API escuta em 127.0.0.1:{{port}}. Se não conectar, confira Ajustes → Configuração de jogo.",
+    "openSettings": "Abrir Ajustes"
   },
   "matchType": {
     "online": "Online",
@@ -26,7 +28,8 @@
   },
   "matchEnd": {
     "summary": "Duração: {{duration}} | {{count}} jogadores",
-    "dismiss": "Fechar notificação"
+    "dismiss": "Fechar notificação",
+    "viewSummary": "Ver resumo"
   },
   "playlist": {
     "label": "Playlist",

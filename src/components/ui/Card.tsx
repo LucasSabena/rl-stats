@@ -34,9 +34,23 @@ export function Card({
         // card off the page on hover.
         interactive &&
           "group cursor-pointer transition-colors duration-150 hover:border-border-highlight hover:bg-surface-hover",
+        onClick &&
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
         className,
       )}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
       {children}
     </div>

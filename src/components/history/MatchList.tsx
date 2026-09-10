@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { formatLocalDateKey } from "@/lib/utils";
 import type { MatchSummary } from "@/lib/types";
@@ -22,43 +23,53 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function MatchList({ matches, onSelectMatch, onEditMatch, onDeleteMatch }: MatchListProps) {
+export const MatchList = memo(function MatchList({
+  matches,
+  onSelectMatch,
+  onEditMatch,
+  onDeleteMatch,
+}: MatchListProps) {
   const { t, i18n } = useTranslation("history");
 
+  const groups = useMemo(() => {
+    if (matches.length === 0) return [];
+
+    const todayKey = formatLocalDateKey(new Date());
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = formatLocalDateKey(yesterday);
+
+    const result: DayGroup[] = [];
+    for (const match of matches) {
+      const date = new Date(match.startTime * 1000);
+      const key = formatLocalDateKey(date);
+      let group = result[result.length - 1];
+      if (!group || group.key !== key) {
+        const label =
+          key === todayKey
+            ? t("day.today")
+            : key === yesterdayKey
+              ? t("day.yesterday")
+              : capitalize(
+                  date.toLocaleDateString(i18n.language, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  }),
+                );
+        group = { key, label, wins: 0, losses: 0, matches: [] };
+        result.push(group);
+      }
+      if (match.winnerTeamNum !== null && match.localTeamNum !== null && match.localTeamNum !== undefined) {
+        if (match.winnerTeamNum === match.localTeamNum) group.wins += 1;
+        else group.losses += 1;
+      }
+      group.matches.push(match);
+    }
+    return result;
+  }, [matches, t, i18n.language]);
+
   if (matches.length === 0) return null;
-
-  const todayKey = formatLocalDateKey(new Date());
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = formatLocalDateKey(yesterday);
-
-  const groups: DayGroup[] = [];
-  for (const match of matches) {
-    const date = new Date(match.startTime * 1000);
-    const key = formatLocalDateKey(date);
-    let group = groups[groups.length - 1];
-    if (!group || group.key !== key) {
-      const label =
-        key === todayKey
-          ? t("day.today")
-          : key === yesterdayKey
-            ? t("day.yesterday")
-            : capitalize(
-                date.toLocaleDateString(i18n.language, {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                }),
-              );
-      group = { key, label, wins: 0, losses: 0, matches: [] };
-      groups.push(group);
-    }
-    if (match.winnerTeamNum !== null && match.localTeamNum !== null && match.localTeamNum !== undefined) {
-      if (match.winnerTeamNum === match.localTeamNum) group.wins += 1;
-      else group.losses += 1;
-    }
-    group.matches.push(match);
-  }
 
   return (
     <div className="space-y-7">
@@ -86,4 +97,4 @@ export function MatchList({ matches, onSelectMatch, onEditMatch, onDeleteMatch }
       ))}
     </div>
   );
-}
+});

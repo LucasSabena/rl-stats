@@ -135,6 +135,7 @@ export const PlayerStatsTable = memo(function PlayerStatsTable({
           type="checkbox"
           checked={selectedIds.has(p.id)}
           onChange={() => toggleSelect(p.id)}
+          aria-label={t("matchDetail:stats.selectPlayer", { name: p.name })}
           className="h-4 w-4 rounded border-border-highlight bg-bg-panel text-accent-primary focus:ring-accent-primary/30"
         />
       ),

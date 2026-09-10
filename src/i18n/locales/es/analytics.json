@@ -140,6 +140,10 @@
       "description": "No se pudieron cargar los datos de rendimiento."
     }
   },
+  "panelError": {
+    "message": "No se pudieron cargar estos datos.",
+    "retry": "Reintentar"
+  },
   "player": {
     "matchesTitle": "Partidas de {{name}}",
     "noMatches": {

@@ -28,7 +28,7 @@ export function DataManagement() {
   const addToast = useUIStore((state) => state.addToast);
   const queryClient = useQueryClient();
 
-  const { data: stats } = useQuery({
+  const { data: stats, isError, refetch } = useQuery({
     queryKey: ["storageStats"],
     queryFn: getStorageStats,
   });
@@ -85,11 +85,22 @@ export function DataManagement() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-text-primary">{t("settings:data.title")}</p>
-            <p className="text-xs text-text-secondary">
-              {stats
-                ? t("settings:data.statsTemplate", { totalMatches: stats.totalMatches, size: (stats.databaseSizeBytes / 1024 / 1024).toFixed(1) })
-                : t("settings:data.loading")}
-            </p>
+            {isError ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs text-accent-danger">
+                  {t("settings:data.statsError")}
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+                  {t("common:buttons.retry")}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary">
+                {stats
+                  ? t("settings:data.statsTemplate", { totalMatches: stats.totalMatches, size: (stats.databaseSizeBytes / 1024 / 1024).toFixed(1) })
+                  : t("settings:data.loading")}
+              </p>
+            )}
             {stats?.dbPath && (
               <p className="mt-1 truncate text-[11px] font-mono text-text-tertiary">
                 {stats.dbPath}

@@ -140,6 +140,10 @@
       "description": "Could not load performance data."
     }
   },
+  "panelError": {
+    "message": "Could not load this data.",
+    "retry": "Retry"
+  },
   "player": {
     "matchesTitle": "Matches of {{name}}",
     "noMatches": {

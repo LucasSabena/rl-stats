@@ -1,7 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import i18n from "i18next";
 import { usePlayerDirectory } from "@/hooks/usePlayerDirectory";
 import { useFriends } from "@/hooks/useFriends";
 import { useAddFriend, useRemoveFriend } from "@/hooks/useFriends";
@@ -11,17 +10,25 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
-import { ArrowRight, Shield, Swords, Search, Users, UserPlus, UserMinus } from "lucide-react";
+import { ArrowRight, Shield, Swords, Search, Users, UserPlus, UserMinus, AlertTriangle } from "lucide-react";
+
+const SEARCH_DEBOUNCE_MS = 250;
 
 export function PlayerDirectoryPage() {
-  const { t } = useTranslation(["players", "common"]);
+  const { t, i18n } = useTranslation(["players", "common"]);
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [relationship, setRelationship] = useState("");
   const [sortBy, setSortBy] = useState("matches");
 
-  const { data: players, isLoading } = usePlayerDirectory({
-    search: search || undefined,
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  const { data: players, isLoading, isError, refetch } = usePlayerDirectory({
+    search: debouncedSearch || undefined,
     relationship: relationship || undefined,
     sortBy,
   });
@@ -30,7 +37,15 @@ export function PlayerDirectoryPage() {
   const addFriend = useAddFriend();
   const removeFriend = useRemoveFriend();
 
-  const friendIds = new Set(friends?.map((f) => f.player_id) ?? []);
+  const friendIds = useMemo(
+    () => new Set(friends?.map((f) => f.player_id) ?? []),
+    [friends]
+  );
+
+  const firstSeenFormatter = useMemo(
+    () => new Intl.DateTimeFormat(i18n.language, { month: "short", year: "numeric" }),
+    [i18n.language]
+  );
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,7 +109,17 @@ export function PlayerDirectoryPage() {
         </div>
       )}
 
-      {!isLoading && players && players.length === 0 && (
+      {!isLoading && isError && (
+        <EmptyState
+          icon={AlertTriangle}
+          title={t("players:directory.errorTitle")}
+          description={t("players:directory.errorDescription")}
+          actionLabel={t("common:buttons.retry")}
+          onAction={() => void refetch()}
+        />
+      )}
+
+      {!isLoading && !isError && players && players.length === 0 && (
         <EmptyState
           icon={Users}
           title={t("players:directory.emptyTitle")}
@@ -102,7 +127,7 @@ export function PlayerDirectoryPage() {
         />
       )}
 
-      {players && players.length > 0 && (
+      {!isError && players && players.length > 0 && (
         <div className="space-y-2">
           {players.map((p) => {
             const isFriend = friendIds.has(p.player_id);
@@ -141,10 +166,7 @@ export function PlayerDirectoryPage() {
                       {p.matches_as_teammate} {t("players:directory.teammateShort")} · {p.matches_as_opponent} {t("players:directory.opponentShort")}
                       {" · "}
                       {t("players:directory.firstSeen")}{" "}
-                      {new Date(p.first_seen).toLocaleDateString(i18n.language, {
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      {firstSeenFormatter.format(new Date(p.first_seen))}
                     </p>
                   </div>
 

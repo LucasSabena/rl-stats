@@ -63,6 +63,7 @@
     "tabCompare": "Comparar",
     "emptyData": "Sem dados de jogadores",
     "selectPlayers": "Selecione pelo menos 2 jogadores para comparar",
+    "selectPlayer": "Selecionar {{name}}",
     "mvp": "MVP"
   },
   "roster": {
@@ -97,6 +98,8 @@
     "noDataTitle": "Sem dados da partida",
     "noDataDescription": "Esta partida não contém dados de jogadores ou eventos.",
     "editMatch": "Editar",
-    "deleteMatch": "Excluir"
+    "deleteMatch": "Excluir",
+    "deleteSuccess": "Partida excluída",
+    "deleteError": "Não foi possível excluir a partida."
   }
 }

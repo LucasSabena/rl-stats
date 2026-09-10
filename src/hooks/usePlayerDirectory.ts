@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { getPlayerDirectory, getPlayerDetail } from "@/lib/api";
 import { QUERY_STALE_TIME } from "@/lib/constants";
 
@@ -13,6 +13,7 @@ export function usePlayerDirectory(filters?: {
     queryKey: ["player-directory", filters ?? {}],
     queryFn: () => getPlayerDirectory(filters),
     staleTime: QUERY_STALE_TIME.matches,
+    placeholderData: keepPreviousData,
   });
 }
 

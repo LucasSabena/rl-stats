@@ -1,6 +1,7 @@
 {
   "search": {
-    "placeholder": "Buscar jogador ou time..."
+    "placeholder": "Buscar jogador ou time...",
+    "noResults": "Nenhum resultado encontrado"
   },
   "emptyState": {
     "title": "Configs de Pro Players",

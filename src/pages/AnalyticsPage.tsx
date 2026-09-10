@@ -295,10 +295,14 @@ function SessionMatchDetail({
 function PlayerMatchesPanel({
   matches,
   isLoading,
+  isError,
+  onRetry,
   playerName,
 }: {
   matches: PlayerAnalyticsMatch[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   playerName: string;
 }) {
   const { t } = useTranslation(["analytics", "common", "mood"]);
@@ -315,6 +319,15 @@ function PlayerMatchesPanel({
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-14 w-full rounded-lg" />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-surface/60 px-4 py-3">
+          <p className="text-xs text-accent-danger">
+            {t("analytics:panelError.message")}
+          </p>
+          <Button variant="secondary" size="sm" onClick={onRetry}>
+            {t("analytics:panelError.retry")}
+          </Button>
         </div>
       ) : matches.length === 0 ? (
         <p className="rounded-lg border border-border-subtle bg-bg-surface/60 px-4 py-3 text-xs text-text-muted">
@@ -689,10 +702,14 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
   const {
     data: playerSummary,
     isLoading: playerSummaryLoading,
+    isError: playerSummaryError,
+    refetch: refetchPlayerSummary,
   } = usePlayerAnalyticsSummary(playerId, period, filters);
   const {
     data: playerMatches,
     isLoading: playerMatchesLoading,
+    isError: playerMatchesError,
+    refetch: refetchPlayerMatches,
   } = usePlayerAnalyticsMatches(playerId, period, filters);
 
   const {
@@ -920,6 +937,14 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
                 <Skeleton key={i} className="h-28 w-full rounded-lg" />
               ))}
             </div>
+          ) : playerSummaryError ? (
+            <EmptyState
+              icon={BarChart3}
+              title={t("analytics:empty.error.title")}
+              description={t("analytics:empty.error.description")}
+              actionLabel={t("analytics:panelError.retry")}
+              onAction={() => void refetchPlayerSummary()}
+            />
           ) : playerSummary && playerSummary.totalMatches > 0 ? (
             <>
               <PrimaryStatsRow data={playerSummary} scope="me" />
@@ -958,6 +983,8 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
           <PlayerMatchesPanel
             matches={playerMatches ?? []}
             isLoading={playerMatchesLoading}
+            isError={playerMatchesError}
+            onRetry={() => void refetchPlayerMatches()}
             playerName={selectedPlayerName}
           />
         </div>

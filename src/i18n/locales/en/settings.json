@@ -130,6 +130,7 @@
     "title": "Storage",
     "statsTemplate": "{{totalMatches}} matches · {{size}} MB",
     "loading": "Loading...",
+    "statsError": "Could not load storage data.",
     "copyPath": "Copy path",
     "export": "Export",
     "import": "Import",

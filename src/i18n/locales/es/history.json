@@ -1,5 +1,6 @@
 {
   "pageTitle": "Historial de partidas",
+  "loadMore": "Cargar más",
   "matchTypes": {
     "ranked": "Ranked",
     "casual": "Casual",
@@ -38,6 +39,10 @@
     "noTraining": {
       "title": "Sin entrenamientos registrados",
       "description": "Las sesiones de entrenamiento (Free Play) se registran automáticamente mientras jugás. Entrá al modo entrenamiento en el juego y aparecerán acá."
+    },
+    "filtered": {
+      "title": "Sin resultados con estos filtros",
+      "description": "Probá ajustar o limpiar los filtros para ver más partidas."
     }
   },
   "tabs": {
@@ -65,6 +70,7 @@
   "filters": {
     "title": "Filtros",
     "clear": "Limpiar",
+    "clearAll": "Limpiar filtros",
     "search": {
       "label": "Buscar",
       "placeholder": "Nombre de jugador..."
@@ -95,5 +101,9 @@
     "count": "{{count}} partidas",
     "wins": "{{count}}V",
     "losses": "{{count}}D"
+  },
+  "toasts": {
+    "deleted": "Partida borrada",
+    "deleteError": "No se pudo borrar la partida"
   }
 }

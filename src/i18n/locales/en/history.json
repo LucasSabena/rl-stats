@@ -1,5 +1,6 @@
 {
   "pageTitle": "Match History",
+  "loadMore": "Load more",
   "matchTypes": {
     "ranked": "Ranked",
     "casual": "Casual",
@@ -38,6 +39,10 @@
     "noTraining": {
       "title": "No Training Sessions Recorded",
       "description": "Training (Free Play) sessions are recorded automatically while you play. Enter the game's training mode and they will show up here."
+    },
+    "filtered": {
+      "title": "No matches with these filters",
+      "description": "Try adjusting or clearing the filters to see more matches."
     }
   },
   "tabs": {
@@ -65,6 +70,7 @@
   "filters": {
     "title": "Filters",
     "clear": "Clear",
+    "clearAll": "Clear filters",
     "search": {
       "label": "Search",
       "placeholder": "Player name..."
@@ -95,5 +101,9 @@
     "count": "{{count}} matches",
     "wins": "{{count}}W",
     "losses": "{{count}}L"
+  },
+  "toasts": {
+    "deleted": "Match deleted",
+    "deleteError": "Could not delete the match"
   }
 }

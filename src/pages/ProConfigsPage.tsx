@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { proPlayers } from "@/data/proConfigs";
 import { ProPlayerCard } from "@/components/pro-configs/ProPlayerCard";
@@ -48,6 +48,7 @@ function groupByContinentAndTeam(players: ProPlayer[]) {
 
 export function ProConfigsPage() {
   const { t } = useTranslation(["proConfigs", "common"]);
+  const baseId = useId();
   const [search, setSearch] = useState("");
   const [expandedContinents, setExpandedContinents] = useState<Set<Continent>>(new Set(["Europe", "North America"]));
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
@@ -105,11 +106,14 @@ export function ProConfigsPage() {
           const continentTeams = grouped.get(continent);
           if (!continentTeams || continentTeams.size === 0) return null;
           const teams = [...continentTeams.entries()];
+          const continentPanelId = `${baseId}-${continentKeys[continent]}-panel`;
 
           return (
             <div key={continent} className="mb-2">
               <button
                 onClick={() => toggleContinent(continent)}
+                aria-expanded={expandedContinents.has(continent)}
+                aria-controls={continentPanelId}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-semibold text-text-primary hover:bg-surface-hover"
               >
                 {expandedContinents.has(continent) ? (
@@ -122,11 +126,15 @@ export function ProConfigsPage() {
               </button>
 
               {expandedContinents.has(continent) && (
-                <div className="ml-4 mt-1">
-                  {teams.map(([team, players]) => (
+                <div id={continentPanelId} className="ml-4 mt-1">
+                  {teams.map(([team, players], teamIndex) => {
+                    const teamPanelId = `${baseId}-${continentKeys[continent]}-team-${teamIndex}-panel`;
+                    return (
                     <div key={team}>
                       <button
                         onClick={() => toggleTeam(team)}
+                        aria-expanded={expandedTeams.has(team)}
+                        aria-controls={teamPanelId}
                         className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                       >
                         {expandedTeams.has(team) ? (
@@ -139,7 +147,7 @@ export function ProConfigsPage() {
                       </button>
 
                       {expandedTeams.has(team) && (
-                        <div className="ml-5">
+                        <div id={teamPanelId} className="ml-5">
                           {players.map((player) => (
                             <button
                               key={player.name}
@@ -164,12 +172,19 @@ export function ProConfigsPage() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           );
         })}
+
+        {filteredPlayers.length === 0 && (
+          <p className="px-2 py-3 text-sm text-text-tertiary">
+            {t("proConfigs:search.noResults")}
+          </p>
+        )}
       </div>
 
       {/* Detail panel */}

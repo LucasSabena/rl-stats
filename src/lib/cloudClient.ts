@@ -47,6 +47,27 @@ function normalizeSupabaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 function authHeaders(
   credentials: CloudCredentials,
   accessToken?: string,
@@ -60,7 +81,17 @@ function authHeaders(
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as unknown) : null;
+  let payload: unknown = null;
+
+  if (text) {
+    try {
+      payload = JSON.parse(text) as unknown;
+    } catch {
+      throw new Error(
+        `Cloud request returned invalid JSON (HTTP ${response.status})`,
+      );
+    }
+  }
 
   if (!response.ok) {
     const message =
@@ -105,7 +136,7 @@ export async function refreshCloudSession(
 ): Promise<CloudSession> {
   if (!session.refresh_token) return session;
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/auth/v1/token?grant_type=refresh_token`,
     {
       method: "POST",
@@ -142,7 +173,7 @@ export async function signInWithPassword(
   email: string,
   password: string,
 ): Promise<CloudSession> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/auth/v1/token?grant_type=password`,
     {
       method: "POST",
@@ -160,7 +191,7 @@ export async function signUpWithPassword(
   email: string,
   password: string,
 ): Promise<CloudSession> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/auth/v1/signup`,
     {
       method: "POST",
@@ -183,7 +214,7 @@ export async function getCloudUser(
   credentials: CloudCredentials,
   session: CloudSession,
 ): Promise<CloudSession["user"]> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/auth/v1/user`,
     {
       headers: authHeaders(credentials, session.access_token),
@@ -196,7 +227,7 @@ export async function signOut(
   credentials: CloudCredentials,
   session: CloudSession,
 ): Promise<void> {
-  await fetch(
+  await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/auth/v1/logout`,
     {
       method: "POST",
@@ -210,7 +241,7 @@ export async function hasCloudSyncAccess(
   credentials: CloudCredentials,
   session: CloudSession,
 ): Promise<boolean> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/rpc/has_active_cloud_sync`,
     {
       method: "POST",
@@ -225,7 +256,7 @@ export async function getCloudSubscription(
   credentials: CloudCredentials,
   session: CloudSession,
 ): Promise<CloudSubscription | null> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/billing_subscriptions?select=plan_code,status,current_period_end,stripe_customer_id&limit=1`,
     { headers: authHeaders(credentials, session.access_token) },
   );
@@ -238,7 +269,7 @@ export async function createCheckoutSession(
   session: CloudSession,
   planCode: CloudPlanCode,
 ): Promise<string> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/functions/v1/create-checkout-session`,
     {
       method: "POST",
@@ -259,7 +290,7 @@ export async function createPortalSession(
   credentials: CloudCredentials,
   session: CloudSession,
 ): Promise<string> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/functions/v1/create-portal-session`,
     {
       method: "POST",
@@ -279,7 +310,7 @@ export async function pushCloudChanges(
   session: CloudSession,
   request: CloudPushRequest,
 ): Promise<CloudPushResponse> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/rpc/sync_push`,
     {
       method: "POST",
@@ -294,7 +325,7 @@ export async function listCloudProfiles(
   credentials: CloudCredentials,
   session: CloudSession,
 ): Promise<CloudProfileRecord[]> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/cloud_profiles?select=id,entity_key,name,player_name,deleted_at&deleted_at=is.null&order=manifest_created_at.desc.nullslast`,
     { headers: authHeaders(credentials, session.access_token) },
   );

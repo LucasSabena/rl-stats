@@ -44,7 +44,7 @@ export const ChemistryPanel = memo(function ChemistryPanel({
     () => ({ playlist, matchType, scope, playerId }),
     [playlist, matchType, scope, playerId],
   );
-  const { data, isLoading } = useTeammateStats(period, filters);
+  const { data, isLoading, isError, refetch } = useTeammateStats(period, filters);
   const minSample = data?.minSample ?? 3;
 
   const teammates = useMemo(() => (data?.teammates ?? []).slice(0, 8), [data]);
@@ -58,6 +58,16 @@ export const ChemistryPanel = memo(function ChemistryPanel({
 
   if (isLoading) {
     return <Skeleton className="h-64 w-full rounded-lg" />;
+  }
+  if (isError) {
+    return (
+      <Card className="flex items-center justify-between gap-3 p-4">
+        <p className="text-xs text-accent-danger">{t("analytics:panelError.message")}</p>
+        <Button variant="secondary" size="sm" onClick={() => void refetch()}>
+          {t("analytics:panelError.retry")}
+        </Button>
+      </Card>
+    );
   }
   if (!data?.available || teammates.length === 0) {
     return null;
