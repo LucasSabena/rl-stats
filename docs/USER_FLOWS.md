@@ -2,6 +2,20 @@
 
 > Comprehensive UX documentation for the RL Stats desktop application.
 > Language convention: Spanish for user-facing content, English for technical terms and system concepts.
+>
+> **Implementation status (v2.10.x).** This document is the original product
+> spec and some flows diverge from the shipped app. Verified against the code:
+> - Onboarding is a 3-phase overlay (Welcome → Setup → 7-step tour), not a
+>   multi-step wizard, and there is no automated connection test yet.
+> - History paginates with a "Load more" button (50 per page); the numbered
+>   paginator described below is not implemented.
+> - Post-match mood: the in-app modal waits for an answer; the optional focus
+>   prompt over the game (`prompt_focus_enabled`, off by default) is
+>   best-effort and hides when the next match starts.
+> - Analytics, player directory, training packs and pro configs exist as
+>   described; the "compare two matches" flow is not implemented.
+>
+> Treat everything else below as intended direction, not shipped behavior.
 
 ---
 

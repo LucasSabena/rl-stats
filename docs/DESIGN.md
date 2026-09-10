@@ -21,54 +21,46 @@
 
 ### Color Palette
 
+Implemented as OKLCH design tokens in `src/styles/globals.css` (light is the
+`:root` default, `.dark` overrides it). Always consume the generated utilities
+(`bg-bg-base`, `bg-bg-surface`, `text-text-secondary`, `text-accent-primary`,
+`border-border-subtle`, `bg-accent-success`, ...) instead of hardcoding colors,
+so both themes stay legible.
+
 ```
-Background Primary:   #0A0E17  (deep navy-black)
-Background Secondary: #111827  (slightly elevated surfaces)
-Background Tertiary:  #1A2235  (cards, panels)
-Surface Hover:        #1E293B  (interactive hover states)
+Surfaces (dark)     canvas oklch(0.155 0.008 265) · surface oklch(0.196 0.009 265)
+                    raised oklch(0.238 0.011 265) · sunken oklch(0.128 0.007 265)
+Surfaces (light)    canvas oklch(0.985 0.002 265) · surface oklch(1 0 0)
+                    sunken oklch(0.965 0.003 265)
 
-Border Subtle:        #1E293B  (dividers, outlines)
-Border Strong:        #334155  (focused elements)
+Foreground (dark)   fg oklch(0.98 0.003 265) · secondary 0.76 · muted 0.62 · subtle 0.5
+Foreground (light)  fg oklch(0.22 0.012 265) · secondary 0.44 · muted 0.56 · subtle 0.68
 
-Text Primary:         #F8FAFC  (headings, key data)
-Text Secondary:       #94A3B8  (labels, metadata)
-Text Tertiary:        #64748B  (timestamps, hints)
-Text Muted:           #475569  (disabled, placeholder)
+Accent (violet)     dark oklch(0.66 0.19 285) · light oklch(0.54 0.2 285)
+                    (deliberately not team blue, so "selected" never reads as "blue team")
+Accent foreground   --accent-fg: dark oklch(0.16 0.02 285) · light white
 
-Accent Primary:       #3B82F6  (blue — primary actions, links)
-Accent Primary Hover: #2563EB
-Accent Secondary:     #10B981  (green — positive trends, wins)
-Accent Danger:        #EF4444  (red — losses, errors, demos against)
-Accent Warning:       #F59E0B  (amber — overtime, warnings)
-Accent Info:          #06B6D4  (cyan — live indicators, boost)
-Accent Purple:        #8B5CF6  (purple — special events, MVP)
+Status (dark)       success oklch(0.74 0.17 157) · danger oklch(0.66 0.2 25)
+                    warning oklch(0.79 0.16 75) · info oklch(0.66 0.16 250)
 
-Team Blue:            #3B82F6
-Team Orange:          #F97316
-Team Blue Dark:       #1E40AF
-Team Orange Dark:     #C2410C
+Team identity       blue oklch(0.66 0.16 250) · orange oklch(0.74 0.16 58)
+                    (reserved: never used for decoration or selection state)
+
+Boost telemetry     full oklch(0.78 0.14 195) · mid oklch(0.79 0.16 75)
+                    low oklch(0.66 0.2 25)
+
+Elevation           --shadow-1..4 · --glass (frosted) · --scrim (modal backdrop)
 ```
 
 ### Typography
 
 ```
-Font Family: 'Inter', system-ui, -apple-system, sans-serif
-Font Family Mono: 'JetBrains Mono', 'Fira Code', monospace
+Font Family:      'Geist Variable', system-ui, -apple-system, sans-serif
+Font Family Mono: 'Geist Mono Variable', ui-monospace, monospace
 
-Scale:
-  Hero:      48px / 700 / -0.02em  (match score, key numbers)
-  H1:        32px / 700 / -0.02em
-  H2:        24px / 600 / -0.01em
-  H3:        18px / 600 / 0
-  Body:      14px / 400 / 0
-  Body Small:12px / 400 / 0.01em
-  Caption:   11px / 500 / 0.02em  (labels, badges)
-  Mono:      13px / 500 / 0       (stats, numbers, timers)
-
-Line Height:
-  Tight:  1.2  (headings, stats)
-  Normal: 1.5  (body text)
-  Relaxed:1.75 (descriptions)
+Both are self-hosted via @fontsource (the Tauri CSP blocks Google Fonts).
+Page headings use text-2xl font-bold tracking-tight; body text-sm; numeric
+stats use the mono family with tabular figures.
 ```
 
 ### Spacing Scale
@@ -114,7 +106,7 @@ Glow Accent: 0 0 20px rgba(59,130,246,0.15)  (live indicators)
 
 ```
 Container Max Width: 1440px
-Sidebar Width:       64px (collapsed) / 200px (expanded)
+Sidebar Width:       60px (collapsed) / 228px (expanded)
 Content Padding:     24px
 Card Gap:            16px
 
@@ -131,7 +123,7 @@ Breakpoints:
 ### Navigation (Sidebar)
 
 ```
-Style: Vertical sidebar, 64px icon-only default
+Style: Vertical sidebar, 60px icon-only default
 Background: Background Primary with 1px right border (Border Subtle)
 
 Items:
@@ -143,7 +135,7 @@ Items:
 Active State: Accent Primary left border (3px), icon + text in Accent Primary
 Hover State:  Surface Hover background
 Collapsed:    Icons only with tooltip on hover
-Expanded:     Icons + labels, 200px width
+Expanded:     Icons + labels, 228px width
 
 Live Indicator:
   When a match is active, a pulsing green dot appears on the Live Match icon.
@@ -450,13 +442,13 @@ Since this is a desktop app, responsive primarily means:
 
 ```
 Desktop (>1024px):
-  - Full sidebar (200px)
+  - Full sidebar (228px)
   - Multi-column layouts
   - Large charts
   - Side-by-side panels
 
 Tablet (768-1024px):
-  - Collapsed sidebar (64px)
+  - Collapsed sidebar (60px)
   - 2-column layouts become stacked
   - Charts remain readable
 

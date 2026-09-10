@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { IniHelper } from "@/components/settings/IniHelper";
@@ -23,8 +24,33 @@ import {
   Cloud,
 } from "lucide-react";
 
+const SETTINGS_TABS = [
+  "general",
+  "game",
+  "overlay",
+  "streaming",
+  "profiles",
+  "cloud",
+  "data",
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+function isSettingsTab(value: string | null): value is SettingsTab {
+  return value !== null && (SETTINGS_TABS as readonly string[]).includes(value);
+}
+
 export function SettingsPage() {
   const { t } = useTranslation("settings");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "general";
+
+  const handleTabChange = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", value);
+    setSearchParams(next, { replace: true });
+  };
 
   return (
     <PageContainer>
@@ -41,7 +67,11 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="general" className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className="w-full"
+        >
           <TabsList className="mb-6 w-full flex-wrap h-auto justify-start gap-1 bg-transparent border-none p-0">
             <TabsTrigger
               value="general"

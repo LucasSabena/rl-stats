@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.10.1] - 2026-09-10
+
+### Fixed
+- **Overlay and post-match mood prompt now stay above Rocket League.** Tauri only calls the native `SetWindowPos` when the `always_on_top` flag changes, so every re-assert in the app was a silent no-op (the builders already create the windows as topmost). The overlay/prompt now force a real TOPMOST re-insertion, and keepers re-assert every 2s/1s while visible — alt-tabbing back into the game no longer leaves them behind. The prompt also re-asserts after taking focus.
+- Settings tabs are deep-linkable (`/settings?tab=game`), and the "waiting for a match" empty state now links straight to the Stats API tab.
+
 ## [2.10.0] - 2026-09-10
 
 ### Fixed

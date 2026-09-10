@@ -174,7 +174,7 @@ export function LiveDashboard() {
             title={t("live:emptyState.title")}
             description={`${t("live:emptyState.description")} ${t("live:emptyState.hint", { port: statsApiPort })}`}
             actionLabel={t("live:emptyState.openSettings")}
-            onAction={() => navigate("/settings")}
+            onAction={() => navigate("/settings?tab=game")}
           />
         </div>
       </div>
