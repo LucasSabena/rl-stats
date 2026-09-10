@@ -468,6 +468,39 @@ pub fn run() {
             // Best effort — the pull model covers a cold window if this fails.
             crate::commands::prompt_window::prewarm_prompt_window(app.handle());
 
+            // Keeper tasks: Windows pushes a topmost WebView behind a game
+            // that is itself topmost after alt-tabbing back into Rocket
+            // League. Re-assert the z-order while each window is on screen so
+            // the overlay/prompt do not silently fall to the background.
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(2));
+                    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        tick.tick().await;
+                        let running = app_handle
+                            .state::<AppState>()
+                            .game_running
+                            .load(std::sync::atomic::Ordering::Relaxed);
+                        if running {
+                            crate::commands::overlay_window::keep_overlay_on_top(&app_handle);
+                        }
+                    }
+                });
+            }
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(1));
+                    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                    loop {
+                        tick.tick().await;
+                        crate::commands::prompt_window::keep_prompt_on_top(&app_handle);
+                    }
+                });
+            }
+
             // Restore overlay window if it was enabled last session and game is running
             // Also setup game status listener to auto-show/hide overlay
             if settings.overlay_enabled {
@@ -544,8 +577,7 @@ pub fn run() {
                                             tracing::warn!(error = %e, "Failed to create overlay window when game started");
                                         }
                                     } else if let Some(ref win) = overlay_win {
-                                        let _ = win.show();
-                                        let _ = win.set_always_on_top(true);
+                                        crate::commands::overlay_window::bring_overlay_to_front(win);
                                     }
                                 } else {
                                     // Game closed: hide overlay

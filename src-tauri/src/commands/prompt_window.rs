@@ -15,6 +15,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::core::window_utils::force_topmost;
+
 pub const PROMPT_LABEL: &str = "prompt";
 
 #[derive(Clone, Debug, Serialize)]
@@ -181,17 +183,33 @@ pub fn show_prompt_window(
         .map_err(|e| format!("Failed to emit prompt-open: {e}"))?;
     win.show()
         .map_err(|e| format!("Failed to show prompt window: {e}"))?;
-    let _ = win.set_always_on_top(true);
+    // Force the native TOPMOST re-insertion; the builder flag is already
+    // true so `set_always_on_top(true)` alone would be a no-op.
+    force_topmost(&win);
     // Best effort: on exclusive fullscreen this minimizes the game (physical
     // Windows behavior, documented in settings). The prompt stays usable via
     // mouse/keyboard/gamepad regardless.
     let _ = win.set_focus();
+    // Focusing can reorder topmost windows (the game may pull itself back to
+    // the top of the band), so re-assert once more after taking focus.
+    force_topmost(&win);
     tracing::info!(
         kind = %payload.kind,
         match_id = payload.match_id,
         "Prompt window shown"
     );
     Ok(())
+}
+
+/// Periodic keeper used while the prompt is on screen: alt-tabbing or the
+/// game regaining focus can push it behind, and the prompt must stay visible
+/// until the player answers or the timeout expires.
+pub fn keep_prompt_on_top(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window(PROMPT_LABEL) {
+        if win.is_visible().unwrap_or(false) {
+            force_topmost(&win);
+        }
+    }
 }
 
 /// Hide the prompt window, telling its content to reset first.
