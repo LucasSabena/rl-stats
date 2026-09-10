@@ -162,7 +162,7 @@ export function ProConfigsPage() {
                                 <ProPlayerAvatar player={player} size="sm" />
                               ) : (
                                 <span className={`inline-block h-2 w-2 rounded-full ${
-                                  player.camera ? "bg-green-400" : "bg-text-tertiary"
+                                  player.camera ? "bg-accent-success" : "bg-text-tertiary"
                                 }`} />
                               )}
                               <span className="truncate">{player.name}</span>

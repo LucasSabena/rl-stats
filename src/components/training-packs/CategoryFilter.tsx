@@ -46,7 +46,7 @@ export function CategoryFilter({
         className={cn(
           "rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200",
           activeCategory === null
-            ? "bg-accent-primary text-white shadow-md shadow-accent-primary/20"
+            ? "bg-accent-primary text-accent-primary-fg shadow-md shadow-accent-primary/20"
             : "bg-bg-panel text-text-secondary border border-border-subtle hover:bg-bg-hover hover:text-text-primary"
         )}
       >
@@ -63,7 +63,7 @@ export function CategoryFilter({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200",
               isActive
-                ? "bg-accent-primary text-white shadow-md shadow-accent-primary/20"
+                ? "bg-accent-primary text-accent-primary-fg shadow-md shadow-accent-primary/20"
                 : "bg-bg-panel text-text-secondary border border-border-subtle hover:bg-bg-hover hover:text-text-primary"
             )}
           >

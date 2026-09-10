@@ -62,7 +62,7 @@ function ToggleRow({
         className={cn(
           "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-all duration-200",
           checked
-            ? "bg-accent-primary shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+            ? "bg-accent-primary shadow-[0_0_8px_color-mix(in_oklab,var(--accent)_40%,transparent)]"
             : "bg-border-highlight",
         )}
       >
@@ -511,7 +511,7 @@ export function SettingsPanel() {
                         className={cn(
                           "rounded-lg px-4 py-2 text-xs font-medium transition-all duration-200 active:scale-95",
                           field.value === type
-                            ? "bg-accent-primary text-white shadow-[0_0_12px_rgba(59,130,246,0.3)]"
+                            ? "bg-accent-primary text-accent-primary-fg shadow-[0_0_12px_color-mix(in_oklab,var(--accent)_30%,transparent)]"
                             : "bg-bg-base text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated border border-border-subtle",
                         )}
                       >
@@ -560,7 +560,7 @@ export function SettingsPanel() {
                   className={cn(
                     "relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200",
                     field.value
-                      ? "bg-accent-primary shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+                      ? "bg-accent-primary shadow-[0_0_8px_color-mix(in_oklab,var(--accent)_40%,transparent)]"
                       : "bg-border-highlight",
                   )}
                 >

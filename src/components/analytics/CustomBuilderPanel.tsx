@@ -258,7 +258,7 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
                 className={cn(
                   "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-all",
                   kind === k
-                    ? "bg-accent-primary text-white shadow-sm"
+                    ? "bg-accent-primary text-accent-primary-fg shadow-sm"
                     : "text-text-secondary hover:text-text-primary",
                 )}
               >

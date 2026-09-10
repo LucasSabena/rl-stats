@@ -127,21 +127,26 @@ export function TabsContent({
   value,
   children,
   className,
+  keepMounted,
 }: {
   value: string
   children: React.ReactNode
   className?: string
+  /** Keep the panel mounted while inactive so form state survives tab switches. */
+  keepMounted?: boolean
 }) {
   const context = React.useContext(TabsContext)
   if (!context) throw new Error("TabsContent must be used within Tabs")
 
-  if (context.value !== value) return null
+  const isActive = context.value === value
+  if (!isActive && !keepMounted) return null
 
   return (
     <div
       role="tabpanel"
       id={`${context.baseId}-panel-${value}`}
       aria-labelledby={`${context.baseId}-tab-${value}`}
+      hidden={!isActive}
       tabIndex={0}
       className={cn(
         "mt-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",

@@ -138,14 +138,14 @@ export function TrainingPacksPage() {
               className={cn(
                 "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
                 favoritesOnly
-                  ? "border-yellow-400/40 bg-yellow-400/10 text-yellow-400"
+                  ? "border-accent-warning/40 bg-accent-warning/10 text-accent-warning"
                   : "border-border-subtle bg-bg-panel text-text-tertiary hover:text-text-secondary hover:bg-bg-hover"
               )}
               title={t("page.favorites")}
             >
               <Star
                 size={15}
-                className={favoritesOnly ? "fill-yellow-400" : ""}
+                className={favoritesOnly ? "fill-accent-warning" : ""}
               />
               <span className="hidden sm:inline">{t("page.favorites")}</span>
             </button>
@@ -160,7 +160,7 @@ export function TrainingPacksPage() {
             <button
               type="button"
               onClick={() => setAddModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-accent-primary px-3 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+              className="flex items-center gap-1.5 rounded-lg bg-accent-primary px-3 py-2 text-sm font-semibold text-accent-primary-fg transition-all hover:brightness-110 active:scale-[0.98]"
             >
               <Plus size={15} />
               <span className="hidden sm:inline">{t("page.addPack")}</span>
@@ -270,13 +270,13 @@ export function TrainingPacksPage() {
                         className={cn(
                           "rounded-lg p-1 transition-all",
                           fav
-                            ? "text-yellow-400"
-                            : "text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-yellow-400"
+                            ? "text-accent-warning"
+                            : "text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-accent-warning"
                         )}
                       >
                         <Star
                           size={14}
-                          className={fav ? "fill-yellow-400" : ""}
+                          className={fav ? "fill-accent-warning" : ""}
                         />
                       </button>
                     </div>
@@ -368,7 +368,7 @@ export function TrainingPacksPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Star
                           size={12}
-                          className="text-yellow-400 fill-yellow-400"
+                          className="text-accent-warning fill-accent-warning"
                         />
                         <span className="text-[10px] font-semibold text-accent-primary">
                           {t("page.featured")}

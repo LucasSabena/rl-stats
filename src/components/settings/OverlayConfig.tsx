@@ -243,7 +243,7 @@ export function OverlayConfig() {
                 onClick={handleToggleEnabled}
                 className={cn(
                   "relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 outline-none",
-                  watched.enabled ? "bg-accent-primary shadow-[0_0_12px_rgba(59,130,246,0.5)]" : "bg-text-muted/30"
+                  watched.enabled ? "bg-accent-primary shadow-[0_0_12px_color-mix(in_oklab,var(--accent)_50%,transparent)]" : "bg-text-muted/30"
                 )}
               >
                 <span
@@ -367,7 +367,7 @@ export function OverlayConfig() {
                         className={cn(
                           "flex-1 rounded-md py-1.5 text-xs font-medium transition-colors",
                           watched.fontScale === scale
-                            ? "bg-accent-secondary text-white shadow"
+                            ? "bg-accent-secondary text-[var(--accent-fg)] shadow"
                             : "text-text-muted hover:text-text-primary hover:bg-bg-elevated"
                         )}
                       >
@@ -457,7 +457,7 @@ export function OverlayConfig() {
                     )}>
                       <div className={cn(
                         "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
-                        watched[key as keyof OverlayConfigForm] ? "border-accent-success bg-accent-success text-white" : "border-border-highlight bg-transparent"
+                        watched[key as keyof OverlayConfigForm] ? "border-accent-success bg-accent-success text-[var(--accent-fg)]" : "border-border-highlight bg-transparent"
                       )}>
                         {watched[key as keyof OverlayConfigForm] && (
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">

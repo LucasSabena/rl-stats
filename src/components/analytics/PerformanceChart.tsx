@@ -97,7 +97,7 @@ export const PerformanceChart = memo(function PerformanceChart({
                 className={cn(
                   "rounded-md px-2.5 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
                   metric === m.key && !combo
-                    ? "bg-accent-primary text-white shadow-sm"
+                    ? "bg-accent-primary text-accent-primary-fg shadow-sm"
                     : "text-text-secondary hover:text-text-primary"
                 )}
               >
@@ -113,7 +113,7 @@ export const PerformanceChart = memo(function PerformanceChart({
             className={cn(
               "flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary",
               combo
-                ? "border-accent-primary bg-accent-primary text-white shadow-sm"
+                ? "border-accent-primary bg-accent-primary text-accent-primary-fg shadow-sm"
                 : "border-border-subtle bg-bg-surface text-text-secondary hover:text-text-primary"
             )}
           >

@@ -135,12 +135,12 @@ export function ProfileManagement() {
 
       {activeProfile && (
         <Card variant="accent" className="flex items-center gap-3">
-          <User size={20} className="shrink-0 text-white" />
+          <User size={20} className="shrink-0 text-accent-primary" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white">{activeProfile.name}</p>
-            <p className="text-xs text-white/80">{t("profiles:activeLabel")}</p>
+            <p className="truncate text-sm font-semibold text-accent-primary">{activeProfile.name}</p>
+            <p className="text-xs text-accent-primary/80">{t("profiles:activeLabel")}</p>
           </div>
-          <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold text-white">
+          <span className="shrink-0 rounded-full bg-accent-primary/20 px-2.5 py-0.5 text-xs font-semibold text-accent-primary">
             {t("profiles:activeBadge")}
           </span>
         </Card>
@@ -163,9 +163,9 @@ export function ProfileManagement() {
                 variant={isActive ? "accent" : "default"}
                 className="flex items-center gap-3"
               >
-                <User size={18} className={isActive ? "text-white" : "shrink-0 text-text-tertiary"} />
+                <User size={18} className={isActive ? "text-accent-primary" : "shrink-0 text-text-tertiary"} />
                 <div className="min-w-0 flex-1">
-                  <p className={`truncate text-sm font-medium ${isActive ? "text-white" : "text-text-primary"}`}>
+                  <p className={`truncate text-sm font-medium ${isActive ? "text-accent-primary" : "text-text-primary"}`}>
                     {profile.name}
                   </p>
                 </div>

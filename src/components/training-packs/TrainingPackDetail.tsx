@@ -113,8 +113,8 @@ export function TrainingPackDetail({
             className={cn(
               "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
               copied
-                ? "bg-accent-success text-white"
-                : "bg-accent-primary text-white hover:brightness-110"
+                ? "bg-accent-success text-[var(--accent-fg)]"
+                : "bg-accent-primary text-accent-primary-fg hover:brightness-110"
             )}
           >
             {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -181,7 +181,7 @@ export function TrainingPackDetail({
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold transition-all",
           isFavorite
-            ? "border-yellow-400/40 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20"
+            ? "border-accent-warning/40 bg-accent-warning/10 text-accent-warning hover:bg-accent-warning/20"
             : "border-border-subtle bg-bg-panel text-text-secondary hover:bg-bg-hover hover:text-text-primary",
           justToggled && "scale-[1.02]"
         )}
@@ -190,7 +190,7 @@ export function TrainingPackDetail({
           size={16}
           className={cn(
             "transition-all",
-            isFavorite ? "fill-yellow-400 text-yellow-400" : "",
+            isFavorite ? "fill-accent-warning text-accent-warning" : "",
             justToggled && "animate-spin"
           )}
         />

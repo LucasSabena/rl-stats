@@ -66,7 +66,7 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
       </div>
       <button
         onClick={onClose}
-        className="shrink-0 rounded-md p-1 text-text-tertiary transition-colors hover:bg-white/10 hover:text-text-primary"
+        className="shrink-0 rounded-md p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
         aria-label={t("accessibility.close")}
       >
         <X size={14} />

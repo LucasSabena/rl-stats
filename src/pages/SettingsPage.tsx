@@ -94,12 +94,12 @@ export function SettingsPage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="general" className="space-y-6">
+          <TabsContent value="general" keepMounted className="space-y-6">
             <SettingsPanel />
             <UpdateChecker />
           </TabsContent>
 
-          <TabsContent value="game" className="space-y-6">
+          <TabsContent value="game" keepMounted className="space-y-6">
             <IniHelper />
             <MmrSourcesSetup />
             <RapidApiSetup />
@@ -107,7 +107,7 @@ export function SettingsPage() {
             <ParseBotSetup />
           </TabsContent>
 
-          <TabsContent value="overlay" className="space-y-6">
+          <TabsContent value="overlay" keepMounted className="space-y-6">
             <OverlayConfig />
           </TabsContent>
 

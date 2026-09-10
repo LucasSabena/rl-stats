@@ -3,10 +3,10 @@ import type { RankInfo } from "@/lib/types";
 
 const RANK_COLORS: Record<string, string> = {
   Unranked: "bg-bg-panel text-text-tertiary",
-  Bronze: "bg-amber-900/30 text-amber-400",
-  Silver: "bg-gray-400/20 text-gray-300",
-  Gold: "bg-yellow-500/20 text-yellow-400",
-  Platinum: "bg-cyan-500/20 text-cyan-400",
+  Bronze: "bg-accent-warning-subtle text-accent-warning",
+  Silver: "bg-bg-panel text-text-secondary",
+  Gold: "bg-accent-warning/20 text-accent-warning",
+  Platinum: "bg-accent-info-subtle text-accent-info",
   Diamond: "bg-team-blue-bg text-team-blue",
   Champion: "bg-accent-purple-subtle text-accent-purple",
   "Grand Champion": "bg-accent-danger-subtle text-accent-danger",
@@ -15,10 +15,10 @@ const RANK_COLORS: Record<string, string> = {
 
 const RANK_BORDER: Record<string, string> = {
   Unranked: "border-border-subtle",
-  Bronze: "border-amber-900/50",
-  Silver: "border-gray-400/40",
-  Gold: "border-yellow-500/50",
-  Platinum: "border-cyan-500/50",
+  Bronze: "border-accent-warning/25",
+  Silver: "border-border-default",
+  Gold: "border-accent-warning/50",
+  Platinum: "border-accent-info/40",
   Diamond: "border-team-blue/40",
   Champion: "border-accent-purple/40",
   "Grand Champion": "border-accent-danger/40",

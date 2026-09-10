@@ -341,7 +341,7 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
                         <span className="flex items-center justify-between gap-3">
                           <span className="flex items-center gap-2">
                             <span className={cn("flex h-4 w-4 items-center justify-center rounded border", checked ? "border-accent-primary bg-accent-primary" : "border-border-highlight")}>
-                              {checked && <Check size={11} className="text-white" />}
+                              {checked && <Check size={11} className="text-accent-primary-fg" />}
                             </span>
                             <span className="text-sm font-semibold capitalize text-text-primary">{item.platform}</span>
                           </span>
@@ -414,7 +414,7 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50" aria-live="polite">
-      <div className="absolute inset-0 bg-black/72" />
+      <div className="pointer-events-auto absolute inset-0 bg-black/72" />
       {targetRect && (
         <div className="absolute rounded-2xl border-2 border-accent-primary bg-transparent transition-all duration-300" style={targetRect} />
       )}

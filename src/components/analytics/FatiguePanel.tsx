@@ -132,7 +132,7 @@ export const FatiguePanel = memo(function FatiguePanel({
                 className={cn(
                   "rounded-md px-2.5 py-1 text-xs font-medium transition-all",
                   tab === key
-                    ? "bg-accent-primary text-white shadow-sm"
+                    ? "bg-accent-primary text-accent-primary-fg shadow-sm"
                     : "text-text-secondary hover:text-text-primary",
                 )}
               >

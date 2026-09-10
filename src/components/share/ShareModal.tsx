@@ -112,7 +112,7 @@ export function ShareModal({ isOpen, onClose, context }: ShareModalProps) {
     >
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_240px]">
         <div className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-2xl border border-border-default bg-bg-base p-3 shadow-inner">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_45%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_45%)]" />
           {isGenerating && !previewUrl ? (
             <div className="relative flex flex-col items-center gap-3 text-center text-text-secondary" role="status">
               <RefreshCw size={24} className="animate-spin text-accent-primary" />
