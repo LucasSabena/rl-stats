@@ -65,9 +65,15 @@ pub struct SessionManager {
 }
 
 /// How long a training (solo) session may go without events before the
-/// sweeper considers it finished. Free Play streams UpdateState constantly
-/// while played, so silence means the player left the mode.
-pub const TRAINING_IDLE_FINALIZE_SECS: i64 = 15;
+/// sweeper considers it finished.
+///
+/// Free Play emits events while the player is actually playing, but some
+/// streams go quiet for long stretches (menus inside the mode, settings,
+/// walking away). The sweeper is only a fallback: a new match or the game
+/// process closing finalize the stint immediately. Three minutes keeps a
+/// quiet training session in one piece instead of chopping it into
+/// zero-duration slivers.
+pub const TRAINING_IDLE_FINALIZE_SECS: i64 = 180;
 
 impl SessionManager {
     pub fn new(kickoff_threshold_seconds: i32) -> Self {
@@ -443,12 +449,14 @@ impl SessionManager {
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let start_time = self.start_time.unwrap_or_else(Utc::now);
         // An idle-finalized training stint ended when the events stopped, not
-        // when the sweeper noticed.
+        // when the sweeper noticed. Never let the window go backwards when the
+        // last activity predates the session start (clock skew / late init).
         let end_time = if self.idle_finalized {
-            self.last_activity.unwrap_or(start_time)
+            self.last_activity.unwrap_or_else(Utc::now)
         } else {
             Utc::now()
-        };
+        }
+        .max(start_time);
         let duration = (end_time - start_time).num_seconds().max(0) as i32;
         let arena = self.arena.clone().unwrap_or_else(|| "Unknown".into());
 
@@ -697,7 +705,7 @@ impl SessionManager {
                 .map(|(primary_id, _)| primary_id.clone()),
             local_team_num: my_team,
             players: players_vec,
-            match_type: self.match_type.clone(),
+            match_type: effective_match_type.map(str::to_string),
             kickoff_goals_scored: my_kickoff_goals,
             kickoff_goals_conceded: their_kickoff_goals,
         };
@@ -791,6 +799,13 @@ impl SessionManager {
         }
 
         info!(match_id, "Match persisted successfully");
+        // The session is single-use: once written it must never be persisted
+        // again. Without this reset the manager stayed `Finished` after the
+        // save, so the *next* `MatchCreated` re-entered the interrupted path
+        // and wrote the same stint a second time — for training (no GUID to
+        // collide on) this minted a duplicate row with an inflated duration,
+        // which is what polluted the history and the match analytics.
+        self.reset();
         Ok(PersistResult {
             match_id,
             is_training,
@@ -866,6 +881,14 @@ impl SessionManager {
     /// Whether the current live session is a training (solo) session.
     pub fn is_training_session(&self) -> bool {
         self.max_player_count <= 1 && self.phase == MatchPhase::Active
+    }
+
+    /// Whether this session has ever contained more than one player, i.e. it
+    /// is a real match and not a solo training stint. The transition to true
+    /// is the reliable "a game actually began" signal — `MatchCreated` also
+    /// fires when hopping into Free Play.
+    pub fn is_real_match(&self) -> bool {
+        self.max_player_count > 1
     }
 
     fn has_meaningful_match_data(&self) -> bool {
@@ -1296,6 +1319,69 @@ mod tests {
         assert_eq!(session.phase(), &MatchPhase::Active);
     }
 
+    /// `is_real_match` is the roster-based signal the event loop uses to tell
+    /// a real game from a Free Play hop (both start with MatchCreated).
+    #[test]
+    fn is_real_match_follows_the_roster() {
+        let training = solo_training_session();
+        assert!(!training.is_real_match());
+
+        let multiplayer = started_session();
+        assert!(multiplayer.is_real_match());
+    }
+
+    #[test]
+    fn finished_training_is_persisted_exactly_once() {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-session-flow-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pool = crate::core::storage::init_storage(dir.join("test.db")).expect("init storage");
+
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        let mut players = HashMap::new();
+        players.insert("p1".to_string(), live_player("p1", "Alpha"));
+        session.handle_event(RlEvent::UpdateState {
+            match_guid: None,
+            game: GameState {
+                teams: None,
+                time: 0,
+                is_overtime: false,
+                ball: None,
+                arena: Some("stadium_p".into()),
+                target: None,
+            },
+            players,
+        });
+        session.start_time = Some(Utc::now() - chrono::Duration::minutes(10));
+        session.last_activity = Some(Utc::now() - chrono::Duration::minutes(5));
+        assert!(session.check_training_idle_finalize());
+        let first = session.persist_finished_match(&pool).unwrap();
+        session.handle_event(RlEvent::MatchDestroyed);
+
+        // Persisting consumed the session: a second attempt must fail instead
+        // of minting a duplicate training row.
+        assert_eq!(session.phase(), &MatchPhase::Waiting);
+        assert!(session.persist_finished_match(&pool).is_err());
+        session.handle_event(RlEvent::MatchCreated);
+
+        let conn = crate::core::storage::get_conn(&pool).unwrap();
+        let rows: Vec<(i64, i32, String)> = conn
+            .prepare("SELECT id, duration_seconds, match_type FROM matches ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows.len(), 1, "the stint must be written exactly once");
+        assert_eq!(rows[0].0, first.match_id);
+        assert_eq!(rows[0].1, 300);
+        assert_eq!(rows[0].2, "training");
+    }
+
     /// A new match starting supersedes an active training stint immediately,
     /// without waiting for the idle window.
     #[test]
@@ -1315,10 +1401,34 @@ mod tests {
         // Pretend the stint started 10 minutes ago and went silent 5 minutes ago.
         session.start_time = Some(Utc::now() - chrono::Duration::minutes(10));
         session.last_activity = Some(Utc::now() - chrono::Duration::minutes(5));
-        session.last_activity =
-            Some(Utc::now() - chrono::Duration::seconds(TRAINING_IDLE_FINALIZE_SECS + 5));
         assert!(session.check_training_idle_finalize());
         assert!(session.idle_finalized);
+
+        let pool = {
+            let dir = std::env::temp_dir().join(format!(
+                "rl-stats-session-training-{}-{}",
+                std::process::id(),
+                Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            crate::core::storage::init_storage(dir.join("test.db")).expect("init storage")
+        };
+        let result = session.persist_finished_match(&pool).unwrap();
+        assert!(result.is_training);
+        let conn = crate::core::storage::get_conn(&pool).unwrap();
+        let (duration, match_type): (i32, String) = conn
+            .query_row(
+                "SELECT duration_seconds, match_type FROM matches WHERE id = ?1",
+                rusqlite::params![result.match_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(match_type, "training");
+        // 10 minutes elapsed between start and last activity.
+        assert_eq!(
+            duration, 300,
+            "training duration must span start → last activity"
+        );
     }
 
     /// Regression: streams that never emit GoalReplayEnd / RoundStarted /

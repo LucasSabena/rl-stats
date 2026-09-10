@@ -41,6 +41,10 @@ describe("MoodPrompt", () => {
     expect(screen.getByText("mood:modal.title")).toBeDefined();
     expect(screen.getByText("prompt:hints.gamepad")).toBeDefined();
 
+    // Past the warmup window, so accept/dismiss are armed.
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
     act(() => {
       fireEvent.keyDown(window, { key: "ArrowRight" });
       fireEvent.keyDown(window, { key: "ArrowRight" });
@@ -51,6 +55,28 @@ describe("MoodPrompt", () => {
 
     expect(mutateMock).toHaveBeenCalledWith(
       { matchId: 11, mood: "neutral" },
+      expect.anything(),
+    );
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores accept while the player is still holding game inputs", () => {
+    const onDone = vi.fn();
+    render(<MoodPrompt matchId={15} timeoutSecs={30} onDone={onDone} />);
+
+    // Warmup window: the held boost/jump from the match must not answer the
+    // prompt before the player even sees it.
+    act(() => {
+      fireEvent.keyDown(window, { key: "Enter" });
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(mutateMock).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+
+    // A deliberate mouse click still works immediately.
+    fireEvent.click(screen.getByRole("radio", { name: "mood:options.happy" }));
+    expect(mutateMock).toHaveBeenCalledWith(
+      { matchId: 15, mood: "happy" },
       expect.anything(),
     );
     expect(onDone).toHaveBeenCalledTimes(1);
@@ -76,6 +102,9 @@ describe("MoodPrompt", () => {
     const onDone = vi.fn();
     render(<MoodPrompt matchId={13} timeoutSecs={30} onDone={onDone} />);
 
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
     act(() => {
       fireEvent.keyDown(window, { key: "Escape" });
     });

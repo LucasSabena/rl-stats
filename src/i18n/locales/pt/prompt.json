@@ -4,5 +4,7 @@
     "keyboard": "Teclado: ← → · Enter · Esc",
     "mouse": "Mouse: passar + clicar"
   },
-  "timeout": "Fecha em {{count}}s"
+  "timeout": "Fecha em {{count}}s",
+  "secondsLeft": "{{count}}s",
+  "saving": "Salvando…"
 }

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { MoodPicker } from "@/components/mood/MoodPicker";
 import { useSetMatchMood } from "@/hooks/useSetMatchMood";
-import type { MoodKey } from "@/lib/moods";
+import { useUIStore } from "@/stores/uiStore";
+import { MOODS, type MoodKey } from "@/lib/moods";
 
 interface MatchFinishedPayload {
   matchId: number;
@@ -24,24 +25,24 @@ interface PendingMatch {
 }
 
 /**
- * Post-match mood prompt, mounted once at the app root.
+ * Post-match mood prompt inside the main window, mounted once at the app root.
  *
- * Opens when the backend emits `match-finished` (training matches excluded)
- * and auto-dismisses — without saving — when the next match starts
- * (`match-started`), so an unanswered prompt never blocks the UI.
+ * Opens on `match-finished` (training stints excluded) and — unlike the focus
+ * prompt window over the game — it does NOT disappear when the next match
+ * begins. Rating is optional, so the question waits until the player answers,
+ * skips it, or a newer match replaces it. That is the whole point: with a
+ * competitive queue there is rarely time to react on the post-game screen.
  */
 export function MatchMoodModal() {
   const { t } = useTranslation(["mood", "common"]);
   const [pending, setPending] = useState<PendingMatch | null>(null);
   const [selected, setSelected] = useState<MoodKey | null>(null);
-  const pendingRef = useRef<PendingMatch | null>(null);
-  pendingRef.current = pending;
 
   const moodMutation = useSetMatchMood();
+  const addToast = useUIStore((state) => state.addToast);
 
   useEffect(() => {
     let unlistenFinished: UnlistenFn | null = null;
-    let unlistenStarted: UnlistenFn | null = null;
     let cancelled = false;
 
     async function setup() {
@@ -57,12 +58,6 @@ export function MatchMoodModal() {
           setPending({ matchId: payload.matchId, isTraining: false });
           setSelected(null);
         });
-        // A new match starting supersedes the pending prompt.
-        unlistenStarted = await listen("match-started", () => {
-          if (cancelled) return;
-          setPending(null);
-          setSelected(null);
-        });
       } catch {
         // Running outside Tauri (browser dev) — the modal simply never opens.
       }
@@ -72,7 +67,6 @@ export function MatchMoodModal() {
     return () => {
       cancelled = true;
       if (unlistenFinished) unlistenFinished();
-      if (unlistenStarted) unlistenStarted();
     };
   }, []);
 
@@ -82,18 +76,51 @@ export function MatchMoodModal() {
     moodMutation.reset();
   }, [moodMutation]);
 
-  const save = useCallback(() => {
-    if (!pending || !selected) return;
-    moodMutation.mutate(
-      { matchId: pending.matchId, mood: selected },
-      {
-        onSuccess: () => close(),
-        onError: (error) => {
-          console.error("[mood] failed to save match mood", error);
+  const save = useCallback(
+    (mood?: MoodKey) => {
+      const choice = mood ?? selected;
+      if (!pending || !choice) return;
+      setSelected(choice);
+      moodMutation.mutate(
+        { matchId: pending.matchId, mood: choice },
+        {
+          onSuccess: () => {
+            addToast({
+              type: "success",
+              title: t("mood:toast.saved"),
+              message: t("mood:toast.savedMessage"),
+            });
+            close();
+          },
+          onError: (error) => {
+            console.error("[mood] failed to save match mood", error);
+          },
         },
-      },
-    );
-  }, [pending, selected, moodMutation, close]);
+      );
+    },
+    [pending, selected, moodMutation, close, addToast, t],
+  );
+
+  // Keyboard shortcuts while the modal is open: 1-5 rate directly, Enter
+  // saves the highlighted face, Escape skips.
+  useEffect(() => {
+    if (!pending) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const index = Number(event.key) - 1;
+      if (index >= 0 && index < MOODS.length) {
+        event.preventDefault();
+        save(MOODS[index]);
+      } else if (event.key === "Enter" && selected) {
+        event.preventDefault();
+        save();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pending, selected, save, close]);
 
   return (
     <Modal
@@ -109,7 +136,7 @@ export function MatchMoodModal() {
           </Button>
           <Button
             variant="primary"
-            onClick={save}
+            onClick={() => save()}
             disabled={!selected}
             isLoading={moodMutation.isPending}
           >

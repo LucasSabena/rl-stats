@@ -262,36 +262,66 @@ pub fn run() {
             {
                 let pool = db_pool.clone();
                 tauri::async_runtime::spawn(async move {
-                    if crate::core::storage::get_kv_flag(&pool, "analytics_repair_v21") {
-                        return;
-                    }
-                    info!("Running one-off v21 analytics repair");
-                    let settings =
-                        crate::core::settings::get_settings(&pool).unwrap_or_default();
-                    let backfill = crate::core::patterns::recompute_kickoff_goals(
+                    // v21 repair, then a second pass that purges training rows
+                    // from the daily rollups. Databases upgraded from before the
+                    // training-exclusion fix carry training stints counted as
+                    // "matches played", which made the analytics summary show
+                    // more games than wins + losses.
+                    let rollups_dirty = !crate::core::storage::get_kv_flag(
                         &pool,
-                        settings.kickoff_goal_threshold_seconds,
+                        "analytics_repair_v21",
                     );
-                    match backfill {
-                        Ok(report) => info!(report = %report, "Kickoff backfill finished"),
-                        Err(error) => {
-                            tracing::warn!(error = %error, "Kickoff backfill failed");
+                    if rollups_dirty {
+                        info!("Running one-off v21 analytics repair");
+                        let settings =
+                            crate::core::settings::get_settings(&pool).unwrap_or_default();
+                        let backfill = crate::core::patterns::recompute_kickoff_goals(
+                            &pool,
+                            settings.kickoff_goal_threshold_seconds,
+                        );
+                        match backfill {
+                            Ok(report) => info!(report = %report, "Kickoff backfill finished"),
+                            Err(error) => {
+                                tracing::warn!(error = %error, "Kickoff backfill failed");
+                            }
                         }
                     }
-                    let names = crate::core::storage::identity_candidate_names(&settings);
-                    if let Err(error) =
-                        crate::core::storage::rebuild_daily_rollups_for_identity(
-                            &pool,
-                            settings.local_primary_id.as_deref(),
-                            &names,
-                        )
-                    {
-                        tracing::warn!(error = %error, "Rollup rebuild failed");
+
+                    let training_repair_pending = !crate::core::storage::get_kv_flag(
+                        &pool,
+                        "analytics_repair_training_v23",
+                    );
+                    if training_repair_pending {
+                        // Old builds persisted a finished training stint once
+                        // per following MatchCreated, minting duplicate rows
+                        // with inflated durations. Drop them before the rollup
+                        // rebuild below so both the training totals and the
+                        // match analytics start clean.
+                        if let Err(error) =
+                            crate::core::storage::remove_duplicate_training_rows(&pool)
+                        {
+                            tracing::warn!(error = %error, "Training dedup failed");
+                        }
                     }
-                    if let Err(error) =
-                        crate::core::storage::set_kv_flag(&pool, "analytics_repair_v21")
-                    {
-                        tracing::warn!(error = %error, "Could not persist repair flag");
+                    if rollups_dirty || training_repair_pending {
+                        let settings =
+                            crate::core::settings::get_settings(&pool).unwrap_or_default();
+                        let names = crate::core::storage::identity_candidate_names(&settings);
+                        if let Err(error) =
+                            crate::core::storage::rebuild_daily_rollups_for_identity(
+                                &pool,
+                                settings.local_primary_id.as_deref(),
+                                &names,
+                            )
+                        {
+                            tracing::warn!(error = %error, "Rollup rebuild failed");
+                        }
+                    }
+
+                    for flag in ["analytics_repair_v21", "analytics_repair_training_v23"] {
+                        if let Err(error) = crate::core::storage::set_kv_flag(&pool, flag) {
+                            tracing::warn!(error = %error, flag, "Could not persist repair flag");
+                        }
                     }
                 });
             }
@@ -408,6 +438,7 @@ pub fn run() {
                 tracker_refresh_loop(db_pool_tracker, app_handle_tracker).await;
             });
 
+            let session_manager_for_game_events = Arc::clone(&session_manager);
             app.manage(AppState {
                 db_pool: db_pool.clone(),
                 session_manager,
@@ -423,6 +454,11 @@ pub fn run() {
             app.manage(TrayHandle {
                 _tray: Box::new(tray),
             });
+
+            // Pre-create the post-match prompt window hidden: its webview loads
+            // with the app instead of during the seconds after a match ends.
+            // Best effort — the pull model covers a cold window if this fails.
+            crate::commands::prompt_window::prewarm_prompt_window(app.handle());
 
             // Restore overlay window if it was enabled last session and game is running
             // Also setup game status listener to auto-show/hide overlay
@@ -447,9 +483,11 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 let pool = db_pool.clone();
+                let session_manager = Arc::clone(&session_manager_for_game_events);
                 tauri::async_runtime::spawn(async move {
                     let app_handle_for_listener = app_handle.clone();
                     let pool_for_closure = pool.clone();
+                    let session_manager_for_closure = Arc::clone(&session_manager);
 
                     let _receiver = app_handle_for_listener.listen("game-status-changed", move |event| {
                         let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
@@ -460,6 +498,7 @@ pub fn run() {
                             .map(str::to_string);
                         let pool = pool_for_closure.clone();
                         let app_handle = app_handle.clone();
+                        let session_manager = Arc::clone(&session_manager_for_closure);
 
                         tauri::async_runtime::spawn(async move {
                             // Update game_running + active_platform in settings
@@ -467,6 +506,16 @@ pub fn run() {
                                 app_settings.game_running = game_running;
                                 app_settings.active_platform = active_platform.clone();
                                 let _ = set_settings(&pool, &app_settings);
+                            }
+
+                            if !game_running {
+                                // Game closed: a live training stint ends here,
+                                // and its last-activity timestamp is the best
+                                // available end. Also dismiss any pending prompt.
+                                finalize_active_training(&session_manager, &pool, &app_handle).await;
+                                let _ = crate::commands::prompt_window::hide_prompt_window(
+                                    &app_handle,
+                                );
                             }
 
                             if let Ok(app_settings) = get_settings(&pool) {
@@ -495,11 +544,6 @@ pub fn run() {
                                     if let Some(ref win) = overlay_win {
                                         let _ = win.hide();
                                     }
-                                    // A closed game also dismisses any pending prompt.
-                                    let _ =
-                                        crate::commands::prompt_window::hide_prompt_window(
-                                            &app_handle,
-                                        );
                                 }
                             }
                         });
@@ -534,25 +578,6 @@ struct SessionTally {
     losses: i32,
     streak: i32,
     last_was_win: Option<bool>,
-}
-
-/// How long after an interrupt-persist a companion entry event is absorbed.
-///
-/// Entering training (or a match) emits both `MatchCreated` and
-/// `MatchInitialized` milliseconds apart. The first one persists the just
-/// finished match and opens its rating prompt; without this window the
-/// companion event would instantly hide it again (visible flash, rating
-/// lost). A genuinely new match can never start this fast (countdowns alone
-/// take longer), so suppressing the burst is always correct.
-const ENTRY_BURST_SUPPRESS_SECS: u64 = 3;
-
-/// True when `now` falls inside the suppression window opened at `opened`.
-fn entry_burst_suppressed(opened: Option<Instant>, now: Instant) -> bool {
-    opened
-        .map(|t| {
-            now.saturating_duration_since(t) < StdDuration::from_secs(ENTRY_BURST_SUPPRESS_SECS)
-        })
-        .unwrap_or(false)
 }
 
 /// Persist a finished session: write the match, update the tally, emit
@@ -683,6 +708,21 @@ async fn persist_finished_session(
     }
 }
 
+/// Persist an in-progress training stint when external evidence says it is
+/// over (the game process closed). Free Play never emits MatchEnded, and
+/// waiting for the idle sweeper would lose the tail of the session.
+async fn finalize_active_training(
+    session_manager: &Arc<RwLock<SessionManager>>,
+    db_pool: &Arc<DbPool>,
+    app_handle: &tauri::AppHandle,
+) {
+    let mut session = session_manager.write().await;
+    if session.check_training_superseded_finalize() {
+        let mut tally = SessionTally::default();
+        persist_finished_session(&mut session, db_pool, app_handle, &mut tally).await;
+    }
+}
+
 /// Background task that consumes events from the ingestor and drives the session manager.
 /// Emits Tauri `live-update` events when game state changes so the frontend can react in real time.
 async fn process_events(
@@ -694,7 +734,10 @@ async fn process_events(
     info!("Event processing task started");
 
     let mut tally = SessionTally::default();
-    let mut last_interrupt: Option<Instant> = None;
+    // Set once per session when the roster first proves a real match (more
+    // than one player). Free Play entries never set it, so a post-match prompt
+    // survives a hop into training and only yields when an actual game starts.
+    let mut real_match_started = false;
 
     struct MismatchState {
         alerted: bool,
@@ -753,51 +796,30 @@ async fn process_events(
                 // hopped into training or queued the next match in <2s) was
                 // never persisted — and reset() below would wipe it forever,
                 // losing the match, its summary event and its mood prompt.
-                // Persist it first. This MatchCreated must NOT dismiss the
-                // prompt it just triggered (nor emit match-started for it):
-                // the rating belongs to the finished match, even if the
-                // player is already in training. The *next* MatchCreated
-                // dismisses it normally.
+                // Persist it first. The persist consumes the session, so the
+                // new MatchCreated starts from a clean slate.
                 let interrupted = session.phase() == &MatchPhase::Finished;
                 if interrupted {
                     persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
-                    last_interrupt = Some(Instant::now());
-                } else if session.is_training_session() {
+                } else if session.is_training_session()
+                    && session.check_training_superseded_finalize()
+                {
                     // The player left training and queued straight into a
-                    // match (or the game moved on): the training stint is
-                    // over even though Free Play never emits MatchEnded.
-                    // Finalize + persist before reset() erases it.
-                    if session.check_training_superseded_finalize() {
-                        persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally)
-                            .await;
-                    }
+                    // match: the training stint is over even though Free Play
+                    // never emits MatchEnded. Finalize + persist before
+                    // reset() erases it.
+                    persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
                 }
+                real_match_started = false;
                 tally = SessionTally::default();
                 mismatch_state.alerted = false;
                 mismatch_state.last_detected_id = None;
                 last_live_publish = Instant::now() - StdDuration::from_secs(1);
                 last_identity_check = Instant::now() - StdDuration::from_secs(5);
                 obs_text::update_obs_files(0, 0, "");
-                // A new match supersedes any pending post-match prompt —
-                // unless this very event interrupted a finished match (see
-                // above): that prompt was just created for it. The same goes
-                // for the companion entry event (MatchCreated +
-                // MatchInitialized fire milliseconds apart on every training
-                // hop): it must not hide the prompt the first one opened.
-                if !interrupted && !entry_burst_suppressed(last_interrupt, Instant::now()) {
-                    let _ = crate::commands::prompt_window::hide_prompt_window(&app_handle);
-
-                    let _ = app_handle.emit(
-                        "match-started",
-                        serde_json::json!({
-                            "timestamp": chrono::Utc::now().to_rfc3339()
-                        }),
-                    );
-                } else if !interrupted {
-                    info!(
-                        "Absorbed companion entry event after interrupt-persist; prompt left open"
-                    );
-                }
+                // No `match-started` / prompt hide here: a MatchCreated also
+                // fires for Free Play. The real signal is the roster reaching
+                // two players, handled on UpdateState below.
             }
             _ => {}
         }
@@ -816,6 +838,21 @@ async fn process_events(
         // Only emit live-update for UpdateState events to avoid flickering
         // from high-frequency non-state events (goals, statfeed, etc.)
         if matches!(&event, RlEvent::UpdateState { .. }) {
+            // The roster reaching two players is the first moment a session is
+            // provably a real match. It is the point where the previous match's
+            // rating prompt must yield: a Free Play hop (one player) leaves the
+            // prompt open so the player still has time to answer.
+            if !real_match_started && session.is_real_match() {
+                real_match_started = true;
+                let _ = crate::commands::prompt_window::hide_prompt_window(&app_handle);
+                let _ = app_handle.emit(
+                    "match-started",
+                    serde_json::json!({
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    }),
+                );
+            }
+
             // Rocket League can publish up to 120 snapshots per second. The session still
             // processes every packet, but UI/IPC work is capped at 20 FPS to avoid saturating
             // WebView2 and the main thread while the game is under load.
@@ -1190,26 +1227,4 @@ async fn create_overlay_window_inner(
     let _ = win.set_always_on_top(true);
 
     Ok(())
-}
-
-#[cfg(test)]
-mod prompt_burst_tests {
-    use super::*;
-
-    #[test]
-    fn companion_entry_events_are_absorbed_after_an_interrupt() {
-        let opened = Instant::now();
-        // Milliseconds later (the MatchInitialized companion): suppressed.
-        assert!(entry_burst_suppressed(
-            Some(opened),
-            opened + StdDuration::from_millis(300)
-        ));
-        // A genuinely new match minutes later: not suppressed.
-        assert!(!entry_burst_suppressed(
-            Some(opened),
-            opened + StdDuration::from_secs(60)
-        ));
-        // No interrupt on record: normal dismiss behavior.
-        assert!(!entry_burst_suppressed(None, Instant::now()));
-    }
 }

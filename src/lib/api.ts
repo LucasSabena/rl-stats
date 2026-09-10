@@ -683,6 +683,15 @@ export async function getPendingPrompt(): Promise<{
   return invokeCommand("get_pending_prompt", {});
 }
 
+/**
+ * Hide the prompt window and drop the pending payload on the backend. Called
+ * after the player answers or skips so a stale payload can never resurrect
+ * the prompt.
+ */
+export async function hidePrompt(): Promise<void> {
+  return invokeCommand("hide_prompt", {});
+}
+
 // Analytics
 export async function getAnalytics(
   period: AnalyticsPeriod,

@@ -82,7 +82,7 @@ describe("MatchMoodModal", () => {
     expect(screen.queryByText("mood:modal.title")).toBeNull();
   });
 
-  it("dismisses the pending prompt when the next match starts", async () => {
+  it("keeps the pending prompt when the next match starts", async () => {
     render(<MatchMoodModal />);
     await flush();
 
@@ -91,10 +91,12 @@ describe("MatchMoodModal", () => {
     });
     expect(screen.getByText("mood:modal.title")).toBeDefined();
 
+    // Unlike the focus window over the game, the in-app modal waits: the
+    // player can still rate the previous match after queueing the next one.
     await act(async () => {
-      handlers["match-started"]({ payload: {} });
+      handlers["match-started"]?.({ payload: {} });
     });
-    expect(screen.queryByText("mood:modal.title")).toBeNull();
+    expect(screen.getByText("mood:modal.title")).toBeDefined();
     expect(mutateMock).not.toHaveBeenCalled();
   });
 

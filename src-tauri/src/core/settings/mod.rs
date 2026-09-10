@@ -726,6 +726,7 @@ fn quoted_values(line: &str) -> Vec<&str> {
     line.split('"').skip(1).step_by(2).collect()
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
 fn steam_base_paths() -> Vec<PathBuf> {
     let mut roots = vec![
         PathBuf::from("C:/Program Files (x86)/Steam"),
@@ -1017,6 +1018,7 @@ pub struct DetectedAccount {
     pub source: String,
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn parse_steam_loginusers(text: &str, active_account_id: Option<u32>) -> Vec<DetectedAccount> {
     const STEAM_ID_BASE: u64 = 76_561_197_960_265_728;
     let mut accounts = Vec::new();

@@ -9,7 +9,7 @@ import {
 import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { MoodPrompt } from "@/components/prompt/MoodPrompt";
 import { useSettings } from "@/hooks/useSettings";
-import { getPendingPrompt } from "@/lib/api";
+import { getPendingPrompt, hidePrompt } from "@/lib/api";
 
 interface PromptOpenPayload {
   kind: string;
@@ -77,6 +77,10 @@ export function PromptHost() {
         unlistenOpen = await listen<PromptOpenPayload>("prompt-open", (event) => {
           if (cancelled) return;
           console.info("[prompt] opened via push event", event.payload);
+          // Re-center on the monitor the player is looking at (usually the
+          // game monitor): the window is pre-created on the primary display
+          // and stays put otherwise.
+          void placeOnCursorMonitor();
           setPayload(event.payload);
         });
         unlistenClose = await listen("prompt-close", () => {
@@ -86,11 +90,12 @@ export function PromptHost() {
         // Cold-start pull: events emitted while this webview was still
         // loading are lost (Tauri drops pre-listener emits), so fetch the
         // pending payload directly. This is what makes the prompt appear at
-        // all on its first open.
+        // all if the window was created on demand.
         void placeOnCursorMonitor();
         const pending = await getPendingPrompt().catch(() => null);
         if (!cancelled && pending && typeof pending.kind === "string") {
           console.info("[prompt] opened via pending pull", pending);
+          void placeOnCursorMonitor();
           setPayload(pending);
         }
       } catch {
@@ -108,11 +113,16 @@ export function PromptHost() {
 
   const hide = () => {
     setPayload(null);
-    try {
-      void getCurrentWindow().hide();
-    } catch {
-      // Outside Tauri.
-    }
+    // Prefer the backend hide: it also clears the pending payload so a stale
+    // prompt can never be pulled back. Fall back to a direct window hide when
+    // running outside Tauri.
+    void hidePrompt().catch(() => {
+      try {
+        void getCurrentWindow().hide();
+      } catch {
+        // Outside Tauri.
+      }
+    });
   };
 
   if (!payload) {

@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   setPosition: vi.fn(),
   hide: vi.fn(),
   getPendingPrompt: vi.fn(async (): Promise<unknown> => null),
+  hidePrompt: vi.fn(async (): Promise<void> => undefined),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -45,6 +46,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@/lib/api", () => ({
   getPendingPrompt: mocks.getPendingPrompt,
+  hidePrompt: mocks.hidePrompt,
 }));
 
 vi.mock("@/hooks/useSettings", () => ({

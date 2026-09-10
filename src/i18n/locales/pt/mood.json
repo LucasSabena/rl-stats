@@ -8,6 +8,10 @@
     "skip": "Agora não",
     "error": "Não foi possível salvar. Tente de novo."
   },
+  "toast": {
+    "saved": "Humor salvo",
+    "savedMessage": "Você vai vê-lo no detalhe da partida."
+  },
   "options": {
     "very_happy": "Demais",
     "happy": "Feliz",

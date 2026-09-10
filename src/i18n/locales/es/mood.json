@@ -8,6 +8,10 @@
     "skip": "Ahora no",
     "error": "No se pudo guardar. Probá de nuevo."
   },
+  "toast": {
+    "saved": "Ánimo guardado",
+    "savedMessage": "Lo vas a ver en el detalle del partido."
+  },
   "options": {
     "very_happy": "Genial",
     "happy": "Feliz",

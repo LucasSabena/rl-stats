@@ -1,5 +1,32 @@
 # Changelog
 
+## v2.8.3 — Entrenamientos con tiempo real y prompt usable
+
+### Fixed
+
+- **Los entrenamientos se guardaban dos veces.** Un stint de Free Play se
+  persistía al terminar y otra vez al arrancar el partido siguiente, con una
+  duración inflada (hasta horas). La sesión ahora se consume al persistir y
+  el stint se escribe una sola vez. Al abrir la app se limpian
+  automáticamente las filas duplicadas viejas.
+- **El tiempo de entrenamiento quedaba en cero/desconocido.** El cierre por
+  inactividad pasa de 15 s a 3 min para no cortar sesiones con eventos
+  espaciados, y cuando cerrás Rocket League el stint se persiste al
+  instante con el tiempo real (inicio → última actividad).
+- **Los entrenamientos contaban como partidos en Análisis.** Sesiones,
+  resumen, rollups diarios, insights y la lista de partidos de una sesión
+  excluyen `match_type = 'training'` salvo que filtres por entrenamiento.
+  Se acabó el "jugaste 30 partidos, ganaste 5 y perdiste 5": ahora el
+  historial muestra el entrenamiento con su duración y un icono propio.
+- **El prompt/modal de fin de partido, rehecho.** La ventana sobre el juego
+  se precrea al abrir la app (sin espera de webview), no vuelve a robar foco
+  si ya está visible y se recentra en el monitor del cursor. Ya no se cierra
+  al entrar a Free Play: solo cuando arranca un partido real. Si el jugador
+  llega con botones del mando apretados, el prompt espera a que los suelte
+  (warmup + latch) para no auto-responderse. El modal de la ventana
+  principal queda visible hasta que lo contestes u omitas, con atajos 1-5,
+  Enter y Esc.
+
 ## v2.8.2 — El prompt sobre el juego aparece siempre
 
 ### Fixed

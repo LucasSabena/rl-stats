@@ -883,6 +883,47 @@ pub fn delete_match(pool: &DbPool, match_id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// Remove training rows that were persisted twice by the old
+/// persist-on-every-MatchCreated bug.
+///
+/// A duplicate reused the original stint's `start_time` verbatim (the session
+/// was never reset after the first save), so identical timestamps identify
+/// them exactly; two genuine stints can never share a timestamp. The lowest id
+/// is the idle-sweep row, which carries the real duration.
+pub fn remove_duplicate_training_rows(pool: &DbPool) -> AppResult<usize> {
+    let conn = get_conn(pool)?;
+    let duplicate_ids: Vec<i64> = {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM matches
+             WHERE LOWER(COALESCE(match_type, '')) = 'training'
+               AND id NOT IN (
+                   SELECT MIN(id) FROM matches
+                   WHERE LOWER(COALESCE(match_type, '')) = 'training'
+                   GROUP BY start_time
+               )",
+        )?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+
+    let mut deleted = 0usize;
+    for match_id in duplicate_ids {
+        if let Some(guid) = match_guid_for_id_conn(&conn, match_id)? {
+            sync::enqueue_delete_conn(
+                &conn,
+                "match",
+                &guid,
+                serde_json::json!({ "local_id": match_id, "guid": guid }),
+            )?;
+        }
+        deleted += conn.execute("DELETE FROM matches WHERE id = ?1", params![match_id])?;
+    }
+    if deleted > 0 {
+        info!(deleted, "Removed duplicate training rows");
+    }
+    Ok(deleted)
+}
+
 pub fn identity_candidate_names(settings: &crate::core::settings::AppSettings) -> Vec<String> {
     let mut names = Vec::new();
     if !settings.player_name.trim().is_empty() {
@@ -1076,6 +1117,8 @@ pub fn get_daily_rollups_filtered(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+    } else {
+        sql.push_str(" AND LOWER(COALESCE(match_type, '')) != 'training'");
     }
     if let Some(pl) = playlist {
         sql.push_str(" AND LOWER(playlist) = LOWER(?)");
@@ -1310,6 +1353,7 @@ pub fn rebuild_daily_rollups_for_identity(
     let mut stmt = conn.prepare(
         "SELECT id, start_time, score_blue, score_orange, winner, duration_seconds
          FROM matches
+         WHERE LOWER(COALESCE(match_type, '')) != 'training'
          ORDER BY start_time ASC",
     )?;
 
@@ -2173,6 +2217,10 @@ pub fn get_match_sessions(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+    } else {
+        // Match analytics never include training stints unless explicitly
+        // requested: solo sessions are not part of win/loss or per-match stats.
+        sql.push_str(" AND LOWER(COALESCE(match_type, '')) != 'training'");
     }
 
     if let Some(pl) = playlist {
@@ -2257,10 +2305,12 @@ pub fn get_match_sessions(
             let local_team = local_stats.and_then(|stats| stats.local_team_num);
 
             if let Some(lt) = local_team {
-                if m.winner == Some(lt) {
-                    wins += 1;
-                } else {
-                    losses += 1;
+                // A NULL winner (training stint or an unrecorded draw) is not
+                // a loss.
+                match m.winner {
+                    Some(winner) if winner == lt => wins += 1,
+                    Some(_) => losses += 1,
+                    None => unknown += 1,
                 }
 
                 if is_individual {
@@ -3036,6 +3086,8 @@ pub fn get_analytics_summary_for_identity(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+    } else {
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
     if let Some(pl) = playlist {
         sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
@@ -3365,6 +3417,8 @@ pub fn get_insights(
     if let Some(mt) = match_type {
         team_sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         team_args.push(Box::new(mt.to_string()));
+    } else {
+        team_sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
 
     if let Some(pl) = playlist {
@@ -4235,5 +4289,208 @@ mod mood_roundtrip_tests {
         let days = stats["days"].as_array().unwrap();
         assert_eq!(days.len(), 1);
         assert_eq!(days[0]["sessions"], 1);
+    }
+
+    /// Training stints are not matches: session analytics, filtered rollups and
+    /// per-identity summaries must ignore them unless `training` is the
+    /// explicitly requested match type.
+    #[test]
+    fn training_is_excluded_from_match_analytics_by_default() {
+        let pool = temp_pool("training-exclude");
+
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let start = chrono::DateTime::parse_from_rfc3339(&format!("{today}T21:00:00Z"))
+            .unwrap()
+            .with_timezone(&Utc);
+
+        {
+            let conn = get_conn(&pool).unwrap();
+
+            let training_id = insert_match_conn(
+                &conn,
+                "training-a",
+                start,
+                Some("underpass_p"),
+                false,
+                Some("training"),
+                None,
+            )
+            .unwrap();
+            finish_match_conn(
+                &conn,
+                training_id,
+                FinishMatchUpdate {
+                    end_time: start + chrono::Duration::seconds(600),
+                    score_blue: 0,
+                    score_orange: 0,
+                    winner: None,
+                    is_overtime: false,
+                    duration_seconds: 600,
+                },
+            )
+            .unwrap();
+
+            let ranked_id = insert_match_conn(
+                &conn,
+                "ranked-a",
+                start,
+                Some("DFH Stadium"),
+                true,
+                Some("ranked"),
+                Some("Doubles"),
+            )
+            .unwrap();
+            finish_match_conn(
+                &conn,
+                ranked_id,
+                FinishMatchUpdate {
+                    end_time: start + chrono::Duration::seconds(300),
+                    score_blue: 2,
+                    score_orange: 1,
+                    winner: Some(0),
+                    is_overtime: false,
+                    duration_seconds: 300,
+                },
+            )
+            .unwrap();
+
+            for (match_id, primary_id, name) in [
+                (training_id, "Steam|local", "LocalPlayer"),
+                (ranked_id, "Steam|local", "LocalPlayer"),
+            ] {
+                let player_id = get_or_create_player_conn(&conn, primary_id, name).unwrap();
+                insert_match_player_conn(
+                    &conn,
+                    match_id,
+                    MatchPlayerRow {
+                        player_id,
+                        team_num: 0,
+                        stats: crate::core::models::PlayerStats {
+                            score: 100,
+                            goals: 1,
+                            shots: 3,
+                            assists: 0,
+                            saves: 1,
+                            touches: 0,
+                            car_touches: 0,
+                            demos: 0,
+                            speed: 0.0,
+                            boost: 0,
+                            mmr: None,
+                            kickoff_goals: 0,
+                            head_to_head: None,
+                        },
+                        head_to_head_json: None,
+                    },
+                )
+                .unwrap();
+            }
+        }
+
+        // Make the local identity resolvable so wins are attributed.
+        let mut settings = crate::core::settings::get_settings(&pool).unwrap();
+        settings.local_primary_id = Some("Steam|local".into());
+        crate::core::settings::set_settings(&pool, &settings).unwrap();
+
+        // Default session analytics: only the real match.
+        let sessions = get_match_sessions(&pool, 30, None, None, None).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].match_count, 1);
+        assert_eq!(sessions[0].wins, 1);
+        assert_eq!(sessions[0].losses, 0);
+
+        // Explicit training filter: only the training stint.
+        let training_sessions =
+            get_match_sessions(&pool, 30, None, Some("training"), None).unwrap();
+        assert_eq!(training_sessions.len(), 1);
+        assert_eq!(training_sessions[0].match_count, 1);
+
+        // Filtered rollups for the local player: one match, one win.
+        let rollups = get_daily_rollups_filtered(
+            &pool,
+            &today,
+            &today,
+            Some("Steam|local"),
+            &[],
+            None,
+            None,
+            Some("me"),
+        )
+        .unwrap();
+        let total_played: i32 = rollups.iter().map(|r| r.matches_played).sum();
+        let total_wins: i32 = rollups.iter().map(|r| r.wins).sum();
+        assert_eq!(total_played, 1, "training must not count as a played match");
+        assert_eq!(total_wins, 1);
+
+        // Per-identity summary: one match, one win, no phantom games.
+        let summary =
+            get_analytics_summary_for_identity(&pool, "Steam|local", &today, &today, None, None)
+                .unwrap();
+        assert_eq!(summary.total_matches, 1);
+        assert_eq!(summary.wins, 1);
+        assert_eq!(summary.losses, 0);
+    }
+
+    /// The old persist path could write the same training stint twice with an
+    /// identical `start_time`; the repair keeps the first row (the idle-sweep
+    /// one, with the real duration) and drops the duplicate.
+    #[test]
+    fn duplicate_training_rows_are_removed() {
+        let pool = temp_pool("training-dedup");
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let start = chrono::DateTime::parse_from_rfc3339(&format!("{today}T18:00:00Z"))
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let (original_id, duplicate_id, other_id) = {
+            let conn = get_conn(&pool).unwrap();
+            let insert_training = |guid: &str, started: DateTime<Utc>, duration: i32| {
+                let id = insert_match_conn(
+                    &conn,
+                    guid,
+                    started,
+                    Some("underpass_p"),
+                    false,
+                    Some("training"),
+                    None,
+                )
+                .unwrap();
+                finish_match_conn(
+                    &conn,
+                    id,
+                    FinishMatchUpdate {
+                        end_time: started + chrono::Duration::seconds(i64::from(duration)),
+                        score_blue: 0,
+                        score_orange: 0,
+                        winner: None,
+                        is_overtime: false,
+                        duration_seconds: duration,
+                    },
+                )
+                .unwrap();
+                id
+            };
+            let original = insert_training("training-original", start, 300);
+            let duplicate = insert_training("training-duplicate", start, 3600);
+            let other = insert_training("training-other", start + chrono::Duration::hours(1), 600);
+            (original, duplicate, other)
+        };
+
+        let removed = remove_duplicate_training_rows(&pool).unwrap();
+        assert_eq!(removed, 1);
+
+        let conn = get_conn(&pool).unwrap();
+        let remaining: Vec<i64> = conn
+            .prepare("SELECT id FROM matches WHERE match_type = 'training' ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(remaining, vec![original_id, other_id]);
+        assert!(!remaining.contains(&duplicate_id));
+
+        // Idempotent: nothing left to remove.
+        assert_eq!(remove_duplicate_training_rows(&pool).unwrap(), 0);
     }
 }

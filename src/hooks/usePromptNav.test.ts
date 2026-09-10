@@ -63,6 +63,10 @@ describe("usePromptNav", () => {
     });
     expect(result.current.index).toBe(0);
 
+    // Past the warmup before accept/dismiss are listened to.
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
     act(() => {
       fireEvent.keyDown(window, { key: "Enter", repeat: true });
     });
@@ -75,6 +79,28 @@ describe("usePromptNav", () => {
       fireEvent.keyDown(window, { key: "Escape" });
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores accept and dismiss during the warmup window", () => {
+    const onAccept = vi.fn();
+    const onDismiss = vi.fn();
+    renderHook(() => usePromptNav({ count: 5, onAccept, onDismiss }));
+
+    // The player is still holding boost/jump/skip from the match.
+    act(() => {
+      fireEvent.keyDown(window, { key: "Enter" });
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    act(() => {
+      fireEvent.keyDown(window, { key: "Enter" });
+    });
+    expect(onAccept).toHaveBeenCalledTimes(1);
   });
 
   it("shares one index across sources: hover then keyboard then accept", () => {
@@ -93,6 +119,9 @@ describe("usePromptNav", () => {
     });
     expect(result.current.index).toBe(4);
     // …and accept uses the latest position, not a stale one.
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
     act(() => {
       result.current.accept();
     });
@@ -141,6 +170,12 @@ describe("usePromptNav", () => {
     const onDismiss = vi.fn();
     renderHook(() => usePromptNav({ count: 5, onAccept, onDismiss }));
 
+    // Warmup with nothing held latches the pad as primed.
+    mockPads([pad({})]);
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+
     mockPads([pad({ buttons: { 0: true } })]);
     act(() => {
       vi.advanceTimersByTime(60);
@@ -158,6 +193,30 @@ describe("usePromptNav", () => {
       vi.advanceTimersByTime(60);
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a button that was already held when the prompt appeared", () => {
+    const onAccept = vi.fn();
+    const onDismiss = vi.fn();
+    renderHook(() => usePromptNav({ count: 5, onAccept, onDismiss }));
+
+    // The player is holding A as the prompt mounts: no release seen, no fire.
+    mockPads([pad({ buttons: { 0: true } })]);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(onAccept).not.toHaveBeenCalled();
+
+    // Released once, then pressed deliberately: now it accepts.
+    mockPads([pad({})]);
+    act(() => {
+      vi.advanceTimersByTime(60);
+    });
+    mockPads([pad({ buttons: { 0: true } })]);
+    act(() => {
+      vi.advanceTimersByTime(60);
+    });
+    expect(onAccept).toHaveBeenCalledTimes(1);
   });
 
   it("steers with the left stick past the threshold", () => {

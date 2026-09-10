@@ -8,6 +8,10 @@
     "skip": "Not now",
     "error": "Could not save. Try again."
   },
+  "toast": {
+    "saved": "Mood saved",
+    "savedMessage": "You will see it in the match detail."
+  },
   "options": {
     "very_happy": "Amazing",
     "happy": "Happy",

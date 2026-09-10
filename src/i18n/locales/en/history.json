@@ -18,7 +18,8 @@
     "loss": "Loss",
     "blueWon": "Blue Won",
     "orangeWon": "Orange Won",
-    "draw": "Draw"
+    "draw": "Draw",
+    "training": "Training"
   },
   "contextMenu": {
     "viewDetail": "View Details",

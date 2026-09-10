@@ -18,7 +18,8 @@
     "loss": "Derrota",
     "blueWon": "Azul venceu",
     "orangeWon": "Laranja venceu",
-    "draw": "Empate"
+    "draw": "Empate",
+    "training": "Treino"
   },
   "contextMenu": {
     "viewDetail": "Ver detalhes",

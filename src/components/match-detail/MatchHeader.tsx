@@ -22,26 +22,31 @@ export const MatchHeader = memo(function MatchHeader({ match }: MatchHeaderProps
   const isDraw = match.winnerTeamNum === null;
   const blueWon = match.winnerTeamNum === 0;
   const orangeWon = match.winnerTeamNum === 1;
+  const isTraining = match.matchType === "training";
 
   const hasLocalTeam = match.localTeamNum !== null && match.localTeamNum !== undefined;
   const isWin = hasLocalTeam && match.winnerTeamNum === match.localTeamNum;
   const isLoss = hasLocalTeam && match.winnerTeamNum !== null && match.winnerTeamNum !== match.localTeamNum;
 
-  const resultLabel = isWin
-    ? t("infoPanel.win")
-    : isLoss
-      ? t("infoPanel.loss")
-      : isDraw
-        ? t("infoPanel.draw")
-        : blueWon
-          ? t("infoPanel.blueWon")
-          : t("infoPanel.orangeWon");
+  const resultLabel = isTraining
+    ? t("matchType.training")
+    : isWin
+      ? t("infoPanel.win")
+      : isLoss
+        ? t("infoPanel.loss")
+        : isDraw
+          ? t("infoPanel.draw")
+          : blueWon
+            ? t("infoPanel.blueWon")
+            : t("infoPanel.orangeWon");
 
-  const resultTone = isWin
-    ? "text-accent-success"
-    : isLoss
-      ? "text-accent-danger"
-      : "text-text-secondary";
+  const resultTone = isTraining
+    ? "text-accent-primary"
+    : isWin
+      ? "text-accent-success"
+      : isLoss
+        ? "text-accent-danger"
+        : "text-text-secondary";
 
   const arenaName = match.arena ? getArenaDisplayName(match.arena) : null;
   const arenaImage = match.arena ? getArenaImagePath(match.arena) : null;

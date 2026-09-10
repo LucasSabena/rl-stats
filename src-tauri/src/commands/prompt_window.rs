@@ -69,6 +69,19 @@ impl PendingStore {
     fn clear(&mut self) {
         self.inner = None;
     }
+
+    /// Whether the given prompt is already the one on screen. Used to make
+    /// re-showing the same prompt a no-op: stealing focus again for a prompt
+    /// the player is already looking at is what made the window feel like it
+    /// flashed and reappeared.
+    fn is_current(&self, payload: &PromptPayload) -> bool {
+        self.inner
+            .as_ref()
+            .map(|pending| {
+                pending.payload.kind == payload.kind && pending.payload.match_id == payload.match_id
+            })
+            .unwrap_or(false)
+    }
 }
 
 static PENDING: Mutex<PendingStore> = Mutex::new(PendingStore { inner: None });
@@ -123,6 +136,15 @@ fn ensure_prompt_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, 
         .map_err(|e| format!("Failed to create prompt window: {e}"))
 }
 
+/// Create the prompt window hidden so its webview is warm before the first
+/// match ends. Building a brand-new webview right after a match is what made
+/// the window appear seconds late (or not at all on slow machines).
+pub fn prewarm_prompt_window(app: &tauri::AppHandle) {
+    if let Err(error) = ensure_prompt_window(app) {
+        tracing::warn!(error = %error, "Could not pre-create the prompt window");
+    }
+}
+
 /// Show the prompt window with a payload and take focus.
 ///
 /// Callers decide whether stealing focus is appropriate (setting enabled,
@@ -134,6 +156,23 @@ pub fn show_prompt_window(
     payload: PromptPayload,
     timeout_secs: u64,
 ) -> Result<(), String> {
+    let already_visible = app
+        .get_webview_window(PROMPT_LABEL)
+        .map(|win| win.is_visible().unwrap_or(false))
+        .unwrap_or(false);
+
+    // Same prompt already on screen: refresh nothing, steal no focus. This is
+    // what makes a duplicate `match-finished` (a re-persist or an event replay)
+    // harmless.
+    if already_visible && pending_lock().is_current(&payload) {
+        tracing::debug!(
+            kind = %payload.kind,
+            match_id = payload.match_id,
+            "Prompt already visible; ignoring duplicate request"
+        );
+        return Ok(());
+    }
+
     // Store first: a cold window misses the push emit below, so it pulls
     // the payload on mount instead. Order matters — store before build.
     pending_lock().store(payload.clone(), timeout_secs, Instant::now());
@@ -262,5 +301,25 @@ mod pending_store_tests {
                 .match_id,
             43
         );
+    }
+
+    #[test]
+    fn duplicate_show_of_the_same_prompt_is_detected() {
+        let mut store = PendingStore::default();
+        let now = Instant::now();
+        store.store(payload(), 30, now);
+
+        assert!(store.is_current(&payload()), "same prompt must be a no-op");
+        assert!(!store.is_current(&PromptPayload {
+            kind: "mood".to_string(),
+            match_id: 43,
+        }));
+        assert!(!store.is_current(&PromptPayload {
+            kind: "other".to_string(),
+            match_id: 42,
+        }));
+
+        store.clear();
+        assert!(!store.is_current(&payload()));
     }
 }

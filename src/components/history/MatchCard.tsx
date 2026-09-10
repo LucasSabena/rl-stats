@@ -5,7 +5,7 @@ import { cn, formatDateTime, formatDuration } from "@/lib/utils";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import type { MatchSummary } from "@/lib/types";
-import { Eye, Pencil, Trash2, ChevronRight } from "lucide-react";
+import { Eye, Pencil, Trash2, ChevronRight, Dumbbell } from "lucide-react";
 import { getArenaDisplayName } from "@/lib/arenaMap";
 
 interface MatchCardProps {
@@ -30,30 +30,37 @@ export const MatchCard = memo(function MatchCard({
   const MoodGlyph = moodIcon(match.mood);
 
   const hasLocalTeam = match.localTeamNum !== null && match.localTeamNum !== undefined;
+  const isTraining = match.matchType === "training";
   const isWin = hasLocalTeam && match.winnerTeamNum === match.localTeamNum;
   const isLoss = hasLocalTeam && match.winnerTeamNum !== null && match.winnerTeamNum !== match.localTeamNum;
 
-  const resultLabel = isWin
-    ? t("history:results.win")
-    : isLoss
-      ? t("history:results.loss")
-      : match.winnerTeamNum === 0
-        ? t("history:results.blueWon")
-        : match.winnerTeamNum === 1
-          ? t("history:results.orangeWon")
-          : t("history:results.draw");
+  const resultLabel = isTraining
+    ? t("history:results.training")
+    : isWin
+      ? t("history:results.win")
+      : isLoss
+        ? t("history:results.loss")
+        : match.winnerTeamNum === 0
+          ? t("history:results.blueWon")
+          : match.winnerTeamNum === 1
+            ? t("history:results.orangeWon")
+            : t("history:results.draw");
 
-  const resultTone = isWin
-    ? "text-accent-success"
-    : isLoss
-      ? "text-accent-danger"
-      : "text-text-tertiary";
+  const resultTone = isTraining
+    ? "text-accent-primary"
+    : isWin
+      ? "text-accent-success"
+      : isLoss
+        ? "text-accent-danger"
+        : "text-text-tertiary";
 
-  const edgeTone = isWin
-    ? "bg-accent-success"
-    : isLoss
-      ? "bg-accent-danger"
-      : "bg-border-default";
+  const edgeTone = isTraining
+    ? "bg-accent-primary"
+    : isWin
+      ? "bg-accent-success"
+      : isLoss
+        ? "bg-accent-danger"
+        : "bg-border-default";
 
   const blueWon = match.winnerTeamNum === 0;
   const orangeWon = match.winnerTeamNum === 1;
@@ -122,7 +129,7 @@ export const MatchCard = memo(function MatchCard({
           </p>
           <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-tertiary">
             <span className="shrink-0">{formatDateTime(match.startTime * 1000)}</span>
-            {playlistLabel && (
+            {!isTraining && playlistLabel && (
               <>
                 <span aria-hidden="true">·</span>
                 <span className="truncate">{playlistLabel}</span>
@@ -137,15 +144,24 @@ export const MatchCard = memo(function MatchCard({
           </p>
         </div>
 
-        <p className="numeral text-xl leading-none">
-          <span className={blueWon ? "text-team-blue" : "text-text-tertiary"}>
-            {match.teamBlueScore}
+        {isTraining ? (
+          <span className="flex w-20 items-center justify-end gap-1.5 text-xs font-medium text-text-tertiary">
+            <Dumbbell size={13} aria-hidden="true" />
+            <span className="tabular">
+              {match.durationSeconds ? formatDuration(match.durationSeconds) : "—"}
+            </span>
           </span>
-          <span className="mx-1.5 text-text-muted">:</span>
-          <span className={orangeWon ? "text-team-orange" : "text-text-tertiary"}>
-            {match.teamOrangeScore}
-          </span>
-        </p>
+        ) : (
+          <p className="numeral text-xl leading-none">
+            <span className={blueWon ? "text-team-blue" : "text-text-tertiary"}>
+              {match.teamBlueScore}
+            </span>
+            <span className="mx-1.5 text-text-muted">:</span>
+            <span className={orangeWon ? "text-team-orange" : "text-text-tertiary"}>
+              {match.teamOrangeScore}
+            </span>
+          </p>
+        )}
 
         <span className={cn("w-16 text-right text-xs font-semibold", resultTone)}>
           {resultLabel}

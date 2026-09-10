@@ -15,6 +15,13 @@ export interface PromptNavOptions {
   repeatRateMs?: number;
   /** Gamepad poll interval. Defaults to 50ms. */
   pollMs?: number;
+  /**
+   * How long accept/dismiss stay deaf after the prompt opens. The player is
+   * usually still holding boost/jump/skip from the match, and a freshly
+   * polled gamepad reports those as pressed — without this window the prompt
+   * would accept or dismiss itself the instant it appeared. Defaults to 650ms.
+   */
+  warmupMs?: number;
 }
 
 interface DirState {
@@ -52,6 +59,7 @@ export function usePromptNav({
   repeatDelayMs = 380,
   repeatRateMs = 130,
   pollMs = 50,
+  warmupMs = 650,
 }: PromptNavOptions) {
   const [index, setIndexState] = useState(initialIndex);
   const indexRef = useRef(initialIndex);
@@ -64,6 +72,15 @@ export function usePromptNav({
   onDismissRef.current = onDismiss;
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
+
+  // Accept/dismiss are deaf until this instant, then require the gamepad
+  // accept/dismiss buttons to have been released at least once.
+  const readyAtRef = useRef(0);
+  useEffect(() => {
+    readyAtRef.current = Date.now() + warmupMs;
+  }, [warmupMs]);
+
+  const isArmed = useCallback(() => Date.now() >= readyAtRef.current, []);
 
   const setIndex = useCallback((i: number) => {
     const n = countRef.current;
@@ -81,12 +98,12 @@ export function usePromptNav({
   );
 
   const accept = useCallback(() => {
-    if (!disabledRef.current) onAcceptRef.current(indexRef.current);
-  }, []);
+    if (!disabledRef.current && isArmed()) onAcceptRef.current(indexRef.current);
+  }, [isArmed]);
 
   const dismiss = useCallback(() => {
-    if (!disabledRef.current) onDismissRef.current();
-  }, []);
+    if (!disabledRef.current && isArmed()) onDismissRef.current();
+  }, [isArmed]);
 
   // ─── Keyboard ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -129,6 +146,8 @@ export function usePromptNav({
     left: newDirState(),
     right: newDirState(),
     buttons: new Map<number, boolean>(),
+    /** False until an accept/dismiss button has been seen released. */
+    primed: false,
   });
 
   useEffect(() => {
@@ -136,6 +155,7 @@ export function usePromptNav({
       padState.current.left = newDirState();
       padState.current.right = newDirState();
       padState.current.buttons.clear();
+      padState.current.primed = false;
       return;
     }
 
@@ -214,6 +234,20 @@ export function usePromptNav({
         st.buttons.set(i, is);
         return is && !was;
       };
+
+      // Release latch: the player almost always arrives holding accelerate /
+      // jump / skip from the match, and a fresh poll would read that as a
+      // press. Wait until every accept/dismiss button has been seen released
+      // before letting edges through.
+      if (!st.primed) {
+        const holding = isDown(active, 0) || isDown(active, 1) || isDown(active, 9);
+        for (const i of [0, 1, 9]) {
+          st.buttons.set(i, isDown(active, i));
+        }
+        if (!holding) st.primed = true;
+        return;
+      }
+
       if (edge(0) || edge(9)) accept();
       else if (edge(1)) dismiss();
     };

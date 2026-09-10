@@ -1251,3 +1251,125 @@ fn full_match_lifecycle_persist_and_verify() {
 
     let _ = fs::remove_file(&path);
 }
+
+// ---------------------------------------------------------------------------
+// End-to-end: a real match, a free-play stint and another match must land as
+// one match + one training row + one match, and analytics must never count the
+// training stint as a played match.
+// ---------------------------------------------------------------------------
+
+mod end_to_end_training_tests {
+    use super::*;
+    use rl_stats_lib::core::models::{GameState, LivePlayer};
+    use rl_stats_lib::core::settings::{get_settings, set_settings};
+    use std::collections::HashMap;
+
+    fn live(id: &str, name: &str, team: i32) -> LivePlayer {
+        LivePlayer {
+            id: id.to_string(),
+            name: name.to_string(),
+            team,
+            ..Default::default()
+        }
+    }
+
+    fn update(guid: Option<&str>, players: HashMap<String, LivePlayer>) -> RlEvent {
+        RlEvent::UpdateState {
+            match_guid: guid.map(str::to_string),
+            game: GameState::default(),
+            players,
+        }
+    }
+
+    #[test]
+    fn matches_and_training_stay_separate_end_to_end() {
+        let (pool, path) = temp_db_pool();
+
+        let mut settings = get_settings(&pool).unwrap();
+        settings.local_primary_id = Some("Steam|me".into());
+        set_settings(&pool, &settings).unwrap();
+
+        let mut session = SessionManager::new(7);
+
+        // ── Match 1: local player wins ──────────────────────────────────
+        session.handle_event(RlEvent::MatchCreated);
+        let mut roster = HashMap::new();
+        roster.insert("Steam|me".into(), live("Steam|me", "Me", 0));
+        roster.insert("Steam|rival".into(), live("Steam|rival", "Rival", 1));
+        session.handle_event(update(Some("match-1"), roster));
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: Some(0),
+        });
+        let first = session.persist_finished_match(&pool).unwrap();
+        assert!(!first.is_training);
+
+        // ── Free Play stint, superseded by the next match ───────────────
+        session.handle_event(RlEvent::MatchCreated);
+        let mut solo = HashMap::new();
+        solo.insert("Steam|me".into(), live("Steam|me", "Me", 0));
+        session.handle_event(update(None, solo));
+        assert!(session.is_training_session());
+        assert!(session.check_training_superseded_finalize());
+        let training = session.persist_finished_match(&pool).unwrap();
+        assert!(training.is_training);
+        assert!(!training.skipped_training);
+        assert_eq!(training.summary.match_type.as_deref(), Some("training"));
+
+        // ── Match 2: local player loses ─────────────────────────────────
+        session.handle_event(RlEvent::MatchCreated);
+        let mut roster2 = HashMap::new();
+        roster2.insert("Steam|me".into(), live("Steam|me", "Me", 0));
+        roster2.insert("Steam|rival".into(), live("Steam|rival", "Rival", 1));
+        session.handle_event(update(Some("match-2"), roster2));
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: Some(1),
+        });
+        let second = session.persist_finished_match(&pool).unwrap();
+        assert!(!second.is_training);
+
+        // Three rows total: two matches and one training stint.
+        let all = storage::get_matches(
+            &pool,
+            storage::MatchQuery {
+                limit: 50,
+                offset: 0,
+                arena: None,
+                match_type: None,
+                playlist: None,
+                result: None,
+                date_from: None,
+                date_to: None,
+                search: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(all.len(), 3);
+        let training_rows = all
+            .iter()
+            .filter(|m| m.match_type.as_deref() == Some("training"))
+            .count();
+        assert_eq!(training_rows, 1, "exactly one training row must exist");
+
+        // Session analytics: only the two real matches, 1 win + 1 loss.
+        let sessions = storage::get_match_sessions(&pool, 30, None, None, None).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].match_count, 2);
+        assert_eq!(sessions[0].wins, 1);
+        assert_eq!(sessions[0].losses, 1);
+
+        // Training analytics sees the stint; match summary does not.
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let training_stats = storage::get_training_stats(&pool, &today, &today).unwrap();
+        assert_eq!(training_stats["totalSessions"], 1);
+
+        let summary = storage::get_analytics_summary_for_identity(
+            &pool, "Steam|me", &today, &today, None, None,
+        )
+        .unwrap();
+        assert_eq!(summary.total_matches, 2);
+        assert_eq!(summary.wins, 1);
+        assert_eq!(summary.losses, 1);
+
+        let _ = fs::remove_file(&path);
+    }
+}

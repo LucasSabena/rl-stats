@@ -46,6 +46,8 @@ fn get_session_scope_stats(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+    } else {
+        sql.push_str(" AND LOWER(COALESCE(match_type, '')) != 'training'");
     }
     if let Some(pl) = playlist {
         sql.push_str(" AND LOWER(playlist) = LOWER(?)");
@@ -589,6 +591,7 @@ pub async fn get_session_matches(
                 m.match_type, m.playlist, m.mood
          FROM matches m
          WHERE m.start_time >= ?1 AND m.start_time <= ?2
+           AND LOWER(COALESCE(m.match_type, '')) != 'training'
          ORDER BY m.start_time ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -1039,6 +1042,8 @@ fn get_player_period_stats(
     if let Some(mt) = match_type {
         sql.push_str(" AND m.match_type = ?");
         args.push(Box::new(mt.to_string()));
+    } else {
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
 
     if let Some(pl) = playlist {
