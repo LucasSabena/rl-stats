@@ -175,7 +175,8 @@ fn open_app_sync_conn(app_dir: &Path) -> AppResult<Connection> {
         .map_err(|e| AppError::StorageError(e.to_string()))?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
-         PRAGMA foreign_keys = ON;",
+         PRAGMA foreign_keys = ON;
+         PRAGMA busy_timeout = 5000;",
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     run_app_sync_migrations(&conn)?;

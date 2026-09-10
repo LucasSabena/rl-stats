@@ -200,14 +200,25 @@ impl OverlayServer {
     /// The event is serialized to a string and pushed onto the internal
     /// broadcast channel. Lagged clients see a warning but stay connected.
     pub fn broadcast_event(&self, event: serde_json::Value) {
-        // Auto-cache state updates for the REST API endpoint.
-        if event.get("type").and_then(|v| v.as_str()) == Some("state") {
-            if let Ok(json) = serde_json::to_string(&event) {
-                let latest = Arc::clone(&self.latest_state);
-                tokio::spawn(async move {
-                    *latest.write().await = Some(json);
-                });
+        // Auto-cache the latest match state for `GET /api/state`. This used to
+        // spawn a task per event (20/s) and only matched the "state" type,
+        // which nothing sends — the endpoint always returned {}.
+        match event.get("type").and_then(|v| v.as_str()) {
+            Some("state") => {
+                if let Ok(json) = serde_json::to_string(&event) {
+                    if let Ok(mut guard) = self.latest_state.try_write() {
+                        *guard = Some(json);
+                    }
+                }
             }
+            Some("snapshot") => {
+                if let Ok(json) = serde_json::to_string(&event["data"]) {
+                    if let Ok(mut guard) = self.latest_state.try_write() {
+                        *guard = Some(json);
+                    }
+                }
+            }
+            _ => {}
         }
 
         match serde_json::to_string(&event) {

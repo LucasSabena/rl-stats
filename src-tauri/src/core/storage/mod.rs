@@ -57,6 +57,7 @@ pub struct LocalMatchStats {
     pub team_score: i32,
     pub team_kickoff_goals: i32,
     pub opponent_kickoff_goals: i32,
+    pub opponent_goals: i32,
 }
 
 pub struct MatchQuery<'a> {
@@ -102,6 +103,8 @@ pub fn init_storage<P: AsRef<Path>>(db_path: P) -> AppResult<DbPool> {
     });
     let pool = Pool::builder()
         .max_size(5)
+        .min_idle(Some(1))
+        .connection_timeout(std::time::Duration::from_secs(10))
         .build(manager)
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
@@ -1172,13 +1175,21 @@ pub fn get_daily_rollups_filtered(
     let mut rollups_by_date: HashMap<String, DailyRollup> = HashMap::new();
     let is_individual = scope == Some("me");
 
-    for row in rows {
-        let (match_id, start_time, score_blue, score_orange, winner, duration_seconds) =
-            row.map_err(|e| AppError::StorageError(e.to_string()))?;
+    let rows: Vec<(i64, String, i32, i32, Option<i32>, i32)> = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-        let Some(my_team) =
-            get_local_team_num_from_conn(&conn, match_id, local_primary_id, player_names)?
-        else {
+    // Prefetch every match's local stats in one query instead of running two
+    // queries per match (the old shape was O(matches) round-trips).
+    let match_ids: Vec<i64> = rows.iter().map(|row| row.0).collect();
+    let stats_by_match =
+        get_local_match_stats_from_conn(&conn, &match_ids, local_primary_id, player_names)?;
+
+    for (match_id, start_time, score_blue, score_orange, winner, duration_seconds) in rows {
+        let Some(stats) = stats_by_match.get(&match_id) else {
+            continue;
+        };
+        let Some(my_team) = stats.local_team_num else {
             continue;
         };
 
@@ -1211,128 +1222,27 @@ pub fn get_daily_rollups_filtered(
         };
 
         if is_individual {
-            let (goals, shots, saves, demos, assists, score, kickoff_goals): (
-                i32,
-                i32,
-                i32,
-                i32,
-                i32,
-                i32,
-                i32,
-            ) = if let Some(local_pid) = local_primary_id {
-                conn.query_row(
-                        "SELECT mp.goals, mp.shots, mp.saves, mp.demos, mp.assists, mp.score, mp.kickoff_goals
-                         FROM match_players mp
-                         JOIN players p ON mp.player_id = p.id
-                         WHERE mp.match_id = ?1 AND p.primary_id = ?2",
-                        params![match_id, local_pid],
-                        |row| {
-                            Ok((
-                                row.get(0)?,
-                                row.get(1)?,
-                                row.get(2)?,
-                                row.get(3)?,
-                                row.get(4)?,
-                                row.get(5)?,
-                                row.get(6)?,
-                            ))
-                        },
-                    )
-                    .unwrap_or((0, 0, 0, 0, 0, 0, 0))
-            } else if !player_names.is_empty() {
-                let placeholders = player_names
-                    .iter()
-                    .map(|_| "LOWER(TRIM(p.name)) = LOWER(TRIM(?))")
-                    .collect::<Vec<_>>()
-                    .join(" OR ");
-                let sql = format!(
-                        "SELECT mp.goals, mp.shots, mp.saves, mp.demos, mp.assists, mp.score, mp.kickoff_goals
-                         FROM match_players mp
-                         JOIN players p ON mp.player_id = p.id
-                         WHERE mp.match_id = ?1 AND ({})",
-                        placeholders
-                    );
-                let mut query_args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-                query_args.push(Box::new(match_id));
-                for name in player_names {
-                    query_args.push(Box::new(name.clone()));
-                }
-                let params_refs: Vec<&dyn rusqlite::ToSql> =
-                    query_args.iter().map(|a| a.as_ref()).collect();
-                conn.query_row(&sql, &*params_refs, |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                        row.get(6)?,
-                    ))
-                })
-                .unwrap_or((0, 0, 0, 0, 0, 0, 0))
-            } else {
-                (0, 0, 0, 0, 0, 0, 0)
-            };
-
             let their_goals = if my_team == 0 {
                 score_orange
             } else {
                 score_blue
             };
 
-            rollup.goals_scored += goals;
+            rollup.goals_scored += stats.goals;
             rollup.goals_conceded += their_goals;
-            rollup.total_shots += shots;
-            rollup.total_saves += saves;
-            rollup.total_demos += demos;
-            rollup.total_assists += assists;
-            rollup.kickoff_goals_scored += kickoff_goals;
+            rollup.total_shots += stats.shots;
+            rollup.total_saves += stats.saves;
+            rollup.total_demos += stats.demos;
+            rollup.total_assists += stats.assists;
+            rollup.kickoff_goals_scored += stats.kickoff_goals;
             rollup.avg_duration_seconds = ((rollup.avg_duration_seconds * prev_count)
                 + duration_seconds)
                 / rollup.matches_played;
-            rollup.avg_score = ((rollup.avg_score * prev_count) + score) / rollup.matches_played;
+            rollup.avg_score =
+                ((rollup.avg_score * prev_count) + stats.score) / rollup.matches_played;
         } else {
-            let (
-                my_goals,
-                their_goals,
-                total_shots,
-                total_saves,
-                total_demos,
-                total_assists,
-                my_score,
-                my_kickoff_goals,
-                their_kickoff_goals,
-            ): (i32, i32, i32, i32, i32, i32, i32, i32, i32) = conn
-                .query_row(
-                    "SELECT
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN goals ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num != ?1 THEN goals ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN shots ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN saves ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN demos ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN assists ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN score ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num = ?1 THEN kickoff_goals ELSE 0 END), 0),
-                        COALESCE(SUM(CASE WHEN team_num != ?1 THEN kickoff_goals ELSE 0 END), 0)
-                     FROM match_players
-                     WHERE match_id = ?2",
-                    params![my_team, match_id],
-                    |row| {
-                        Ok((
-                            row.get(0)?,
-                            row.get(1)?,
-                            row.get(2)?,
-                            row.get(3)?,
-                            row.get(4)?,
-                            row.get(5)?,
-                            row.get(6)?,
-                            row.get(7)?,
-                            row.get(8)?,
-                        ))
-                    },
-                )
-                .map_err(|e| AppError::StorageError(e.to_string()))?;
+            let my_goals = stats.team_goals;
+            let their_goals = stats.opponent_goals;
 
             rollup.goals_scored += if my_goals == 0 && their_goals == 0 {
                 if my_team == 0 {
@@ -1352,16 +1262,17 @@ pub fn get_daily_rollups_filtered(
             } else {
                 their_goals
             };
-            rollup.total_shots += total_shots;
-            rollup.total_saves += total_saves;
-            rollup.total_demos += total_demos;
-            rollup.total_assists += total_assists;
-            rollup.kickoff_goals_scored += my_kickoff_goals;
-            rollup.kickoff_goals_conceded += their_kickoff_goals;
+            rollup.total_shots += stats.team_shots;
+            rollup.total_saves += stats.team_saves;
+            rollup.total_demos += stats.team_demos;
+            rollup.total_assists += stats.team_assists;
+            rollup.kickoff_goals_scored += stats.team_kickoff_goals;
+            rollup.kickoff_goals_conceded += stats.opponent_kickoff_goals;
             rollup.avg_duration_seconds = ((rollup.avg_duration_seconds * prev_count)
                 + duration_seconds)
                 / rollup.matches_played;
-            rollup.avg_score = ((rollup.avg_score * prev_count) + my_score) / rollup.matches_played;
+            rollup.avg_score =
+                ((rollup.avg_score * prev_count) + stats.team_score) / rollup.matches_played;
         }
     }
 
@@ -1377,82 +1288,55 @@ pub fn rebuild_daily_rollups_for_identity(
 ) -> AppResult<()> {
     let conn = get_conn(pool)?;
 
-    conn.execute("DELETE FROM daily_rollups", [])
+    let rows: Vec<(i64, String, i32, i32, Option<i32>, i32)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, start_time, score_blue, score_orange, winner, duration_seconds
+             FROM matches
+             WHERE LOWER(COALESCE(match_type, '')) != 'training'
+             ORDER BY start_time ASC",
+        )?;
+
+        let iter = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i32>(2)?,
+                row.get::<_, i32>(3)?,
+                row.get::<_, Option<i32>>(4)?,
+                row.get::<_, i32>(5)?,
+            ))
+        })?;
+
+        iter.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::StorageError(e.to_string()))?
+    };
+
+    // One bulk stats query instead of two per match (settings saves and match
+    // deletions rebuild the whole table, so this ran thousands of queries).
+    let match_ids: Vec<i64> = rows.iter().map(|row| row.0).collect();
+    let stats_by_match =
+        get_local_match_stats_from_conn(&conn, &match_ids, local_primary_id, player_names)?;
+
+    // DELETE + inserts must land together: a crash used to leave rollups empty.
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    tx.execute("DELETE FROM daily_rollups", [])
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, start_time, score_blue, score_orange, winner, duration_seconds
-         FROM matches
-         WHERE LOWER(COALESCE(match_type, '')) != 'training'
-         ORDER BY start_time ASC",
-    )?;
-
-    let rows = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, i32>(2)?,
-            row.get::<_, i32>(3)?,
-            row.get::<_, Option<i32>>(4)?,
-            row.get::<_, i32>(5)?,
-        ))
-    })?;
-
-    for row in rows {
-        let (match_id, start_time, score_blue, score_orange, winner, duration_seconds) =
-            row.map_err(|e| AppError::StorageError(e.to_string()))?;
-
-        let Some(my_team) =
-            get_local_team_num_from_conn(&conn, match_id, local_primary_id, player_names)?
-        else {
+    for (match_id, start_time, score_blue, score_orange, winner, duration_seconds) in rows {
+        let Some(stats) = stats_by_match.get(&match_id) else {
+            continue;
+        };
+        let Some(my_team) = stats.local_team_num else {
             continue;
         };
 
-        let (
-            my_goals,
-            their_goals,
-            total_shots,
-            total_saves,
-            total_demos,
-            total_assists,
-            my_score,
-            my_kickoff_goals,
-            their_kickoff_goals,
-        ): (i32, i32, i32, i32, i32, i32, i32, i32, i32) = conn
-            .query_row(
-                "SELECT
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN goals ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num != ?1 THEN goals ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN shots ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN saves ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN demos ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN assists ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN score ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num = ?1 THEN kickoff_goals ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN team_num != ?1 THEN kickoff_goals ELSE 0 END), 0)
-                 FROM match_players
-                 WHERE match_id = ?2",
-                params![my_team, match_id],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                        row.get(6)?,
-                        row.get(7)?,
-                        row.get(8)?,
-                    ))
-                },
-            )
-            .map_err(|e| AppError::StorageError(e.to_string()))?;
-
-        let date = local_date_string(&start_time);
+        let my_goals = stats.team_goals;
+        let their_goals = stats.opponent_goals;
 
         let rollup = DailyRollup {
-            date,
+            date: local_date_string(&start_time),
             matches_played: 1,
             wins: if winner == Some(my_team) { 1 } else { 0 },
             losses: if winner.is_some() && winner != Some(my_team) {
@@ -1478,20 +1362,22 @@ pub fn rebuild_daily_rollups_for_identity(
             } else {
                 their_goals
             },
-            total_shots,
-            total_saves,
+            total_shots: stats.team_shots,
+            total_saves: stats.team_saves,
             avg_duration_seconds: duration_seconds,
-            total_demos,
-            total_assists,
-            avg_score: my_score,
-            kickoff_goals_scored: my_kickoff_goals,
-            kickoff_goals_conceded: their_kickoff_goals,
+            total_demos: stats.team_demos,
+            total_assists: stats.team_assists,
+            avg_score: stats.team_score,
+            kickoff_goals_scored: stats.team_kickoff_goals,
+            kickoff_goals_conceded: stats.opponent_kickoff_goals,
         };
 
-        upsert_daily_rollup_conn(&conn, &rollup)
+        upsert_daily_rollup_conn(&tx, &rollup)
             .map_err(|e| AppError::StorageError(e.to_string()))?;
     }
 
+    tx.commit()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
     Ok(())
 }
 
@@ -1648,6 +1534,7 @@ fn get_local_match_stats_from_conn(
                 entry.team_kickoff_goals += kickoff_goals;
             } else {
                 entry.opponent_kickoff_goals += kickoff_goals;
+                entry.opponent_goals += goals;
             }
         }
     }
@@ -4301,6 +4188,7 @@ fn find_match_by_guid(conn: &rusqlite::Connection, guid: &str) -> i64 {
 #[cfg(test)]
 mod mood_roundtrip_tests {
     use super::*;
+    use crate::core::models::PlayerStats;
     use chrono::TimeZone;
 
     fn temp_pool(tag: &str) -> DbPool {
@@ -4380,6 +4268,81 @@ mod mood_roundtrip_tests {
         let (detail, _) = get_match_detail(&pool, match_id).unwrap();
         assert_eq!(detail.mood, None);
         assert!(set_match_mood(&pool, 999_999, Some("happy")).is_err());
+    }
+
+    #[test]
+    fn result_filter_uses_local_team_and_applies_before_pagination() {
+        let pool = temp_pool("result-filter");
+        let conn = get_conn(&pool).unwrap();
+
+        // Local player is on the ORANGE team (1) in every match: a plain
+        // `winner = 0` filter would return the wrong rows.
+        let local_pid = upsert_player_by_primary_id(&conn, "local-1", "Kaells").unwrap();
+        let outcomes = [
+            (1, "2026-09-06T21:00:00Z"),
+            (0, "2026-09-06T22:00:00Z"),
+            (1, "2026-09-06T23:00:00Z"),
+        ];
+
+        for (i, (winner, start)) in outcomes.iter().enumerate() {
+            let guid = format!("result-filter-{i}");
+            let match_id = upsert_match_by_guid(
+                &conn,
+                MatchUpsert {
+                    guid: &guid,
+                    start_time: start,
+                    end_time: None,
+                    arena: Some("DFH Stadium"),
+                    score_blue: 1,
+                    score_orange: 2,
+                    winner: Some(*winner),
+                    is_online: true,
+                    is_overtime: false,
+                    duration_seconds: 300,
+                    match_type: Some("ranked"),
+                    playlist: Some("Doubles"),
+                    mood: None,
+                },
+            )
+            .unwrap();
+
+            upsert_match_player_row(
+                &conn,
+                match_id,
+                MatchPlayerRow {
+                    player_id: local_pid,
+                    team_num: 1,
+                    stats: PlayerStats::default(),
+                    head_to_head_json: None,
+                },
+            )
+            .unwrap();
+        }
+
+        let query = |result: Option<&'static str>, limit: i64, offset: i64| MatchQuery {
+            limit,
+            offset,
+            arena: None,
+            match_type: None,
+            playlist: None,
+            result,
+            date_from: None,
+            date_to: None,
+            search: None,
+            local_primary_id: Some("local-1"),
+            local_player_names: &[],
+        };
+
+        let wins = get_matches(&pool, query(Some("win"), 10, 0)).unwrap();
+        assert_eq!(wins.len(), 2, "team 1 won two matches");
+        let losses = get_matches(&pool, query(Some("loss"), 10, 0)).unwrap();
+        assert_eq!(losses.len(), 1, "team 1 lost one match");
+
+        // Filtering happens in SQL: the second win must be reachable with
+        // limit=1 offset=1 instead of being dropped after pagination.
+        let second_page = get_matches(&pool, query(Some("win"), 1, 1)).unwrap();
+        assert_eq!(second_page.len(), 1);
+        assert_ne!(second_page[0].id, wins[0].id);
     }
 
     #[test]

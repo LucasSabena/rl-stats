@@ -262,6 +262,21 @@ pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
         .get()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
+    settings_from_connection(&conn)
+}
+
+/// Read settings straight from a profile database file without opening a pool,
+/// running migrations or checkpointing the WAL. Profile lookups happen inside
+/// the live-match loop, so this keeps them cheap.
+pub fn get_settings_from_path(db_path: &Path) -> AppResult<AppSettings> {
+    let conn =
+        rusqlite::Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    settings_from_connection(&conn)
+}
+
+fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSettings> {
     let mut settings = AppSettings::default();
 
     let mut stmt = conn

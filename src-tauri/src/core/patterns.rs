@@ -964,20 +964,23 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
     }
 
     // Zero out every touched roster first so removed false positives do not
-    // linger, then write the recounts.
+    // linger, then write the recounts. Runs in one transaction: this executes
+    // at startup and a crash mid-way left kickoff goals half-recounted.
     if !matches_touched.is_empty() {
+        let tx = conn.unchecked_transaction()?;
         let touched_ids: Vec<i64> = matches_touched.keys().copied().collect();
         let placeholders = vec!["?"; touched_ids.len()].join(", ");
         let zero_sql = format!(
             "UPDATE match_players SET kickoff_goals = 0 WHERE match_id IN ({placeholders})"
         );
-        conn.execute(&zero_sql, rusqlite::params_from_iter(touched_ids.iter()))?;
+        tx.execute(&zero_sql, rusqlite::params_from_iter(touched_ids.iter()))?;
         for (row_id, count) in &recounts {
-            conn.execute(
+            tx.execute(
                 "UPDATE match_players SET kickoff_goals = ?1 WHERE id = ?2",
                 params![count, row_id],
             )?;
         }
+        tx.commit()?;
     }
 
     Ok(serde_json::json!({

@@ -356,8 +356,16 @@ pub fn get_all_profile_settings(
         if !db_path.exists() {
             continue;
         }
-        let pool = crate::core::storage::init_storage(&db_path)?;
-        let settings = crate::core::settings::get_settings(&pool)?;
+        // Fast path: read the settings table directly. Only fall back to a
+        // full init (migrations + WAL checkpoint) for legacy DBs that predate
+        // the app_settings table.
+        let settings = match crate::core::settings::get_settings_from_path(&db_path) {
+            Ok(settings) => settings,
+            Err(_) => {
+                let pool = crate::core::storage::init_storage(&db_path)?;
+                crate::core::settings::get_settings(&pool)?
+            }
+        };
         result.push((profile.clone(), settings));
     }
 
