@@ -230,6 +230,11 @@ export function OverlayConfig() {
               <p className="mt-1 text-sm text-text-secondary max-w-[360px]">
                 {t("overlay:config.description")}
               </p>
+              {watched.enabled && (
+                <p className="mt-1.5 max-w-[380px] text-xs text-accent-warning/90">
+                  {t("overlay:config.fullscreenHint")}
+                </p>
+              )}
             </div>
           </div>
           

@@ -77,7 +77,8 @@
       "settingsSaved": "Configurações salvas",
       "settingsSavedMessage": "O overlay foi atualizado.",
       "saveError": "Erro ao salvar"
-    }
+    },
+    "fullscreenHint": "Se o Rocket League estiver em tela cheia exclusiva, o Windows não permite desenhar o overlay por cima. Mude o modo de exibição do jogo para «Janela sem bordas»."
   },
   "streaming": {
     "title": "Streaming OBS",
