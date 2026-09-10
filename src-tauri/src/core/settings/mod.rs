@@ -425,8 +425,14 @@ pub fn set_settings(pool: &DbPool, settings: &AppSettings) -> AppResult<()> {
         .get()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
+    // ~50 key/value upserts plus the sync enqueue must land together: without a
+    // transaction a crash mid-save left settings half-written and re-synced.
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
     for (key, value) in settings.to_kv() {
-        conn.execute(
+        tx.execute(
             "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![key, value],
@@ -435,12 +441,15 @@ pub fn set_settings(pool: &DbPool, settings: &AppSettings) -> AppResult<()> {
     }
 
     crate::core::storage::sync::enqueue_upsert_conn(
-        &conn,
+        &tx,
         "app_settings",
         "all",
         serde_json::to_value(settings)
             .map_err(|e| AppError::ParseError(format!("Failed to serialize settings: {e}")))?,
     )?;
+
+    tx.commit()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
 
     info!("Settings saved");
     Ok(())

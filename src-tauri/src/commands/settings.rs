@@ -214,8 +214,10 @@ fn import_data_json_internal(
 
     let conn = storage::get_conn(pool).map_err(|e| e.to_string())?;
 
-    // Wrap the entire import in a transaction for atomicity.
-    conn.execute("BEGIN", []).map_err(|e| e.to_string())?;
+    // Wrap the entire import in a transaction for atomicity. BEGIN IMMEDIATE
+    // takes the write lock up front instead of failing mid-import on upgrade.
+    conn.execute("BEGIN IMMEDIATE", [])
+        .map_err(|e| e.to_string())?;
 
     let result: Result<(), String> = (|| {
         // ── 1. Players ──
@@ -486,8 +488,8 @@ fn import_data_json_internal(
                     .get("hardware")
                     .and_then(|v| serde_json::from_value(v.clone()).ok());
 
-                storage::insert_user_preset(
-                    pool,
+                storage::insert_user_preset_conn(
+                    &conn,
                     name,
                     description,
                     &camera,

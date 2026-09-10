@@ -1815,13 +1815,16 @@ pub fn get_storage_stats(pool: &DbPool) -> AppResult<serde_json::Value> {
 /// Clear all data (destructive).
 pub fn clear_all_data(pool: &DbPool) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
     sync::enqueue_delete_conn(
-        &conn,
+        &tx,
         "profile_data",
         "*",
         serde_json::json!({ "scope": "all_local_profile_data" }),
     )?;
-    conn.execute_batch(
+    tx.execute_batch(
         "DELETE FROM match_events;
          DELETE FROM match_players;
          DELETE FROM state_snapshots;
@@ -1829,9 +1832,15 @@ pub fn clear_all_data(pool: &DbPool) -> AppResult<()> {
          DELETE FROM daily_rollups;
          DELETE FROM matches;
          DELETE FROM players;
+         DELETE FROM tracker_cache;
+         DELETE FROM rlstats_cache;
+         DELETE FROM mmr_cache;
+         DELETE FROM mmr_provider_health;
         ",
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
+    tx.commit()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
     Ok(())
 }
 
@@ -4153,6 +4162,21 @@ pub fn insert_user_preset(
     hardware: &Option<HardwareSettings>,
 ) -> AppResult<i64> {
     let conn = get_conn(pool)?;
+    insert_user_preset_conn(&conn, name, description, camera, controls, deadzone, hardware)
+}
+
+/// Insert a preset on an existing connection, so callers inside a transaction
+/// (data import) reuse it instead of grabbing a second pooled connection.
+#[allow(clippy::too_many_arguments)]
+pub fn insert_user_preset_conn(
+    conn: &rusqlite::Connection,
+    name: &str,
+    description: Option<&str>,
+    camera: &Option<CameraSettings>,
+    controls: &Option<ControlSettings>,
+    deadzone: &Option<DeadzoneSettings>,
+    hardware: &Option<HardwareSettings>,
+) -> AppResult<i64> {
     let camera_json = optional_json(camera)?;
     let controls_json = optional_json(controls)?;
     let deadzone_json = optional_json(deadzone)?;
@@ -4168,7 +4192,7 @@ pub fn insert_user_preset(
 
     let id = conn.last_insert_rowid();
     sync::enqueue_upsert_conn(
-        &conn,
+        conn,
         "user_preset",
         &id.to_string(),
         serde_json::json!({ "local_id": id, "name": name }),

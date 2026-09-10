@@ -291,6 +291,8 @@ mod session_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
+                local_primary_id: None,
+                local_player_names: &[],
             },
         )
         .unwrap();
@@ -575,6 +577,8 @@ mod storage_crud_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
+                local_primary_id: None,
+                local_player_names: &[],
             },
         )
         .unwrap();
@@ -733,6 +737,8 @@ mod storage_crud_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
+                local_primary_id: None,
+                local_player_names: &[],
             },
         )
         .unwrap();
@@ -750,6 +756,8 @@ mod storage_crud_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
+                local_primary_id: None,
+                local_player_names: &[],
             },
         )
         .unwrap();
@@ -1233,6 +1241,8 @@ fn full_match_lifecycle_persist_and_verify() {
             date_from: None,
             date_to: None,
             search: None,
+            local_primary_id: None,
+            local_player_names: &[],
         },
     )
     .unwrap();
@@ -1340,6 +1350,8 @@ mod end_to_end_training_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
+                local_primary_id: None,
+                local_player_names: &[],
             },
         )
         .unwrap();

@@ -283,6 +283,14 @@ pub static MIGRATIONS: &[Migration] = &[
             failure_count INTEGER NOT NULL DEFAULT 0
         );",
     },
+    Migration {
+        version: 24,
+        name: "add_query_indexes",
+        sql: "CREATE INDEX IF NOT EXISTS idx_match_players_player_id ON match_players(player_id);
+        CREATE INDEX IF NOT EXISTS idx_match_events_event_type ON match_events(event_type);
+        CREATE INDEX IF NOT EXISTS idx_sessions_match_id ON sessions(match_id);
+        CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);",
+    },
 ];
 
 /// Run all pending migrations against the given connection.
