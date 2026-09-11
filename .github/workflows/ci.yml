@@ -107,7 +107,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
+          # No lockfile hash: a version bump changed it and re-downloaded the
+          # whole registry. run_id + prefix restore keeps it warm.
+          key: ${{ runner.os }}-cargo-registry-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
@@ -115,11 +117,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target
-          # Key on the lockfile only (see release.yml): hashing every source
-          # file forced a full dependency rebuild on every push.
-          key: ${{ runner.os }}-cargo-target-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.run_id }}
+          # No lockfile hash (see release.yml): version bumps change Cargo.lock
+          # on every release and wiped the whole dependency cache.
+          key: ${{ runner.os }}-cargo-target-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-cargo-target-${{ hashFiles('src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-cargo-target-
 
       - name: Run cargo check

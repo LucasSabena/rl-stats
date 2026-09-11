@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.11.1] - 2026-09-11
+
+### Changed
+- Cargo caches no longer key on `Cargo.lock`: every release bumps the crate version, which changed the lockfile and silently invalidated the whole dependency cache, forcing a full rebuild each time. Dependency artifacts are now reused across version bumps (Cargo still rebuilds whatever actually changed).
+
 ## [2.11.0] - 2026-09-10
 
 ### Changed

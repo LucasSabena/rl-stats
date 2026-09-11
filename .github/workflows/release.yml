@@ -144,7 +144,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
+          # No lockfile hash: a version bump changed it and re-downloaded the
+          # whole registry. run_id + prefix restore keeps it warm.
+          key: ${{ runner.os }}-cargo-registry-${{ github.run_id }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
@@ -152,13 +154,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target
-          # Key on the lockfile only: hashing every .rs invalidated the whole
-          # target cache on each release and forced a full dependency rebuild.
-          # run_id makes each run save a fresh cache; restore-keys picks the
-          # most recent one so dependency artifacts are reused.
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.run_id }}
+          # No lockfile hash in the key: every release bumps the crate version
+          # and therefore Cargo.lock, which invalidated the cache and forced a
+          # full dependency rebuild each time. run_id saves a fresh cache per
+          # run; the prefix restore picks the most recent one and Cargo itself
+          # rebuilds only what actually changed.
+          key: ${{ runner.os }}-cargo-release-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-cargo-release-
 
       - name: Install frontend dependencies
