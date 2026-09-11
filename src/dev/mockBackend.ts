@@ -507,7 +507,34 @@ export function installMockBackend() {
         return null;
       case "get_player_directory":
         return { players: [] };
+      case "detect_rl_path":
+        return [
+          {
+            path: "C:/Program Files (x86)/Steam/steamapps/common/rocketleague",
+            platform: "steam",
+            valid: true,
+            source: "mock",
+            configured: false,
+          },
+        ];
+      case "detect_local_accounts_cmd":
+        return [];
+      case "inspect_rl_path":
+        return {
+          path:
+            (args as { path?: string } | undefined)?.path ?? "C:/RocketLeague",
+          platform: "steam",
+          valid: true,
+          source: "mock",
+          configured: false,
+        };
+      case "configure_rl_ini_cmd":
       case "report_frontend_error":
+        return null;
+      case "configure_rl_ini_all_cmd":
+        return [];
+      case "get_pending_prompt":
+      case "get_prompt_state":
         return null;
       default:
         return null;
