@@ -79,6 +79,10 @@ pub struct SessionManager {
 /// zero-duration slivers.
 pub const TRAINING_IDLE_FINALIZE_SECS: i64 = 180;
 
+/// Clock reading (seconds) of a fresh regulation round. Used to tell a real
+/// opening kickoff from a mid-match snapshot when the app connects late.
+pub const REGULATION_CLOCK_SECONDS: i32 = 300;
+
 impl SessionManager {
     pub fn new(kickoff_threshold_seconds: i32) -> Self {
         Self {
@@ -180,12 +184,24 @@ impl SessionManager {
 
     /// Was the goal being processed scored straight off a kickoff?
     ///
-    /// Returns false when no round start has been observed yet, so an
-    /// unknown anchor can never mark every goal as a kickoff goal.
-    fn is_kickoff_goal(&self) -> bool {
+    /// `GoalTime` (seconds elapsed in the round that just ended) is the direct
+    /// evidence: a round shorter than the threshold is a kickoff goal. That
+    /// works in regulation and overtime alike and does not depend on any
+    /// anchor, which is what the real stream requires — `GoalScored` carries
+    /// no `PrimaryId` and the score-update snapshot often lands before it.
+    ///
+    /// The anchor fallbacks below only exist for streams (and fixtures) that
+    /// do not report `GoalTime`. Returns false when no anchor has been
+    /// observed, so an unknown anchor can never mark every goal as a kickoff
+    /// goal.
+    fn is_kickoff_goal(&self, goal: &crate::core::models::GoalScoredData) -> bool {
+        if goal.goal_time > 0 {
+            return goal.goal_time <= self.kickoff_threshold_seconds;
+        }
+
         if self.is_overtime {
-            // In overtime the game clock sits at 0 and never moves, so the
-            // only usable signal is wall-clock time since the round started.
+            // Overtime: the game clock never moves, so only wall-clock time
+            // since the last restart anchor is usable.
             return self
                 .round_start_wall_time
                 .map(|start| {
@@ -195,10 +211,15 @@ impl SessionManager {
                 .unwrap_or(false);
         }
 
-        // Regulation: the clock counts down, so a goal is a kickoff goal while
-        // time_remaining is still within `threshold` of the round start.
+        // Regulation fallback: the clock counts down, so a goal is a kickoff
+        // goal while time_remaining is still within `threshold` below the
+        // round start. The upper bound guards against a clock that moves up
+        // (overtime artifacts / corrupted readings) producing a false positive.
         self.round_start_game_time
-            .map(|start| self.time_remaining >= start - self.kickoff_threshold_seconds)
+            .map(|start| {
+                self.time_remaining >= start - self.kickoff_threshold_seconds
+                    && self.time_remaining <= start
+            })
             .unwrap_or(false)
     }
 
@@ -263,41 +284,24 @@ impl SessionManager {
                     // Anchor the opening kickoff. Streams don't reliably emit a
                     // round-start marker before the first goal, so without this
                     // the opening kickoff could never be detected.
-                    if self.round_start_game_time.is_none() && game.time > 0 {
+                    //
+                    // Only a clock that is still near a fresh regulation period
+                    // (300s) proves a real opening kickoff. Anchoring on any
+                    // positive reading marked goals as kickoffs when the app
+                    // connected mid-match (e.g. first snapshot at 182s).
+                    if self.round_start_game_time.is_none()
+                        && game.time > 0
+                        && game.time >= REGULATION_CLOCK_SECONDS - self.kickoff_threshold_seconds
+                    {
                         self.mark_round_start();
                     }
-                    // A score change means a round finished and a new kickoff
-                    // followed. Some streams never emit GoalReplayEnd or
-                    // RoundStarted between goals, leaving the anchor pointing
-                    // at the opening kickoff — which silently stops counting
-                    // kickoff goals after the first one. Re-anchor whenever the
-                    // score moves so every kickoff after a goal is evaluated
-                    // against a fresh anchor.
-                    //
-                    // Overtime is the exception: the game clock sits at 0, so
-                    // the wall-clock anchor from GoalReplayEnd (fired right
-                    // before the restart) is far more accurate than anything
-                    // stamped mid-replay. Re-anchoring here would drag the
-                    // anchor back to the goal moment — replay (~5s) + countdown
-                    // (~3s) already exceed the threshold, so no overtime
-                    // kickoff goal could ever count.
-                    if let Some(teams) = &game.teams {
-                        if !teams.is_empty() {
-                            let blue = teams[0].score;
-                            let orange = teams.get(1).map(|t| t.score).unwrap_or(0);
-                            let score_changed =
-                                blue != self.score_blue || orange != self.score_orange;
-                            if score_changed
-                                && self.round_start_game_time.is_some()
-                                && !self.is_overtime
-                            {
-                                self.mark_round_start();
-                            }
-                            self.score_blue = blue;
-                            self.score_orange = orange;
-                        }
-                    }
-                    self.ball_speed = game.ball.as_ref().map(|ball| ball.speed).unwrap_or(0.0);
+                    // NOTE: a score change in this snapshot must NOT re-anchor
+                    // the round. In the real stream the score update arrives
+                    // *before* `GoalScored`, so re-anchoring here makes
+                    // `is_kickoff_goal` compare the goal against its own
+                    // moment and marks every goal as a kickoff goal. The
+                    // `GoalScored` handler re-anchors after classifying; that
+                    // is enough for streams without round markers.
                     if let Some(teams) = &game.teams {
                         if !teams.is_empty() {
                             self.score_blue = teams[0].score;
@@ -306,6 +310,7 @@ impl SessionManager {
                             self.score_orange = teams[1].score;
                         }
                     }
+                    self.ball_speed = game.ball.as_ref().map(|ball| ball.speed).unwrap_or(0.0);
                     self.max_player_count = self.max_player_count.max(players.len());
                     // Merge players from the snapshot into the session map.
                     // We update existing players with their latest stats AND keep any
@@ -352,7 +357,23 @@ impl SessionManager {
                 }
             }
             RlEvent::GoalScored { data } if self.phase == MatchPhase::Active => {
-                info!(scorer = %data.scorer.name, "Goal scored");
+                // Replay artifacts: real streams emit a second `GoalScored`
+                // with an empty scorer, `GoalTime=0` and no `Shortcut` while
+                // the replay plays. Persisting it added ghost goals to the
+                // backfill timeline and re-anchoring on it corrupted the round
+                // bookkeeping mid-replay.
+                let unknown_scorer = data.scorer.name.trim().is_empty()
+                    || data.scorer.name.eq_ignore_ascii_case("unknown");
+                if unknown_scorer && data.goal_time <= 0 {
+                    debug!("Ignoring replay-artifact GoalScored without a scorer");
+                    return;
+                }
+
+                info!(
+                    scorer = %data.scorer.name,
+                    goal_time = data.goal_time,
+                    "Goal scored"
+                );
                 // Persist the game-clock reading alongside the goal: it is the
                 // evidence the kickoff backfill uses to recount history, and
                 // the dedicated column carries it for cheap queries.
@@ -369,10 +390,10 @@ impl SessionManager {
                 self.events
                     .push(("GoalScored".into(), json, Utc::now(), Some(goal_clock)));
 
-                // Capture the score before the kickoff anchor is re-armed, so
-                // the kickoff-goal window closes and the next kickoff starts
-                // fresh.
-                let is_kickoff_goal = self.is_kickoff_goal();
+                // Classify before the anchor moves: `GoalTime` is authoritative
+                // when present, and the fallback anchors must be read as they
+                // were during the round that just ended.
+                let is_kickoff_goal = self.is_kickoff_goal(data);
 
                 if is_kickoff_goal {
                     match self.resolve_scorer_key(&data.scorer) {
@@ -663,16 +684,28 @@ impl SessionManager {
         let is_win = matches!((winner, my_team), (Some(winner_team), Some(my_team)) if winner_team == my_team);
         let is_loss = matches!((winner, my_team), (Some(winner_team), Some(my_team)) if winner_team != my_team);
 
-        let my_goals: i32 = players_vec
-            .iter()
-            .filter(|p| Some(p.team_num) == my_team)
-            .map(|p| p.stats.goals)
-            .sum();
-        let their_goals: i32 = players_vec
-            .iter()
-            .filter(|p| my_team.is_some() && Some(p.team_num) != my_team)
-            .map(|p| p.stats.goals)
-            .sum();
+        // Team goals for the rollup come from the scoreboard, the same source
+        // the session list and history use. Player-goal sums diverge when the
+        // roster snapshot is incomplete or an own goal moves the score without
+        // crediting the shooter's team.
+        let my_goals: i32 = my_team
+            .map(|team| {
+                if team == 0 {
+                    self.score_blue
+                } else {
+                    self.score_orange
+                }
+            })
+            .unwrap_or(0);
+        let their_goals: i32 = my_team
+            .map(|team| {
+                if team == 0 {
+                    self.score_orange
+                } else {
+                    self.score_blue
+                }
+            })
+            .unwrap_or(0);
         let total_shots: i32 = players_vec
             .iter()
             .filter(|p| Some(p.team_num) == my_team)
@@ -1045,8 +1078,24 @@ mod tests {
                 id: id.to_string(),
                 name: id.to_string(),
                 team_num: 0,
+                shortcut: 1,
             },
             assister: None,
+            goal_time: 0,
+        }
+    }
+
+    /// A goal carrying the real `GoalTime` (round duration in seconds).
+    fn scorer_with_goal_time(id: &str, goal_time: i32) -> GoalScoredData {
+        GoalScoredData {
+            scorer: StatfeedTarget {
+                id: id.to_string(),
+                name: id.to_string(),
+                team_num: 0,
+                shortcut: 1,
+            },
+            assister: None,
+            goal_time,
         }
     }
 
@@ -1082,6 +1131,32 @@ mod tests {
                 playlist_id: None,
             },
             players,
+        }
+    }
+
+    fn two_players() -> HashMap<String, LivePlayer> {
+        let mut players = HashMap::new();
+        players.insert("p1".to_string(), live_player("p1", "Alpha"));
+        players.insert("p2".to_string(), live_player("p2", "Beta"));
+        players
+    }
+
+    fn update_state_scored(time: i32, blue: i32, orange: i32) -> RlEvent {
+        RlEvent::UpdateState {
+            match_guid: Some("guid-1".into()),
+            game: GameState {
+                teams: Some(vec![
+                    crate::core::models::TeamInfo { score: blue },
+                    crate::core::models::TeamInfo { score: orange },
+                ]),
+                time,
+                is_overtime: false,
+                ball: None,
+                arena: Some("stadium_p".into()),
+                target: None,
+                playlist_id: None,
+            },
+            players: two_players(),
         }
     }
 
@@ -1141,6 +1216,90 @@ mod tests {
             0,
             "an unknown round start must not mark every goal as a kickoff goal"
         );
+    }
+
+    /// Regression: in the real stream the score update snapshot lands BEFORE
+    /// `GoalScored`. Re-anchoring on that score change made every goal compare
+    /// against its own moment (`time_remaining >= time_remaining - threshold`)
+    /// and counted every goal — own and conceded — as a kickoff goal. The
+    /// anchor must only move on `GoalScored`, round markers and replay end.
+    #[test]
+    fn score_update_before_goal_does_not_mark_every_goal_as_kickoff() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        // Mid-match connect: no opening anchor at all.
+        session.handle_event(update_state_scored(182, 0, 0));
+        // Real order: score moves first, then the goal event with the frozen
+        // clock. Neither is a kickoff.
+        session.handle_event(update_state_scored(182, 1, 0));
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 182 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(
+            kickoff_goals(&session, "p1"),
+            0,
+            "a goal whose score snapshot arrived first must not be a kickoff goal"
+        );
+    }
+
+    /// `GoalTime` is the authoritative kickoff signal on real streams: it is
+    /// the duration of the round that just ended, so it classifies a goal with
+    /// no anchor at all — including overtime and mid-match connects.
+    #[test]
+    fn goal_time_drives_kickoff_detection() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 120 });
+        session.handle_event(RlEvent::GoalScored {
+            data: scorer_with_goal_time("p1", 4),
+        });
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+
+        session.handle_event(RlEvent::GoalScored {
+            data: scorer_with_goal_time("p2", 90),
+        });
+        assert_eq!(kickoff_goals(&session, "p2"), 0);
+    }
+
+    /// The stream emits a second, scorer-less `GoalScored` with `GoalTime=0`
+    /// during the replay. It must not be persisted, counted or re-anchor the
+    /// round.
+    #[test]
+    fn replay_artifact_goal_is_ignored() {
+        let mut session = started_session();
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 296 });
+
+        let mut artifact = scorer("");
+        artifact.scorer.id = String::new();
+        artifact.scorer.name = "Unknown".into();
+        artifact.scorer.shortcut = 0;
+        session.handle_event(RlEvent::GoalScored { data: artifact });
+
+        assert!(
+            session
+                .events
+                .iter()
+                .all(|(event_type, _, _, _)| event_type != "GoalScored"),
+            "the replay artifact must not reach the persisted timeline"
+        );
+        assert_eq!(kickoff_goals(&session, "p1"), 0);
+
+        // The real goal right after still counts normally.
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+        assert_eq!(kickoff_goals(&session, "p1"), 1);
+    }
+
+    /// Connecting to a match already in progress must not anchor the opening
+    /// kickoff at the current clock: any goal in the following threshold
+    /// seconds would count as a kickoff goal.
+    #[test]
+    fn connecting_mid_match_does_not_anchor_the_opening_kickoff() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        session.handle_event(update_state_scored(182, 0, 0));
+        session.handle_event(RlEvent::ClockUpdatedSeconds { time: 179 });
+        session.handle_event(RlEvent::GoalScored { data: scorer("p1") });
+
+        assert_eq!(kickoff_goals(&session, "p1"), 0);
     }
 
     /// Real streams emit GoalReplayEnd before each restart but frequently no

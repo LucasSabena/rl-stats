@@ -735,11 +735,16 @@ pub fn mark_change_synced(pool: &DbPool, outbox_id: i64, server_revision: i64) -
 
 pub fn mark_change_failed(pool: &DbPool, outbox_id: i64, error: &str) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    // The outbox query compares `available_at <= now` as text, and every
+    // other timestamp in this table is RFC3339. `datetime('now','+5 minutes')`
+    // produced `YYYY-MM-DD HH:MM:SS`, which sorts *before* the RFC3339 now for
+    // the same day — the backoff never delayed a retry.
+    let available_at = (Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
     conn.execute(
         "UPDATE sync_outbox
-         SET attempts = attempts + 1, last_error = ?1, available_at = datetime('now', '+5 minutes')
-         WHERE id = ?2",
-        params![error, outbox_id],
+         SET attempts = attempts + 1, last_error = ?1, available_at = ?2
+         WHERE id = ?3",
+        params![error, available_at, outbox_id],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     Ok(())
@@ -770,4 +775,309 @@ fn set_metadata_conn(conn: &rusqlite::Connection, key: &str, value: &str) -> App
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::storage::{get_conn, get_or_create_player_conn, init_storage, DbPool};
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-sync-test-{tag}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    fn outbox_row_count(pool: &DbPool) -> i64 {
+        let conn = get_conn(pool).unwrap();
+        conn.query_row("SELECT COUNT(*) FROM sync_outbox", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn enqueue_upsert_persists_a_pending_change() {
+        let pool = temp_pool("upsert");
+        let conn = get_conn(&pool).unwrap();
+        let id = enqueue_upsert_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "Alice" }),
+        )
+        .unwrap();
+        assert!(id > 0);
+
+        let pending = get_pending_changes(&pool, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        let change = &pending[0];
+        assert_eq!(change.id, id);
+        assert_eq!(change.entity_type, "player");
+        assert_eq!(change.entity_key, "pid-1");
+        assert_eq!(change.operation, SyncOperation::Upsert);
+        assert_eq!(change.attempts, 0);
+        assert!(change.last_error.is_none());
+        assert!(change.idempotency_key.contains("player:pid-1:upsert"));
+        let payload: serde_json::Value = serde_json::from_str(&change.payload_json).unwrap();
+        assert_eq!(payload["name"], "Alice");
+
+        let status = get_sync_status(&pool).unwrap();
+        assert_eq!(status.pending_changes, 1);
+        assert_eq!(status.failed_changes, 0);
+        assert!(!status.device_id.is_empty());
+    }
+
+    #[test]
+    fn repeated_upsert_for_same_entity_updates_in_place() {
+        let pool = temp_pool("upsert-dedup");
+        let conn = get_conn(&pool).unwrap();
+        let first = enqueue_upsert_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "v1" }),
+        )
+        .unwrap();
+        let second = enqueue_upsert_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "v2" }),
+        )
+        .unwrap();
+        assert_eq!(first, second, "pending upserts must coalesce");
+        drop(conn);
+
+        assert_eq!(outbox_row_count(&pool), 1);
+        let pending = get_pending_changes(&pool, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        let payload: serde_json::Value = serde_json::from_str(&pending[0].payload_json).unwrap();
+        assert_eq!(payload["name"], "v2");
+    }
+
+    #[test]
+    fn delete_records_outbox_row_and_tombstone() {
+        let pool = temp_pool("tombstone");
+        let conn = get_conn(&pool).unwrap();
+        let outbox_id = enqueue_delete_conn(
+            &conn,
+            "match",
+            "guid-1",
+            serde_json::json!({ "guid": "guid-1" }),
+        )
+        .unwrap();
+
+        let (deleted_at, payload_json, source_outbox_id): (String, String, Option<i64>) = conn
+            .query_row(
+                "SELECT deleted_at, payload_json, source_outbox_id
+                 FROM sync_tombstones
+                 WHERE entity_type = ?1 AND entity_key = ?2",
+                params!["match", "guid-1"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(source_outbox_id, Some(outbox_id));
+        assert!(!deleted_at.is_empty());
+        let payload: serde_json::Value = serde_json::from_str(&payload_json).unwrap();
+        assert_eq!(payload["guid"], "guid-1");
+        drop(conn);
+
+        let pending = get_pending_changes(&pool, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].operation, SyncOperation::Delete);
+    }
+
+    #[test]
+    fn delete_after_upsert_inserts_a_separate_outbox_row() {
+        let pool = temp_pool("upsert-then-delete");
+        let conn = get_conn(&pool).unwrap();
+        enqueue_upsert_conn(
+            &conn,
+            "match",
+            "guid-1",
+            serde_json::json!({ "guid": "guid-1" }),
+        )
+        .unwrap();
+        enqueue_delete_conn(
+            &conn,
+            "match",
+            "guid-1",
+            serde_json::json!({ "guid": "guid-1" }),
+        )
+        .unwrap();
+        drop(conn);
+
+        assert_eq!(outbox_row_count(&pool), 2);
+        let pending = get_pending_changes(&pool, 10).unwrap();
+        assert_eq!(pending.len(), 2);
+        assert_eq!(pending[0].operation, SyncOperation::Upsert);
+        assert_eq!(pending[1].operation, SyncOperation::Delete);
+    }
+
+    #[test]
+    fn repeated_delete_updates_the_single_tombstone_row() {
+        let pool = temp_pool("tombstone-dedup");
+        let conn = get_conn(&pool).unwrap();
+        enqueue_delete_conn(&conn, "match", "guid-1", serde_json::json!({ "v": 1 })).unwrap();
+        enqueue_delete_conn(&conn, "match", "guid-1", serde_json::json!({ "v": 2 })).unwrap();
+
+        let tombstone_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_tombstones WHERE entity_type = 'match'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tombstone_count, 1);
+        let payload_json: String = conn
+            .query_row(
+                "SELECT payload_json FROM sync_tombstones WHERE entity_type = 'match' AND entity_key = 'guid-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&payload_json).unwrap();
+        assert_eq!(payload["v"], 2);
+    }
+
+    #[test]
+    fn mark_change_synced_clears_pending_and_marks_entity_clean() {
+        let pool = temp_pool("synced");
+        let conn = get_conn(&pool).unwrap();
+        let id = enqueue_upsert_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "Alice" }),
+        )
+        .unwrap();
+        drop(conn);
+
+        mark_change_synced(&pool, id, 7).unwrap();
+        assert!(get_pending_changes(&pool, 10).unwrap().is_empty());
+        assert_eq!(get_sync_status(&pool).unwrap().pending_changes, 0);
+
+        let conn = get_conn(&pool).unwrap();
+        let (dirty, server_revision, last_pushed_at): (i64, i64, Option<String>) = conn
+            .query_row(
+                "SELECT dirty, server_revision, last_pushed_at
+                 FROM sync_entity_state
+                 WHERE entity_type = ?1 AND entity_key = ?2",
+                params!["player", "pid-1"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(dirty, 0);
+        assert_eq!(server_revision, 7);
+        assert!(last_pushed_at.is_some());
+    }
+
+    #[test]
+    fn mark_change_failed_records_attempt_and_error() {
+        let pool = temp_pool("failed");
+        let conn = get_conn(&pool).unwrap();
+        let id = enqueue_upsert_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "Alice" }),
+        )
+        .unwrap();
+        drop(conn);
+
+        mark_change_failed(&pool, id, "network down").unwrap();
+
+        let conn = get_conn(&pool).unwrap();
+        let (attempts, last_error): (i32, Option<String>) = conn
+            .query_row(
+                "SELECT attempts, last_error FROM sync_outbox WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(attempts, 1);
+        assert_eq!(last_error.as_deref(), Some("network down"));
+        drop(conn);
+
+        let status = get_sync_status(&pool).unwrap();
+        assert_eq!(status.pending_changes, 1);
+        assert_eq!(status.failed_changes, 1);
+    }
+
+    #[test]
+    fn pending_hydrated_upsert_reads_the_live_row() {
+        let pool = temp_pool("hydrate");
+        let conn = get_conn(&pool).unwrap();
+        let player_id = get_or_create_player_conn(&conn, "pid-1", "Alice").unwrap();
+        enqueue_upsert_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "stale name" }),
+        )
+        .unwrap();
+        drop(conn);
+
+        let hydrated = get_pending_hydrated_changes(&pool, 10).unwrap();
+        assert_eq!(hydrated.len(), 1);
+        assert_eq!(hydrated[0].operation, SyncOperation::Upsert);
+        assert_eq!(hydrated[0].payload_json["local_id"], player_id);
+        assert_eq!(hydrated[0].payload_json["name"], "Alice");
+    }
+
+    #[test]
+    fn pending_hydrated_delete_keeps_the_stored_payload() {
+        let pool = temp_pool("hydrate-delete");
+        let conn = get_conn(&pool).unwrap();
+        enqueue_delete_conn(
+            &conn,
+            "player",
+            "pid-1",
+            serde_json::json!({ "name": "gone" }),
+        )
+        .unwrap();
+        drop(conn);
+
+        let hydrated = get_pending_hydrated_changes(&pool, 10).unwrap();
+        assert_eq!(hydrated.len(), 1);
+        assert_eq!(hydrated[0].operation, SyncOperation::Delete);
+        assert_eq!(hydrated[0].payload_json["name"], "gone");
+    }
+
+    #[test]
+    fn local_identity_is_stable_and_revision_roundtrips() {
+        let pool = temp_pool("identity");
+        let first = ensure_local_sync_identity(&pool).unwrap();
+        let second = ensure_local_sync_identity(&pool).unwrap();
+        assert_eq!(first, second);
+        assert!(uuid::Uuid::parse_str(&first).is_ok());
+
+        set_last_pulled_revision(&pool, 42).unwrap();
+        let status = get_sync_status(&pool).unwrap();
+        assert_eq!(status.device_id, first);
+        assert_eq!(status.protocol_version, SYNC_PROTOCOL_VERSION);
+        assert_eq!(status.last_pulled_revision, 42);
+    }
+
+    #[test]
+    fn public_enqueue_change_supports_delete_operation() {
+        let pool = temp_pool("public-delete");
+        let id = enqueue_change(
+            &pool,
+            "session",
+            "5",
+            SyncOperation::Delete,
+            serde_json::json!({ "local_id": 5 }),
+        )
+        .unwrap();
+
+        let pending = get_pending_changes(&pool, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, id);
+        assert_eq!(pending[0].operation, SyncOperation::Delete);
+        assert_eq!(pending[0].entity_type, "session");
+    }
 }

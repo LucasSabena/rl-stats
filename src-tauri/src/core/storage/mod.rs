@@ -102,7 +102,10 @@ pub fn init_storage<P: AsRef<Path>>(db_path: P) -> AppResult<DbPool> {
         )
     });
     let pool = Pool::builder()
-        .max_size(5)
+        // Analytics fires a handful of concurrent read commands; every one of
+        // them holds a connection for the whole query. At 5 the pool starved
+        // and callers waited on the 10s checkout timeout in cascade.
+        .max_size(10)
         .min_idle(Some(1))
         .connection_timeout(std::time::Duration::from_secs(10))
         .build(manager)
@@ -1140,7 +1143,7 @@ pub fn get_daily_rollups_filtered(
     let mut sql = String::from(
         "SELECT id, start_time, score_blue, score_orange, winner, duration_seconds
          FROM matches
-         WHERE start_time >= ?1 AND start_time < date(?2, '+1 day')",
+         WHERE date(start_time, 'localtime') >= ?1 AND date(start_time, 'localtime') <= ?2",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(start_date.to_string()));
@@ -1234,33 +1237,30 @@ pub fn get_daily_rollups_filtered(
             rollup.total_demos += stats.demos;
             rollup.total_assists += stats.assists;
             rollup.kickoff_goals_scored += stats.kickoff_goals;
+            rollup.kickoff_goals_conceded += stats.opponent_kickoff_goals;
             rollup.avg_duration_seconds = ((rollup.avg_duration_seconds * prev_count)
                 + duration_seconds)
                 / rollup.matches_played;
             rollup.avg_score =
                 ((rollup.avg_score * prev_count) + stats.score) / rollup.matches_played;
         } else {
-            let my_goals = stats.team_goals;
-            let their_goals = stats.opponent_goals;
+            // Team goals come from the scoreboard, the same source the session
+            // list and match detail use. Summing player rows diverges whenever
+            // the roster snapshot is incomplete (late connect, player left) or
+            // an own goal credits a player while moving the opposite score.
+            let team_scored = if my_team == 0 {
+                score_blue
+            } else {
+                score_orange
+            };
+            let team_conceded = if my_team == 0 {
+                score_orange
+            } else {
+                score_blue
+            };
 
-            rollup.goals_scored += if my_goals == 0 && their_goals == 0 {
-                if my_team == 0 {
-                    score_blue
-                } else {
-                    score_orange
-                }
-            } else {
-                my_goals
-            };
-            rollup.goals_conceded += if my_goals == 0 && their_goals == 0 {
-                if my_team == 0 {
-                    score_orange
-                } else {
-                    score_blue
-                }
-            } else {
-                their_goals
-            };
+            rollup.goals_scored += team_scored;
+            rollup.goals_conceded += team_conceded;
             rollup.total_shots += stats.team_shots;
             rollup.total_saves += stats.team_saves;
             rollup.total_demos += stats.team_demos;
@@ -1331,8 +1331,19 @@ pub fn rebuild_daily_rollups_for_identity(
             continue;
         };
 
-        let my_goals = stats.team_goals;
-        let their_goals = stats.opponent_goals;
+        // Scoreboard is the team-goal source of truth (see
+        // get_daily_rollups_filtered): full `matches` rows always carry both
+        // scores, while player sums can miss goals or include own goals.
+        let team_scored = if my_team == 0 {
+            score_blue
+        } else {
+            score_orange
+        };
+        let team_conceded = if my_team == 0 {
+            score_orange
+        } else {
+            score_blue
+        };
 
         let rollup = DailyRollup {
             date: local_date_string(&start_time),
@@ -1343,24 +1354,8 @@ pub fn rebuild_daily_rollups_for_identity(
             } else {
                 0
             },
-            goals_scored: if my_goals == 0 && their_goals == 0 {
-                if my_team == 0 {
-                    score_blue
-                } else {
-                    score_orange
-                }
-            } else {
-                my_goals
-            },
-            goals_conceded: if my_goals == 0 && their_goals == 0 {
-                if my_team == 0 {
-                    score_orange
-                } else {
-                    score_blue
-                }
-            } else {
-                their_goals
-            },
+            goals_scored: team_scored,
+            goals_conceded: team_conceded,
             total_shots: stats.team_shots,
             total_saves: stats.team_saves,
             avg_duration_seconds: duration_seconds,
@@ -2608,6 +2603,96 @@ pub fn get_player_mmr_history_for_playlist(
     Ok(values)
 }
 
+/// One persisted MMR reading for the historical curve.
+#[derive(Clone, Debug, Serialize)]
+pub struct MmrHistoryPoint {
+    pub match_id: i64,
+    pub start_time: String,
+    pub mmr: i32,
+    pub playlist: Option<String>,
+    pub is_win: bool,
+    pub overtime: bool,
+}
+
+/// MMR readings for a player over a local-date window, oldest first.
+pub fn get_mmr_history_points(
+    pool: &DbPool,
+    primary_id: &str,
+    playlist: Option<&str>,
+    start_date: &str,
+    end_date: &str,
+) -> AppResult<Vec<MmrHistoryPoint>> {
+    let conn = get_conn(pool)?;
+    let mut sql = String::from(
+        "SELECT m.id, m.start_time, mp.mmr, m.playlist, m.winner, m.is_overtime, mp.team_num
+         FROM match_players mp
+         JOIN players p ON p.id = mp.player_id
+         JOIN matches m ON m.id = mp.match_id
+         WHERE p.primary_id = ?1
+           AND mp.mmr IS NOT NULL
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
+    );
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    args.push(Box::new(primary_id.to_string()));
+    args.push(Box::new(start_date.to_string()));
+    args.push(Box::new(end_date.to_string()));
+
+    if let Some(pl) = playlist {
+        sql.push_str(" AND LOWER(COALESCE(m.playlist, '')) = LOWER(?)");
+        args.push(Box::new(pl.to_string()));
+    }
+    sql.push_str(" ORDER BY m.start_time ASC");
+    sql.push_str(" LIMIT 5000");
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map(&*params_refs, |row| {
+            let winner: Option<i32> = row.get(4)?;
+            let team_num: i32 = row.get(6)?;
+            Ok(MmrHistoryPoint {
+                match_id: row.get(0)?,
+                start_time: row.get(1)?,
+                mmr: row.get(2)?,
+                playlist: row.get(3)?,
+                is_win: winner == Some(team_num),
+                overtime: row.get::<_, i32>(5)? != 0,
+            })
+        })
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    let mut points = Vec::new();
+    for row in rows {
+        points.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    }
+    Ok(points)
+}
+
+/// Distinct playlists that have persisted MMR readings for a player.
+pub fn get_mmr_history_playlists(pool: &DbPool, primary_id: &str) -> AppResult<Vec<String>> {
+    let conn = get_conn(pool)?;
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT m.playlist
+         FROM match_players mp
+         JOIN players p ON p.id = mp.player_id
+         JOIN matches m ON m.id = mp.match_id
+         WHERE p.primary_id = ?1
+           AND mp.mmr IS NOT NULL
+           AND m.playlist IS NOT NULL
+           AND m.playlist != ''
+         ORDER BY m.playlist ASC",
+    )?;
+    let rows = stmt
+        .query_map(params![primary_id], |row| row.get::<_, String>(0))
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let mut playlists = Vec::new();
+    for row in rows {
+        playlists.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+    }
+    Ok(playlists)
+}
+
 // ─── Friends ─────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize)]
@@ -3053,7 +3138,8 @@ fn get_player_id_by_name(conn: &rusqlite::Connection, name: &str) -> AppResult<O
 }
 
 /// Summary of individual player stats for a date range.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IndividualAnalyticsSummary {
     pub total_matches: i32,
     pub wins: i32,
@@ -3067,6 +3153,8 @@ pub struct IndividualAnalyticsSummary {
     pub avg_score: f64,
     pub avg_duration: f64,
     pub peak_speed: f64,
+    pub total_kickoff_goals: i32,
+    pub total_kickoff_conceded: i32,
 }
 
 /// Compute analytics summary for a specific player identity across a date range.
@@ -3083,13 +3171,17 @@ pub fn get_analytics_summary_for_identity(
 
     let mut sql = String::from(
         "SELECT m.winner, mp.team_num, m.score_blue, m.score_orange, m.duration_seconds,
-                mp.goals, mp.shots, mp.saves, mp.assists, mp.demos, mp.score, mp.speed
+                mp.goals, mp.shots, mp.saves, mp.assists, mp.demos, mp.score, mp.speed,
+                mp.kickoff_goals,
+                (SELECT COALESCE(SUM(mp2.kickoff_goals), 0)
+                 FROM match_players mp2
+                 WHERE mp2.match_id = m.id AND mp2.team_num != mp.team_num)
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')",
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(local_primary_id.to_string()));
@@ -3123,6 +3215,8 @@ pub fn get_analytics_summary_for_identity(
             row.get::<_, i32>(9)?,
             row.get::<_, i32>(10)?,
             row.get::<_, f64>(11)?,
+            row.get::<_, i32>(12)?,
+            row.get::<_, i32>(13)?,
         ))
     })?;
 
@@ -3142,6 +3236,8 @@ pub fn get_analytics_summary_for_identity(
             demos,
             score,
             speed,
+            kickoff_goals,
+            opponent_kickoff_goals,
         ) = row.map_err(|e| AppError::StorageError(e.to_string()))?;
 
         summary.total_matches += 1;
@@ -3161,6 +3257,8 @@ pub fn get_analytics_summary_for_identity(
         summary.total_saves += saves;
         summary.total_assists += assists;
         summary.total_demos += demos;
+        summary.total_kickoff_goals += kickoff_goals;
+        summary.total_kickoff_conceded += opponent_kickoff_goals;
         summary.avg_score += score as f64;
         summary.avg_duration += duration as f64;
         if speed > summary.peak_speed {
@@ -3205,8 +3303,8 @@ pub fn get_insights(
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
            AND m.winner IS NOT NULL
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')",
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(player_primary_id.to_string()));
@@ -3418,12 +3516,26 @@ pub fn get_insights(
     }
 
     let mut team_sql = String::from(
-        "SELECT SUM(assists), SUM(saves), SUM(shots), SUM(demos)
+        "SELECT COALESCE(SUM(mp.assists), 0), COALESCE(SUM(mp.saves), 0),
+                COALESCE(SUM(mp.shots), 0), COALESCE(SUM(mp.demos), 0)
          FROM match_players mp
          JOIN matches m ON mp.match_id = m.id
-         WHERE m.start_time >= ?1 AND m.start_time < date(?2, '+1 day')",
+         WHERE mp.match_id IN (
+                 SELECT mp2.match_id FROM match_players mp2
+                 JOIN players p2 ON p2.id = mp2.player_id
+                 WHERE p2.primary_id = ?1
+             )
+           AND mp.team_num = (
+                 SELECT mp3.team_num FROM match_players mp3
+                 JOIN players p3 ON p3.id = mp3.player_id
+                 WHERE mp3.match_id = m.id AND p3.primary_id = ?1
+                 LIMIT 1
+             )
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut team_args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    team_args.push(Box::new(player_primary_id.to_string()));
     team_args.push(Box::new(start_date.to_string()));
     team_args.push(Box::new(end_date.to_string()));
 
@@ -3712,9 +3824,9 @@ pub fn get_player_analytics_matches(
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
            AND m.winner IS NOT NULL
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')
-           AND m.match_type != 'training'",
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3
+           AND LOWER(COALESCE(m.match_type, '')) != 'training'",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(player_primary_id.to_string()));

@@ -9,6 +9,8 @@ lerna-debug.log*
 
 # Browser tooling artifacts
 .playwright-mcp/
+e2e/test-results/
+playwright-report/
 
 node_modules
 dist

@@ -1,12 +1,60 @@
+use crate::commands::analytics::AnalyticsPeriod;
 use crate::core::mmr::{resolve_lobby_mmr, set_local_mmr_manual, LiveMmrSnapshot};
 use crate::core::settings::get_settings;
 use crate::core::storage::{
-    list_mmr_provider_health, record_mmr_provider_attempt, MatchMmrSnapshot, MmrProviderHealth,
+    get_mmr_history_playlists, get_mmr_history_points, list_mmr_provider_health,
+    record_mmr_provider_attempt, MatchMmrSnapshot, MmrProviderHealth,
 };
 use crate::AppState;
 use serde::Serialize;
 use std::collections::HashMap;
 use tauri::State;
+
+/// Historical MMR curve from the readings persisted with each match.
+///
+/// The window is a local calendar range (matching every other analytics
+/// window). `player_id` selects a friend/teammate; local player otherwise.
+#[tauri::command]
+pub async fn get_mmr_history(
+    state: State<'_, AppState>,
+    player_id: Option<String>,
+    playlist: Option<String>,
+    period: AnalyticsPeriod,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let settings = get_settings(pool).unwrap_or_default();
+    let identity = match player_id {
+        Some(pid) if !pid.trim().is_empty() => pid,
+        _ => match settings.local_primary_id.clone() {
+            Some(id) if !id.trim().is_empty() => id,
+            _ => {
+                return Ok(serde_json::json!({
+                    "available": false,
+                    "points": [],
+                    "playlists": [],
+                }))
+            }
+        },
+    };
+
+    let days = if period.days == 0 { 365 } else { period.days };
+    let (start_date, end_date) = crate::commands::analytics::local_window(days as i64);
+    let playlist_filter = playlist
+        .as_deref()
+        .filter(|value| !value.trim().is_empty() && *value != "all");
+
+    let playlists = get_mmr_history_playlists(pool, &identity).map_err(|e| e.to_string())?;
+    let points = get_mmr_history_points(pool, &identity, playlist_filter, &start_date, &end_date)
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "available": !points.is_empty(),
+        "points": points,
+        "playlists": playlists,
+        "startDate": start_date,
+        "endDate": end_date,
+    }))
+}
 
 #[tauri::command]
 pub async fn fetch_live_mmr_snapshot(
@@ -67,7 +115,8 @@ pub async fn fetch_live_mmr_snapshot(
         exact_playlist,
         settings
             .mmr_scraper_enabled
-            .then(|| state.rlstats_scraper.clone()),
+            .then(|| state.rlstats_scraper.clone())
+            .flatten(),
         live_players,
     )
     .await
@@ -153,7 +202,10 @@ pub async fn test_mmr_provider(
         crate::core::mmr::resolve_rlstats_test_target(&settings).map_err(|e| e.to_string())?;
 
     let started = std::time::Instant::now();
-    let scraper = state.rlstats_scraper.clone();
+    let scraper = state
+        .rlstats_scraper
+        .clone()
+        .ok_or_else(|| "El scraper de RLStats no está disponible.".to_string())?;
     let outcome = scraper.fetch_profile(&platform, &identifier).await;
     let latency_ms = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
 

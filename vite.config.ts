@@ -18,12 +18,16 @@ export default defineConfig(async () => ({
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   clearScreen: false,
   test: {
+    // Playwright specs use their own runner; Vitest must not try to execute
+    // them (their `test()` signature is incompatible).
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
     coverage: {
       exclude: [
         "dist/**",
         "src-tauri/**",
         "src-tauri/target/**",
         "src-tauri/overlays/**",
+        "e2e/**",
       ],
     },
   },

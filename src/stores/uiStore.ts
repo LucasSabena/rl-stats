@@ -6,13 +6,11 @@ export type Theme = "dark" | "light";
 
 interface UIState {
   sidebarExpanded: boolean;
-  activePage: string;
   toastQueue: ToastItem[];
   theme: Theme;
 
   toggleSidebar: () => void;
   setSidebarExpanded: (expanded: boolean) => void;
-  setActivePage: (page: string) => void;
   addToast: (toast: Omit<ToastItem, "id">) => void;
   removeToast: (id: string) => void;
   setTheme: (theme: Theme) => void;
@@ -43,7 +41,6 @@ function resolveInitialTheme(): Theme {
 export const useUIStore = create<UIState>()(
   immer((set, get) => ({
     sidebarExpanded: true,
-    activePage: "/",
     toastQueue: [],
     theme: resolveInitialTheme(),
 
@@ -55,11 +52,6 @@ export const useUIStore = create<UIState>()(
     setSidebarExpanded: (expanded) =>
       set((state) => {
         state.sidebarExpanded = expanded;
-      }),
-
-    setActivePage: (page) =>
-      set((state) => {
-        state.activePage = page;
       }),
 
     addToast: (toast) =>

@@ -101,9 +101,15 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      # Windows code signing (optional — uncomment and configure when certificate is available)
-      # TAURI_WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      # TAURI_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      # Windows code signing (optional). Storing the secrets in env lets the
+      # steps below feature-test them: `secrets.*` is not allowed in `if:`.
+      # Provide WINDOWS_CERTIFICATE as a base64 PFX and its password. When both
+      # are set, the certificate is imported and the bundler signs the
+      # installers, so Windows SmartScreen no longer shows "editor
+      # desconocido". (Azure Trusted Signing could be added the same way with a
+      # dlib/dlib install step.)
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -170,26 +176,35 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # ── Optional: Windows code signing ──────────────────
+      # Imports the PFX into the user store and passes the thumbprint to the
+      # bundler through `--config` (inline JSON), so no secret value ever
+      # reaches the repository or tauri.conf.json. No-op without the secrets.
+      - name: Import code signing certificate (optional)
+        if: env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          [IO.File]::WriteAllBytes("certificate.pfx", $bytes)
+          $secure = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password $secure
+          Write-Host "Imported code signing certificate $($cert.Thumbprint)"
+          $config = @{ bundle = @{ windows = @{ certificateThumbprint = $cert.Thumbprint } } } | ConvertTo-Json -Depth 5 -Compress
+          "TAURI_BUILD_CONFIG=$config" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Remove-Item certificate.pfx -Force
+      # ─────────────────────────────────────────────────────
+
       - name: Build Tauri app
-        run: pnpm tauri build
+        shell: pwsh
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
-
-      # ── Optional: Windows code signing ──────────────────
-      # Uncomment the section below once you have a code signing certificate.
-      # Store the certificate as base64 in GitHub Secret WINDOWS_CERTIFICATE
-      # and the password in WINDOWS_CERTIFICATE_PASSWORD.
-      #
-      # - name: Import code signing certificate
-      #   if: env.TAURI_WINDOWS_CERTIFICATE != ''
-      #   run: |
-      #     $bytes = [Convert]::FromBase64String("${{ secrets.WINDOWS_CERTIFICATE }}")
-      #     [IO.File]::WriteAllBytes("certificate.pfx", $bytes)
-      #     Import-PfxCertificate -FilePath certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" -AsPlainText -Force)
-      #   shell: pwsh
-      #
-      # Then set TAURI_WINDOWS_CERTIFICATE_THUMBPRINT in tauri.conf.json or pass via env.
-      # ─────────────────────────────────────────────────────
+        run: |
+          if ($env:TAURI_BUILD_CONFIG) {
+            Write-Host "Building with code signing config"
+            pnpm tauri build --config $env:TAURI_BUILD_CONFIG
+          } else {
+            pnpm tauri build
+          }
 
       - name: Upload artifacts to release
         env:

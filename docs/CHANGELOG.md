@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.13.0] - 2026-09-11
+
+### Fixed
+- **Kickoff goals were counted wrong for every real stream.** The Stats API sends the score-update snapshot *before* `GoalScored`, and the session re-anchored the round on that snapshot, so every goal (scored and conceded) was compared against its own moment and classified as a kickoff goal. The anchor now only moves on `GoalScored`, round markers and replay end. New regression tests reproduce the real event order.
+- **Kickoff goals now use `GoalTime`** (the duration of the round that just ended) when the stream reports it: exact classification in regulation and overtime with no anchor bookkeeping. Replay-artifact `GoalScored` events (no scorer, `GoalTime=0`) are ignored instead of being persisted, counted and re-anchoring the round.
+- Connecting to a match already in progress no longer anchors the opening kickoff at the current clock, which marked any goal in the next 7 seconds as a kickoff goal.
+- **Session detail was broken for every session**: the frontend sent `{startTime, endTime}` while the command expects `{query: {start_time, end_time}}`. The modal returned an error or sat on skeletons. It now loads, shows an explicit error with a retry button, and draws (null winner) render as draws instead of losses.
+- **Analytics filters silently did nothing**: Tauri converts Rust parameter names to camelCase, and the frontend sent `match_type`/`player_id` in snake_case, so `Option` filters deserialized to `None`. Every analytics, insights, sessions, rollups and pattern command now sends the correct keys, pinned by IPC contract tests.
+- **Historical kickoff recount rewritten**: it now rewrites every match with evidence (purging the old false positives instead of only matches with new kickoffs), rejects clock movements that go backwards, handles overtime per goal, and drops the substring name fallback that credited goals to the wrong player (`"Messi"` → `"Messi10"`). A new repair flag (`v25`) runs it once on existing databases and rebuilds the daily rollups.
+- Team goals in daily rollups and session summaries come from the scoreboard (the same source the history uses), so own goals and incomplete rosters no longer make rollups and session numbers diverge. The scorer's team disambiguates name collisions.
+- `update_match` now rebuilds the daily rollups, so editing a match's type/playlist no longer leaves analytics stale.
+- Timezone: analytics windows are computed in local dates and match queries filter on `date(start_time,'localtime')`; evening sessions no longer fall into the wrong day or out of the window.
+- Streaks exclude training, respect playlist/match-type case-insensitively, and kickoff goals conceded are no longer 0 in individual scope.
+- Insights contribution percentages use the player's team as the denominator instead of every player in the match.
+- `mark_change_failed` wrote a non-RFC3339 `available_at`, which disabled the cloud-sync retry backoff.
+- Migration loading no longer treats a transient `MAX(version)` read failure as an empty database (which re-ran `ALTER TABLE` migrations and failed startup).
+
+### Added
+- **MMR history chart** on Analytics: per-playlist MMR curve from the readings stored with each match, with current/pico/cambio stats.
+- **Comparator panel**: player vs player or current vs previous period across 14 metrics.
+- **End-of-session summary**: when Rocket League closes, a modal shows the session record (matches, W-L, streak, goals, time) plus a keyboard-first command palette (Ctrl/Cmd+K).
+- **CSV export** of the filtered history from the History page.
+- Onboarding now includes a real connection test ("Probar conexión") instead of asking the user to verify it themselves.
+- UI primitives (`Switch`, `Input`, `ConfirmModal`, `ProgressBar`, `DescriptionList`), a route-level error boundary, and Windows code signing support in the release workflow (activated by the `WINDOWS_CERTIFICATE`/`WINDOWS_CERTIFICATE_PASSWORD` secrets).
+
+### Changed
+- `src/lib/api.ts` split by domain under `src/lib/api/` and `shareEngine.ts` under `src/lib/share/`, both re-exported through the original paths (no import changes).
+- SQLite pool 5 → 10 and chunked `IN (...)` on the session-detail query, fixing pool starvation when Analytics fires its parallel queries.
+- `get_player_analytics_matches` no longer runs without a timeout, and `useAnalytics` is disabled in player mode (dead round-trip).
+- Tests: +53 Rust tests (182 unit, 3 command-harness integration, 36 storage), IPC contract tests, and a Playwright smoke suite (`pnpm test:e2e`) that boots the production bundle with a mocked Tauri host. All 221 Rust and 97 frontend tests pass.
+
+### Known gaps
+- Training packs remain local: syncing them needs a matching entity on the cloud-sync server.
+- i18n stays statically bundled; lazy loading awaits a test-suite strategy for async init.
+- `tauri::test` harness covers three read commands; more coverage needs the remaining Wry-typed state fields abstracted.
+
 ## [2.12.0] - 2026-09-11
 
 ### Added

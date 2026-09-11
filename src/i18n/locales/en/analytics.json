@@ -119,6 +119,7 @@
     "loading": "Loading matches...",
     "win": "W",
     "loss": "L",
+    "draw": "D",
     "overtime": "OT",
     "points": "pts",
     "goals": "goals",

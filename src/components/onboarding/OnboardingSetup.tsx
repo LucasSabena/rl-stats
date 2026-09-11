@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -5,14 +6,18 @@ import {
   LoaderCircle,
   LocateFixed,
   MonitorCog,
+  PlugZap,
   Search,
   UserRoundCheck,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { getConnectionStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { TFunction } from "i18next";
-import type { DetectedAccount, RlInstallation } from "@/lib/types";
+import type { ConnectionStatus, DetectedAccount, RlInstallation } from "@/lib/types";
 
 interface OnboardingSetupProps {
   t: TFunction;
@@ -58,6 +63,21 @@ export function OnboardingSetup({
   const selectedInstallations = installations.filter((item) =>
     selectedPaths.some((path) => path.toLowerCase() === item.path.toLowerCase()),
   );
+
+  const [probe, setProbe] = useState<{ status: ConnectionStatus; at: number } | null>(null);
+  const [probing, setProbing] = useState(false);
+
+  const probeConnection = async () => {
+    setProbing(true);
+    try {
+      const status = await getConnectionStatus();
+      setProbe({ status, at: Date.now() });
+    } catch {
+      setProbe(null);
+    } finally {
+      setProbing(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-bg-base/94 p-6 backdrop-blur-xl">
@@ -136,6 +156,49 @@ export function OnboardingSetup({
             <button type="button" onClick={runDetection} disabled={detecting} className="mt-3 flex items-center gap-2 text-xs font-semibold text-accent-primary disabled:opacity-50">
               <LocateFixed size={14} /> {t("setup.detectAgain")}
             </button>
+          </SetupSection>
+        </div>
+
+        {/* Connection test: closes the "did it actually connect?" loop without
+            asking the user to leave the wizard and open a live match. */}
+        <div className="px-8 pb-2">
+          <SetupSection
+            icon={PlugZap}
+            title={t("setup.connectionTitle", { defaultValue: "Conexión con Rocket League" })}
+            status={probe ? t("setup.checked", { defaultValue: "Verificado" }) : t("setup.pending")}
+          >
+            <p className="text-sm leading-5 text-text-muted">
+              {t("setup.connectionDescription", {
+                defaultValue:
+                  "Abrí Rocket League (podés estar en el menú) y probá la conexión: la app lee el stream de estadísticas en el puerto configurado.",
+              })}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Button variant="secondary" size="sm" onClick={() => void probeConnection()} isLoading={probing} disabled={probing}>
+                <Wifi size={15} /> {t("setup.testConnection", { defaultValue: "Probar conexión" })}
+              </Button>
+              {probe && (
+                <span
+                  className={cn(
+                    "flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold",
+                    probe.status === "connected"
+                      ? "bg-accent-success/15 text-accent-success"
+                      : "bg-accent-warning/15 text-accent-warning",
+                  )}
+                >
+                  {probe.status === "connected" ? <Wifi size={13} /> : <WifiOff size={13} />}
+                  {probe.status === "connected"
+                    ? t("setup.connectionConnected", { defaultValue: "Conectado: recibiendo datos" })
+                    : probe.status === "game_not_running"
+                      ? t("setup.connectionNoGame", { defaultValue: "Rocket League no está abierto" })
+                      : probe.status === "connecting"
+                        ? t("setup.connectionConnecting", { defaultValue: "Conectando…" })
+                        : t("setup.connectionDisconnected", {
+                            defaultValue: "Sin conexión todavía. Revisá el puerto o reiniciá el juego.",
+                          })}
+                </span>
+              )}
+            </div>
           </SetupSection>
         </div>
 

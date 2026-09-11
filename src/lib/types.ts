@@ -190,10 +190,14 @@ export interface DailyRollup {
   losses: number;
   avgScore: number;
   totalGoals: number;
+  goalsConceded: number;
   totalShots: number;
   totalSaves: number;
   totalDemos: number;
   totalAssists: number;
+  avgDurationSeconds: number;
+  kickoffGoalsScored: number;
+  kickoffGoalsConceded: number;
 }
 
 export interface MatchSession {

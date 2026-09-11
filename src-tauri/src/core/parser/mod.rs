@@ -314,6 +314,11 @@ fn parse_goal_scored(data: &Value) -> GoalScoredData {
             .get("Assister")
             .or_else(|| data.get("assister"))
             .map(|value| parse_target(Some(value))),
+        goal_time: data
+            .get("GoalTime")
+            .or_else(|| data.get("goalTime"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32,
     }
 }
 
@@ -346,6 +351,10 @@ fn parse_target(value: Option<&Value>) -> crate::core::models::StatfeedTarget {
             .to_string(),
         team_num: value
             .and_then(|v| v.get("TeamNum"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32,
+        shortcut: value
+            .and_then(|v| v.get("Shortcut"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32,
     }

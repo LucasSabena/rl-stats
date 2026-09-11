@@ -20,9 +20,10 @@ import { Select } from "@/components/ui/Select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildDayShareContext } from "@/lib/shareContext";
+import { exportHistoryCsv } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 import type { MatchFilters, MatchSummary } from "@/lib/types";
-import { Gamepad2, Share2, Dumbbell, AlertTriangle } from "lucide-react";
+import { Gamepad2, Share2, Dumbbell, AlertTriangle, Download } from "lucide-react";
 
 function toISODate(ts?: number | null): string | null {
   if (!ts) return null;
@@ -195,6 +196,33 @@ export function HistoryPage() {
 
   const closeShare = useCallback(() => setShareOpen(false), []);
 
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const handleExportCsv = useCallback(async () => {
+    try {
+      setExportingCsv(true);
+      const csv = await exportHistoryCsv(filters);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `rl-stats-historial-${stamp}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      addToast({
+        type: "success",
+        title: t("history:export.success", { defaultValue: "Historial exportado a CSV" }),
+      });
+    } catch {
+      addToast({
+        type: "error",
+        title: t("history:export.error", { defaultValue: "No se pudo exportar el CSV" }),
+      });
+    } finally {
+      setExportingCsv(false);
+    }
+  }, [filters, addToast, t]);
+
   const hasActiveFilters = Boolean(
     filters.search ||
       filters.result ||
@@ -248,15 +276,26 @@ export function HistoryPage() {
             </p>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={Share2}
-          onClick={handleShare}
-          disabled={!shareContext || friendsLoading}
-        >
-          {t("common:buttons.share")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={Download}
+            onClick={() => void handleExportCsv()}
+            disabled={exportingCsv || visibleData.length === 0}
+          >
+            {t("history:export.button", { defaultValue: "Exportar CSV" })}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={Share2}
+            onClick={handleShare}
+            disabled={!shareContext || friendsLoading}
+          >
+            {t("common:buttons.share")}
+          </Button>
+        </div>
       </div>
 
       <div className="border-b border-border-subtle pb-4">

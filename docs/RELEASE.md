@@ -211,7 +211,24 @@ $bytes = [IO.File]::ReadAllBytes("certificate.pfx")
 [Convert]::ToBase64String($bytes) | Set-Clipboard
 ```
 
-Paste the base64 string into the `WINDOWS_CERTIFICATE` secret.
+Paste the base64 string into the `WINDOWS_CERTIFICATE` secret and the PFX
+password into `WINDOWS_CERTIFICATE_PASSWORD`.
+
+The release workflow detects both secrets (`if: env.WINDOWS_CERTIFICATE != ''`),
+imports the certificate into `Cert:\CurrentUser\My` **before** the build, and
+passes its thumbprint to the bundler with
+`pnpm tauri build --config '{"bundle":{"windows":{"certificateThumbprint":"..."}}}'`.
+No thumbprint is committed to `tauri.conf.json` and no secret is echoed. Without
+the secrets the build runs exactly as before (unsigned).
+
+Notes:
+- SmartScreen reputation builds over time even with a valid OV certificate;
+  EV certificates or Azure Trusted Signing are the only ways to skip the
+  reputation period. Azure can be added later as an extra install/sign step.
+- After signing, verify the installer shows your publisher: right-click the
+  `.exe` → Properties → Digital Signatures (or `Get-AuthenticodeSignature`).
+- When the certificate expires, replace the secret; the old signatures on
+  already-published installers remain valid.
 
 ---
 

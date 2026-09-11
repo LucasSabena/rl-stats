@@ -143,6 +143,12 @@ pub struct StatfeedTarget {
     pub id: String,
     pub name: String,
     pub team_num: i32,
+    /// Per-match unique player index reported by the Stats API (`Shortcut`).
+    /// It is the only stable intra-match identifier real `GoalScored` events
+    /// carry (they ship no `PrimaryId`), so it is used to attribute goals when
+    /// the player id is missing.
+    #[serde(default)]
+    pub shortcut: i32,
 }
 
 /// Represents a goal scored event.
@@ -151,6 +157,12 @@ pub struct StatfeedTarget {
 pub struct GoalScoredData {
     pub scorer: StatfeedTarget,
     pub assister: Option<StatfeedTarget>,
+    /// `GoalTime` from the Stats API: seconds elapsed in the round that just
+    /// ended (kickoff → goal). A value within the kickoff threshold is direct
+    /// proof the goal came off the restart, with no anchor bookkeeping needed.
+    /// `0` means the stream did not report it (or it is a replay artifact).
+    #[serde(default)]
+    pub goal_time: i32,
 }
 
 /// All possible Rocket League Stats API events.

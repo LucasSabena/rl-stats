@@ -492,3 +492,116 @@ async fn serve_sdk() -> impl IntoResponse {
         None => (axum::http::StatusCode::NOT_FOUND, "SDK not found").into_response(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_server_starts_stopped_with_empty_state() {
+        let server = OverlayServer::new(9528);
+        let status = server.status();
+        assert!(!status.running);
+        assert_eq!(status.port, 9528);
+        assert_eq!(status.connected_clients, 0);
+        assert_eq!(server.port(), 9528);
+    }
+
+    #[test]
+    fn status_reports_connected_client_count() {
+        let server = OverlayServer::new(0);
+        let _ = server.client_count.fetch_add(2, Ordering::SeqCst);
+        assert_eq!(server.status().connected_clients, 2);
+    }
+
+    #[test]
+    fn stop_without_start_is_idempotent() {
+        let mut server = OverlayServer::new(9528);
+        server.stop();
+        server.stop();
+        assert!(!server.status().running);
+    }
+
+    #[tokio::test]
+    async fn start_rejects_when_already_running_without_binding() {
+        let mut server = OverlayServer::new(0);
+        server.running = true;
+        let error = server.start().await.unwrap_err();
+        assert_eq!(error, "Overlay server is already running");
+    }
+
+    #[test]
+    fn broadcast_goal_reaches_subscribers_with_payload() {
+        let server = OverlayServer::new(0);
+        let mut rx = server.event_tx.subscribe();
+        server.broadcast_goal("Alice", 1);
+
+        let message = rx
+            .try_recv()
+            .expect("broadcast should reach the subscriber");
+        let value: serde_json::Value = serde_json::from_str(&message).unwrap();
+        assert_eq!(value["type"], "goal");
+        assert_eq!(value["data"]["scorerName"], "Alice");
+        assert_eq!(value["data"]["teamNum"], 1);
+    }
+
+    #[test]
+    fn broadcast_statfeed_serializes_optional_secondary_target() {
+        let server = OverlayServer::new(0);
+        let mut rx = server.event_tx.subscribe();
+
+        server.broadcast_statfeed("Save", "Bob", 0, None, None);
+        let without_secondary: serde_json::Value =
+            serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(without_secondary["data"]["eventName"], "Save");
+        assert_eq!(without_secondary["data"]["mainTarget"]["name"], "Bob");
+        assert!(without_secondary["data"]["secondaryTarget"].is_null());
+
+        server.broadcast_statfeed("Goal", "Bob", 0, Some("Carol"), Some(1));
+        let with_secondary: serde_json::Value =
+            serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(with_secondary["data"]["secondaryTarget"]["name"], "Carol");
+        assert_eq!(with_secondary["data"]["secondaryTarget"]["teamNum"], 1);
+    }
+
+    #[tokio::test]
+    async fn broadcast_state_caches_snapshot_for_api() {
+        let server = OverlayServer::new(0);
+        let state = LiveMatchState {
+            match_guid: Some("guid-1".into()),
+            score_blue: 2,
+            score_orange: 1,
+            ..Default::default()
+        };
+        let expected: serde_json::Value =
+            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
+
+        server.broadcast_state(&state);
+
+        let handle = server.latest_state_handle();
+        let cached = handle.read().await;
+        let cached: serde_json::Value = serde_json::from_str(cached.as_deref().unwrap()).unwrap();
+        assert_eq!(cached, expected);
+    }
+
+    #[tokio::test]
+    async fn state_event_caches_full_event_payload() {
+        let server = OverlayServer::new(0);
+        server.broadcast_event(serde_json::json!({"type": "state", "foo": 1}));
+
+        let handle = server.latest_state_handle();
+        let cached = handle.read().await;
+        let value: serde_json::Value = serde_json::from_str(cached.as_deref().unwrap()).unwrap();
+        assert_eq!(value["type"], "state");
+        assert_eq!(value["foo"], 1);
+    }
+
+    #[tokio::test]
+    async fn unrelated_event_does_not_touch_cached_state() {
+        let server = OverlayServer::new(0);
+        server.broadcast_ball_hit(0);
+
+        let handle = server.latest_state_handle();
+        assert!(handle.read().await.is_none());
+    }
+}

@@ -11,6 +11,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "@/components/layout/AppShell";
 import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
 import { MatchMoodModal } from "@/components/mood/MatchMoodModal";
+import { SessionSummaryModal } from "@/components/analytics/SessionSummaryModal";
+import { CommandPaletteHost } from "@/components/CommandPaletteHost";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PromptHost } from "@/components/prompt/PromptHost";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { CURRENT_ONBOARDING_VERSION } from "@/stores/settingsStore";
@@ -189,7 +192,9 @@ function AppContent() {
             <Route
               element={
                 <AppShell>
-                  <Outlet />
+                  <ErrorBoundary onReset={() => window.location.reload()}>
+                    <Outlet />
+                  </ErrorBoundary>
                 </AppShell>
               }
             >
@@ -216,6 +221,8 @@ function AppContent() {
 
         <AccountMismatchDialog />
         <MatchMoodModal />
+        <SessionSummaryModal />
+        <CommandPaletteHost />
       </>
     </BrowserRouter>
   );

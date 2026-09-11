@@ -11,7 +11,7 @@ use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
-mod commands;
+pub mod commands;
 pub mod core;
 pub mod error;
 mod updater;
@@ -39,11 +39,17 @@ pub struct AppState {
     pub session_manager: Arc<RwLock<SessionManager>>,
     pub ingestor_status: Arc<RwLock<core::models::ConnectionStatus>>,
     pub game_running: Arc<std::sync::atomic::AtomicBool>,
+    /// Running W/L tally for the current Rocket League session. Accumulates
+    /// across matches and is emitted (then reset) when the game process
+    /// closes, so the UI can show an end-of-session summary.
+    pub session_tally: Arc<tokio::sync::Mutex<SessionTally>>,
     pub overlay_server: Arc<tokio::sync::Mutex<Option<OverlayServer>>>,
     pub overlay_handle: Arc<std::sync::Mutex<Option<tauri::WebviewWindow>>>,
     /// Hidden WebView2-backed rlstats.net scraper used by the primary MMR
-    /// provider. Lazily creates its window on first lookup.
-    pub rlstats_scraper: Arc<core::mmr::webview::RlstatsScraper>,
+    /// provider. Lazily creates its window on first lookup. `None` in tests
+    /// and in builds where the scraper could not be created: the scraper is
+    /// Wry-typed, so it cannot be instantiated under the mock runtime.
+    pub rlstats_scraper: Option<Arc<core::mmr::webview::RlstatsScraper>>,
 }
 
 pub(crate) fn diagnostics_log_directory() -> PathBuf {
@@ -124,12 +130,15 @@ pub fn run() {
             commands::mmr::set_local_mmr,
             commands::mmr::get_mmr_provider_health,
             commands::mmr::test_mmr_provider,
+            commands::mmr::get_mmr_history,
             commands::history::get_matches,
             commands::history::get_match_detail,
             commands::history::delete_match_cmd,
             commands::history::update_match_cmd,
             commands::history::set_match_mood_cmd,
+            commands::history::export_history_csv,
             commands::analytics::get_analytics,
+            commands::analytics::get_analytics_comparison,
             commands::analytics::get_sessions,
             commands::analytics::get_daily_rollups,
             commands::analytics::get_session_matches,
@@ -276,8 +285,22 @@ pub fn run() {
                         &pool,
                         "analytics_repair_v21",
                     );
-                    if rollups_dirty {
-                        info!("Running one-off v21 analytics repair");
+                    // v21's backfill ran with the old classification (no
+                    // GoalTime, no OT handling, false positives from the live
+                    // re-anchor bug kept in matches it never touched). v25
+                    // re-derives every kickoff count from stored evidence and
+                    // rewrites whole matches, so run it once on top of v21.
+                    let kickoff_repair_pending = !crate::core::storage::get_kv_flag(
+                        &pool,
+                        "analytics_repair_kickoff_v25",
+                    );
+                    if rollups_dirty || kickoff_repair_pending {
+                        if rollups_dirty {
+                            info!("Running one-off v21 analytics repair");
+                        }
+                        if kickoff_repair_pending {
+                            info!("Running v25 kickoff-goal recount");
+                        }
                         let settings =
                             crate::core::settings::get_settings(&pool).unwrap_or_default();
                         let backfill = crate::core::patterns::recompute_kickoff_goals(
@@ -308,7 +331,7 @@ pub fn run() {
                             tracing::warn!(error = %error, "Training dedup failed");
                         }
                     }
-                    if rollups_dirty || training_repair_pending {
+                    if rollups_dirty || training_repair_pending || kickoff_repair_pending {
                         let settings =
                             crate::core::settings::get_settings(&pool).unwrap_or_default();
                         let names = crate::core::storage::identity_candidate_names(&settings);
@@ -323,7 +346,11 @@ pub fn run() {
                         }
                     }
 
-                    for flag in ["analytics_repair_v21", "analytics_repair_training_v23"] {
+                    for flag in [
+                        "analytics_repair_v21",
+                        "analytics_repair_training_v23",
+                        "analytics_repair_kickoff_v25",
+                    ] {
                         if let Err(error) = crate::core::storage::set_kv_flag(&pool, flag) {
                             tracing::warn!(error = %error, flag, "Could not persist repair flag");
                         }
@@ -433,8 +460,17 @@ pub fn run() {
             let session_mgr_clone = Arc::clone(&session_manager);
             let db_pool_clone = Arc::clone(&db_pool);
             let app_handle = app.handle().clone();
+            let session_tally = Arc::new(tokio::sync::Mutex::new(SessionTally::default()));
+            let session_tally_for_events = Arc::clone(&session_tally);
             tauri::async_runtime::spawn(async move {
-                process_events(ingestor, session_mgr_clone, db_pool_clone, app_handle).await;
+                process_events(
+                    ingestor,
+                    session_mgr_clone,
+                    db_pool_clone,
+                    app_handle,
+                    session_tally_for_events,
+                )
+                .await;
             });
 
             let db_pool_tracker = Arc::clone(&db_pool);
@@ -444,16 +480,18 @@ pub fn run() {
             });
 
             let session_manager_for_game_events = Arc::clone(&session_manager);
+            let session_tally_for_listener = Arc::clone(&session_tally);
             app.manage(AppState {
                 db_pool: db_pool.clone(),
                 session_manager,
                 ingestor_status,
                 game_running: game_running_flag,
+                session_tally,
                 overlay_server: Arc::new(tokio::sync::Mutex::new(None)),
                 overlay_handle: Arc::new(std::sync::Mutex::new(None)),
-                rlstats_scraper: core::mmr::webview::RlstatsScraper::new(
+                rlstats_scraper: Some(core::mmr::webview::RlstatsScraper::new(
                     app.handle().clone(),
-                ),
+                )),
             });
 
             // Store tray in app state so it stays alive. We move it into a "leaked" Box to
@@ -529,6 +567,7 @@ pub fn run() {
                     let app_handle_for_listener = app_handle.clone();
                     let pool_for_closure = pool.clone();
                     let session_manager_for_closure = Arc::clone(&session_manager);
+                    let session_tally_for_closure = Arc::clone(&session_tally_for_listener);
 
                     let _receiver = app_handle_for_listener.listen("game-status-changed", move |event| {
                         let payload: serde_json::Value = serde_json::from_str(event.payload()).unwrap_or_default();
@@ -540,6 +579,7 @@ pub fn run() {
                         let pool = pool_for_closure.clone();
                         let app_handle = app_handle.clone();
                         let session_manager = Arc::clone(&session_manager_for_closure);
+                        let session_tally = Arc::clone(&session_tally_for_closure);
 
                         tauri::async_runtime::spawn(async move {
                             // Update game_running + active_platform in settings
@@ -557,6 +597,25 @@ pub fn run() {
                                 let _ = crate::commands::prompt_window::hide_prompt_window(
                                     &app_handle,
                                 );
+
+                                // End-of-session summary: emit the running
+                                // tally once per Rocket League run and reset it
+                                // so the next run starts from zero.
+                                let mut tally = session_tally.lock().await;
+                                if tally.matches > 0 {
+                                    let payload = serde_json::json!({
+                                        "matches": tally.matches,
+                                        "wins": tally.wins,
+                                        "losses": tally.losses,
+                                        "streak": tally.streak,
+                                        "goalsFor": tally.goals_for,
+                                        "goalsAgainst": tally.goals_against,
+                                        "durationSeconds": tally.duration_seconds,
+                                        "startedAt": tally.started_at.map(|d| d.to_rfc3339()),
+                                    });
+                                    let _ = app_handle.emit("session-summary", payload);
+                                    tally.reset();
+                                }
                             }
 
                             if let Ok(app_settings) = get_settings(&pool) {
@@ -612,12 +671,38 @@ pub struct TrayHandle {
 
 /// Win/loss counters for the current session. Bundled so the persist helper
 /// and the event loop share one mutable record.
-#[derive(Default)]
-struct SessionTally {
+#[derive(Default, Clone)]
+pub struct SessionTally {
     wins: i32,
     losses: i32,
     streak: i32,
     last_was_win: Option<bool>,
+    matches: i32,
+    goals_for: i32,
+    goals_against: i32,
+    duration_seconds: i64,
+    started_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl SessionTally {
+    /// Fold one persisted non-training match into the running session tally.
+    fn add_match(&mut self, summary: &crate::core::models::SessionSummary) {
+        self.matches += 1;
+        self.duration_seconds += i64::from(summary.duration_seconds.max(0));
+        if let Some(team) = summary.local_team_num {
+            let (for_goals, against_goals) = if team == 0 {
+                (summary.score_blue, summary.score_orange)
+            } else {
+                (summary.score_orange, summary.score_blue)
+            };
+            self.goals_for += for_goals;
+            self.goals_against += against_goals;
+        }
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
 }
 
 /// Persist a finished session: write the match, update the tally, emit
@@ -650,6 +735,18 @@ async fn persist_finished_session(
                 return;
             }
             info!(guid = %summary.match_guid, "Match persisted");
+
+            if !is_training {
+                tally.add_match(&summary);
+                if tally.started_at.is_none() {
+                    // The summary carries duration, not start time; the first
+                    // persisted match anchors the session window.
+                    tally.started_at = Some(
+                        chrono::Utc::now()
+                            - chrono::Duration::seconds(i64::from(summary.duration_seconds.max(0))),
+                    );
+                }
+            }
 
             if let Some(winner) = summary.winner {
                 let settings = get_settings(db_pool).unwrap_or_default();
@@ -770,10 +867,10 @@ async fn process_events(
     session_manager: Arc<RwLock<SessionManager>>,
     db_pool: Arc<DbPool>,
     app_handle: tauri::AppHandle,
+    session_tally: Arc<tokio::sync::Mutex<SessionTally>>,
 ) {
     info!("Event processing task started");
 
-    let mut tally = SessionTally::default();
     // Set once per session when the roster first proves a real match (more
     // than one player). Free Play entries never set it, so a post-match prompt
     // survives a hop into training and only yields when an actual game starts.
@@ -811,6 +908,7 @@ async fn process_events(
                     drop(session);
                     let mut session = session_manager.write().await;
                     if session.phase() == &MatchPhase::Finished {
+                        let mut tally = session_tally.lock().await;
                         persist_finished_session(
                             &mut session,
                             &db_pool,
@@ -840,6 +938,7 @@ async fn process_events(
                 // new MatchCreated starts from a clean slate.
                 let interrupted = session.phase() == &MatchPhase::Finished;
                 if interrupted {
+                    let mut tally = session_tally.lock().await;
                     persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
                 } else if session.is_training_session()
                     && session.check_training_superseded_finalize()
@@ -848,10 +947,13 @@ async fn process_events(
                     // match: the training stint is over even though Free Play
                     // never emits MatchEnded. Finalize + persist before
                     // reset() erases it.
+                    let mut tally = session_tally.lock().await;
                     persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
                 }
                 real_match_started = false;
-                tally = SessionTally::default();
+                // NOTE: the tally is deliberately NOT reset per match. It is
+                // the running Rocket League session record (OBS overlay +
+                // end-of-session summary) and resets when the game closes.
                 mismatch_state.alerted = false;
                 mismatch_state.last_detected_id = None;
                 last_live_publish = Instant::now() - StdDuration::from_secs(1);
@@ -974,6 +1076,7 @@ async fn process_events(
 
             let mut session = session_manager.write().await;
             if session.phase() == &MatchPhase::Finished {
+                let mut tally = session_tally.lock().await;
                 persist_finished_session(&mut session, &db_pool, &app_handle, &mut tally).await;
             }
         }

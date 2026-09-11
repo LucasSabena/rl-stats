@@ -25,8 +25,8 @@ pub fn calculate_streaks(
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
            AND m.winner IS NOT NULL
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')",
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(local_primary_id.to_string()));
@@ -34,12 +34,15 @@ pub fn calculate_streaks(
     args.push(Box::new(end_date.to_string()));
 
     if let Some(mt) = match_type {
-        sql.push_str(" AND m.match_type = ?");
+        sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+    } else {
+        // Streaks are a match metric: training stints must not extend them.
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
 
     if let Some(pl) = playlist {
-        sql.push_str(" AND m.playlist = ?");
+        sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
         args.push(Box::new(pl.to_string()));
     }
 

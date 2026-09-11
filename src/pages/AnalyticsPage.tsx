@@ -5,6 +5,8 @@ import { useFriends } from "@/hooks/useFriends";
 import { useSettings } from "@/hooks/useSettings";
 import { PrimaryStatsRow, SecondaryStatsRow } from "@/components/analytics/StatsGrid";
 import { PerformanceChart } from "@/components/analytics/PerformanceChart";
+import { MmrHistoryChart } from "@/components/analytics/MmrHistoryChart";
+import { ComparisonPanel } from "@/components/analytics/ComparisonPanel";
 import { AnalyticsFilters } from "@/components/analytics/AnalyticsFilters";
 import { TrainingTimeCard } from "@/components/analytics/TrainingTimeCard";
 import { InsightsPanel } from "@/components/analytics/InsightsPanel";
@@ -40,7 +42,12 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
 
   const hasActiveFilters = playlist !== "all" || matchType !== "all" || scope !== "me" || !!playerId;
 
-  const { data: result, isLoading, isError } = useAnalytics(period, filters);
+  const { data: result, isLoading, isError, refetch: refetchAnalytics } = useAnalytics(period, filters, {
+    // In player mode the page renders the player summary/matches instead;
+    // firing the local query too was a wasted round-trip on every filter
+    // change.
+    enabled: !playerId,
+  });
   const { data: insights, isLoading: insightsLoading } = useInsights(period, filters);
 
   // Per-profile analytics: when a friend/player profile is selected, show
@@ -62,6 +69,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
     data: sessionMatches,
     isLoading: matchesLoading,
     isError: matchesError,
+    refetch: refetchSessionMatches,
   } = useSessionMatches(
     selectedSession?.start_time,
     selectedSession?.end_time
@@ -202,6 +210,8 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
           icon={BarChart3}
           title={t("analytics:empty.error.title")}
           description={t("analytics:empty.error.description")}
+          actionLabel={t("analytics:panelError.retry")}
+          onAction={() => void refetchAnalytics()}
         />
       )}
 
@@ -229,6 +239,8 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
                 <PerformanceChart data={result.rollups} scope={scope} />
               )}
 
+              <MmrHistoryChart playerId={null} period={period} />
+
               <SecondaryStatsRow
                 data={result.data}
                 scope={scope}
@@ -239,6 +251,15 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
                 insights={insights}
                 isLoading={insightsLoading}
                 summary={result.data}
+              />
+
+              <ComparisonPanel
+                period={period}
+                playlist={playlist}
+                matchType={matchType}
+                playerId={null}
+                playerOptions={playerOptions}
+                username={username}
               />
 
               <PatternPanels
@@ -294,6 +315,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
           ) : playerSummary && playerSummary.totalMatches > 0 ? (
             <>
               <PrimaryStatsRow data={playerSummary} scope="me" />
+              <MmrHistoryChart playerId={playerId} period={period} />
               <SecondaryStatsRow
                 data={playerSummary}
                 scope="me"
@@ -368,6 +390,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
               matches={sessionMatches ?? []}
               isLoading={matchesLoading}
               isError={matchesError}
+              onRetry={() => void refetchSessionMatches()}
             />
           </div>
         )}

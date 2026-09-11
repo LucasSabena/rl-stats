@@ -245,3 +245,119 @@ fn extract_json_messages(buffer: &mut String) -> Vec<String> {
 
     messages
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncWriteExt;
+
+    fn feed(buffer: &mut String, chunks: &[&str]) -> Vec<String> {
+        let mut messages = Vec::new();
+        for chunk in chunks {
+            buffer.push_str(chunk);
+            messages.extend(extract_json_messages(buffer));
+        }
+        messages
+    }
+
+    #[test]
+    fn extracts_multiple_concatenated_objects_and_keeps_trailing_garbage() {
+        let mut buffer = String::from(r#"{"Event":"A"}{"Event":"B"}tail"#);
+        let messages = extract_json_messages(&mut buffer);
+        assert_eq!(messages, vec![r#"{"Event":"A"}"#, r#"{"Event":"B"}"#]);
+        assert_eq!(buffer, "tail");
+    }
+
+    #[test]
+    fn reassembles_object_split_across_chunks() {
+        let mut buffer = String::new();
+        let messages = feed(&mut buffer, &[r##"{"Event":"Match"##, "Created\"}"]);
+        assert_eq!(messages, vec![r#"{"Event":"MatchCreated"}"#]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn keeps_incomplete_object_in_buffer() {
+        let mut buffer = String::from(r#"{"Event":"Unfinished"#);
+        let messages = extract_json_messages(&mut buffer);
+        assert!(messages.is_empty());
+        assert_eq!(buffer, r#"{"Event":"Unfinished"#);
+    }
+
+    #[test]
+    fn ignores_braces_and_quotes_inside_strings() {
+        let mut buffer = String::from(r#"{"Data":"{\"a\":\"}\"}"}"#);
+        let messages = extract_json_messages(&mut buffer);
+        assert_eq!(messages, vec![r#"{"Data":"{\"a\":\"}\"}"}"#]);
+        assert!(serde_json::from_str::<serde_json::Value>(&messages[0]).is_ok());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn handles_escaped_backslashes_before_closing_quote() {
+        let mut buffer = String::from(r#"{"a":"\\"}"#);
+        let messages = extract_json_messages(&mut buffer);
+        assert_eq!(messages, vec![r#"{"a":"\\"}"#]);
+        assert!(serde_json::from_str::<serde_json::Value>(&messages[0]).is_ok());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn empty_and_whitespace_buffers_yield_nothing() {
+        let mut empty = String::new();
+        assert!(extract_json_messages(&mut empty).is_empty());
+        assert!(empty.is_empty());
+
+        let mut whitespace = String::from("   \n\t ");
+        assert!(extract_json_messages(&mut whitespace).is_empty());
+        assert!(whitespace.is_empty());
+    }
+
+    #[test]
+    fn skips_garbage_before_and_between_nested_objects() {
+        let mut buffer = String::from(r#"noise{"a":1} junk {"b":{"c":2}}"#);
+        let messages = extract_json_messages(&mut buffer);
+        assert_eq!(messages, vec![r#"{"a":1}"#, r#"{"b":{"c":2}}"#]);
+        assert!(buffer.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_events_reassembles_chunked_stream_into_parsed_events() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let writer = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            // One event split across two writes, then a second event.
+            socket
+                .write_all(br#"{"Event":"MatchCreated"}{"Event":"Match"#)
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            socket.write_all(br#"Initialized"}"#).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        });
+
+        let (event_tx, mut event_rx) = mpsc::channel::<RlEvent>(16);
+        let status = Arc::new(RwLock::new(ConnectionStatus {
+            connected: true,
+            address: "test".into(),
+            last_error: None,
+            reconnect_attempts: 0,
+            game_running: true,
+        }));
+
+        let stream = TcpStream::connect(addr).await.unwrap();
+        read_events(stream, &event_tx, &status).await.unwrap();
+        writer.await.unwrap();
+
+        let first = event_rx.recv().await.unwrap();
+        let second = event_rx.recv().await.unwrap();
+        assert!(matches!(first, RlEvent::MatchCreated));
+        assert!(matches!(second, RlEvent::MatchInitialized));
+
+        let snapshot = status.read().await;
+        assert!(!snapshot.connected);
+        assert_eq!(snapshot.last_error.as_deref(), Some("Stream ended"));
+    }
+}

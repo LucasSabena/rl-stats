@@ -7,6 +7,20 @@ use std::collections::HashMap;
 use tauri::State;
 use tracing::error;
 
+/// Local calendar window `(start, end)` in `YYYY-MM-DD`, ending today.
+/// Rollup buckets and every match-window query are local-time based, so the
+/// window boundaries must be local dates too; computing them in UTC shifted
+/// evening sessions across the day boundary (UTC-3 lost everything played
+/// after 21:00).
+pub(crate) fn local_window(days: i64) -> (String, String) {
+    let end = chrono::Local::now().date_naive();
+    let start = end - chrono::Duration::days(days.max(0));
+    (
+        start.format("%Y-%m-%d").to_string(),
+        end.format("%Y-%m-%d").to_string(),
+    )
+}
+
 fn is_local_identity(
     local_primary_id: Option<&str>,
     player_names: &[String],
@@ -163,10 +177,7 @@ pub async fn get_player_analytics_summary(
     } else {
         period.days as i64
     };
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(days);
-    let start_str = start.format("%Y-%m-%d").to_string();
-    let end_str = end.format("%Y-%m-%d").to_string();
+    let (start_str, end_str) = local_window(days);
 
     let summary = storage::get_analytics_summary_for_identity(
         pool,
@@ -213,10 +224,105 @@ pub async fn get_player_analytics_summary(
         "totalShots": summary.total_shots,
         "totalDemos": summary.total_demos,
         "totalConceded": summary.total_conceded,
+        "totalKickoffGoalsScored": summary.total_kickoff_goals,
+        "totalKickoffGoalsConceded": summary.total_kickoff_conceded,
+        "avgKickoffGoalsScored": if total_matches > 0 { summary.total_kickoff_goals as f64 / total_matches as f64 } else { 0.0 },
+        "avgKickoffGoalsConceded": if total_matches > 0 { summary.total_kickoff_conceded as f64 / total_matches as f64 } else { 0.0 },
         "bestStreak": streak.best_streak,
         "currentStreak": streak.current_streak,
         "peakSpeed": summary.peak_speed,
         "avgDuration": summary.avg_duration,
+    }))
+}
+
+/// Local calendar window ending `end_days_ago` days ago and starting
+/// `start_days_ago` days before today (both inclusive).
+fn local_window_ago(start_days_ago: i64, end_days_ago: i64) -> (String, String) {
+    let today = chrono::Local::now().date_naive();
+    let start = today - chrono::Duration::days(start_days_ago);
+    let end = today - chrono::Duration::days(end_days_ago);
+    (
+        start.format("%Y-%m-%d").to_string(),
+        end.format("%Y-%m-%d").to_string(),
+    )
+}
+
+/// Side-by-side analytics comparison.
+///
+/// `mode = "players"`: the selected identity vs `rival_id` over the current
+/// window. `mode = "periods"`: the selected identity over the current window
+/// vs the immediately preceding window of the same length.
+#[tauri::command]
+pub async fn get_analytics_comparison(
+    state: State<'_, AppState>,
+    mode: String,
+    player_id: Option<String>,
+    rival_id: Option<String>,
+    period: AnalyticsPeriod,
+    playlist: Option<String>,
+    match_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let pool = &state.db_pool;
+    let settings = get_settings(pool).unwrap_or_default();
+    let identity = match player_id {
+        Some(pid) if !pid.trim().is_empty() => pid,
+        _ => settings.local_primary_id.clone().unwrap_or_default(),
+    };
+    if identity.trim().is_empty() {
+        return Ok(serde_json::json!({ "available": false }));
+    }
+
+    let days = if period.days == 0 {
+        365
+    } else {
+        i64::from(period.days)
+    }
+    .max(1);
+    let (cur_start, cur_end) = local_window(days);
+    // Previous window ends the day before the current one starts, so the two
+    // windows never double-count a day.
+    let (prev_start, prev_end) = local_window_ago(days * 2, days + 1);
+
+    let summarize = |who: &str, start: &str, end: &str| {
+        storage::get_analytics_summary_for_identity(
+            pool,
+            who,
+            start,
+            end,
+            playlist.as_deref(),
+            match_type.as_deref(),
+        )
+    };
+
+    let (a, b, window_a, window_b) = match mode.as_str() {
+        "periods" => {
+            let a = summarize(&identity, &cur_start, &cur_end).map_err(|e| e.to_string())?;
+            let b = summarize(&identity, &prev_start, &prev_end).map_err(|e| e.to_string())?;
+            (a, b, (cur_start, cur_end), (prev_start, prev_end))
+        }
+        _ => {
+            let rival = match rival_id {
+                Some(rid) if !rid.trim().is_empty() => rid,
+                _ => return Ok(serde_json::json!({ "available": false })),
+            };
+            let a = summarize(&identity, &cur_start, &cur_end).map_err(|e| e.to_string())?;
+            let b = summarize(&rival, &cur_start, &cur_end).map_err(|e| e.to_string())?;
+            (
+                a,
+                b,
+                (cur_start.clone(), cur_end.clone()),
+                (cur_start, cur_end),
+            )
+        }
+    };
+
+    Ok(serde_json::json!({
+        "available": a.total_matches > 0 || b.total_matches > 0,
+        "mode": mode,
+        "a": a,
+        "b": b,
+        "windowA": { "start": window_a.0, "end": window_a.1 },
+        "windowB": { "start": window_b.0, "end": window_b.1 },
     }))
 }
 
@@ -235,10 +341,7 @@ pub async fn get_analytics(
         return get_session_analytics_inner(state, playlist, match_type, scope).await;
     }
 
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(period.days as i64);
-    let start_str = start.format("%Y-%m-%d").to_string();
-    let end_str = end.format("%Y-%m-%d").to_string();
+    let (start_str, end_str) = local_window(period.days as i64);
 
     let settings = get_settings(pool).unwrap_or_default();
     let player_names = storage::identity_candidate_names(&settings);
@@ -398,7 +501,7 @@ pub async fn get_analytics(
         };
 
         let (peak_speed, streak) = if let Some(ref local_id_str) = settings.local_primary_id {
-            let speed = get_player_period_stats(
+            let speed = get_team_period_peak_speed(
                 pool,
                 local_id_str,
                 &start_str,
@@ -406,8 +509,7 @@ pub async fn get_analytics(
                 playlist.as_deref(),
                 match_type.as_deref(),
             )
-            .unwrap_or((0.0, 0, 0.0))
-            .2;
+            .unwrap_or(0.0);
             let streak_data = metrics::calculate_streaks(
                 pool,
                 local_id_str,
@@ -582,6 +684,7 @@ pub async fn get_session_matches(
     let pool = &state.db_pool;
     let conn = get_conn(pool).map_err(|e| e.to_string())?;
     let settings = get_settings(pool).unwrap_or_default();
+    let player_names = storage::identity_candidate_names(&settings);
 
     let mut stmt = conn
         .prepare(
@@ -642,10 +745,13 @@ pub async fn get_session_matches(
         .filter_map(|m| m.get("id").and_then(|value| value.as_i64()))
         .collect();
 
-    let mut players_by_match = if match_ids.is_empty() {
-        HashMap::new()
-    } else {
-        let placeholders = vec!["?"; match_ids.len()].join(", ");
+    // Chunk the IN list: a long session can reference thousands of matches and
+    // SQLite caps bound variables per statement (~32k), plus the prepare cost
+    // grows with the placeholder count.
+    const MATCH_ID_CHUNK: usize = 500;
+    let mut players_by_match: HashMap<i64, Vec<serde_json::Value>> = HashMap::new();
+    for chunk in match_ids.chunks(MATCH_ID_CHUNK) {
+        let placeholders = vec!["?"; chunk.len()].join(", ");
         let sql = format!(
             "SELECT mp.match_id, mp.team_num, mp.score, mp.goals, mp.shots, mp.assists,
                     mp.saves, mp.demos, mp.speed, mp.boost,
@@ -655,13 +761,9 @@ pub async fn get_session_matches(
              WHERE mp.match_id IN ({})",
             placeholders
         );
-        let params_refs: Vec<&dyn rusqlite::ToSql> = match_ids
-            .iter()
-            .map(|match_id| match_id as &dyn rusqlite::ToSql)
-            .collect();
         let mut player_stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = player_stmt
-            .query_map(&*params_refs, |row| {
+            .query_map(rusqlite::params_from_iter(chunk.iter().copied()), |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     serde_json::json!({
@@ -683,13 +785,11 @@ pub async fn get_session_matches(
             })
             .map_err(|e| e.to_string())?;
 
-        let mut grouped: HashMap<i64, Vec<serde_json::Value>> = HashMap::new();
         for row in rows {
             let (match_id, player) = row.map_err(|e| e.to_string())?;
-            grouped.entry(match_id).or_default().push(player);
+            players_by_match.entry(match_id).or_default().push(player);
         }
-        grouped
-    };
+    }
 
     let mut result = Vec::new();
     for m in matches {
@@ -698,14 +798,38 @@ pub async fn get_session_matches(
         };
         let players = players_by_match.remove(&match_id).unwrap_or_default();
 
+        // Prefer the primary id; fall back to the configured player names so a
+        // match recorded before the id was learned still resolves the local
+        // team (the same fallback get_local_match_stats uses).
         let local_team = if let Some(ref lid) = settings.local_primary_id {
             players
                 .iter()
                 .find(|p| p["primary_id"].as_str() == Some(lid.as_str()))
+                .or_else(|| {
+                    player_names.iter().find_map(|name| {
+                        players.iter().find(|p| {
+                            p["name"]
+                                .as_str()
+                                .is_some_and(|n| n.eq_ignore_ascii_case(name.trim()))
+                        })
+                    })
+                })
                 .and_then(|p| p["team_num"].as_i64())
                 .map(|t| t as i32)
         } else {
-            None
+            player_names
+                .iter()
+                .find_map(|name| {
+                    players
+                        .iter()
+                        .find(|p| {
+                            p["name"]
+                                .as_str()
+                                .is_some_and(|n| n.eq_ignore_ascii_case(name.trim()))
+                        })
+                        .and_then(|p| p["team_num"].as_i64())
+                })
+                .map(|t| t as i32)
         };
 
         let is_win = matches!(
@@ -802,10 +926,7 @@ pub async fn get_insights(
     } else {
         period.days as i64
     };
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(days);
-    let start_str = start.format("%Y-%m-%d").to_string();
-    let end_str = end.format("%Y-%m-%d").to_string();
+    let (start_str, end_str) = local_window(days);
 
     let scope_str = scope.as_deref().unwrap_or("team");
 
@@ -838,10 +959,7 @@ pub async fn get_player_analytics_matches(
     } else {
         period.days as i64
     };
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(days);
-    let start_str = start.format("%Y-%m-%d").to_string();
-    let end_str = end.format("%Y-%m-%d").to_string();
+    let (start_str, end_str) = local_window(days);
 
     let matches = storage::get_player_analytics_matches(
         pool,
@@ -891,15 +1009,25 @@ async fn get_session_analytics_inner(
     let (start_str, end_str) = if let Some(s) = recent {
         let start = chrono::DateTime::parse_from_rfc3339(&s.start_time).ok();
         let end = chrono::DateTime::parse_from_rfc3339(&s.end_time).ok();
+        // Local dates: every date-window query filters on
+        // `date(start_time, 'localtime')`.
         (
             start
-                .map(|d| d.format("%Y-%m-%d").to_string())
-                .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string()),
-            end.map(|d| d.format("%Y-%m-%d").to_string())
-                .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string()),
+                .map(|d| {
+                    d.with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d")
+                        .to_string()
+                })
+                .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string()),
+            end.map(|d| {
+                d.with_timezone(&chrono::Local)
+                    .format("%Y-%m-%d")
+                    .to_string()
+            })
+            .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string()),
         )
     } else {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         (today.clone(), today)
     };
 
@@ -1012,27 +1140,35 @@ async fn get_session_analytics_inner(
     }))
 }
 
-fn get_player_period_stats(
+/// Peak speed of the local player's *team* across the window.
+///
+/// Team scope must agree with the session-detail numbers, which take the max
+/// over every teammate. Before this, team scope reported the local player's
+/// personal max while the session view reported the team's, so the same
+/// session showed two different peaks.
+fn get_team_period_peak_speed(
     pool: &crate::core::storage::DbPool,
     local_primary_id: &str,
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
     match_type: Option<&str>,
-) -> Result<(f64, i32, f64), String> {
+) -> Result<f64, String> {
     let conn = get_conn(pool).map_err(|e| e.to_string())?;
 
     let mut sql = String::from(
-        "SELECT
-            COALESCE(AVG(mp.score), 0.0),
-            COALESCE(SUM(mp.assists), 0),
-            COALESCE(MAX(mp.speed), 0.0)
+        "SELECT COALESCE(MAX(mp.speed), 0.0)
          FROM match_players mp
          JOIN matches m ON mp.match_id = m.id
-         JOIN players p ON mp.player_id = p.id
-         WHERE p.primary_id = ?1
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')",
+         WHERE date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3
+           AND mp.team_num = (
+                SELECT mp2.team_num
+                FROM match_players mp2
+                JOIN players p2 ON p2.id = mp2.player_id
+                WHERE mp2.match_id = m.id AND p2.primary_id = ?1
+                LIMIT 1
+           )",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(local_primary_id.to_string()));
@@ -1040,25 +1176,21 @@ fn get_player_period_stats(
     args.push(Box::new(end_date.to_string()));
 
     if let Some(mt) = match_type {
-        sql.push_str(" AND m.match_type = ?");
+        sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
     } else {
         sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
 
     if let Some(pl) = playlist {
-        sql.push_str(" AND m.playlist = ?");
+        sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
         args.push(Box::new(pl.to_string()));
     }
 
     let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
 
-    let (avg_score, total_assists, peak_speed): (f64, i32, f64) = conn
-        .query_row(&sql, &*params_refs, |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
-        .map_err(|e| e.to_string())?;
-    Ok((avg_score, total_assists, peak_speed))
+    conn.query_row(&sql, &*params_refs, |row| row.get(0))
+        .map_err(|e| e.to_string())
 }
 
 // ─── Session-pattern analytics (fatigue, chemistry, custom builder) ─────────
@@ -1084,13 +1216,8 @@ fn pattern_window(
     } else {
         period_days as i64
     };
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(days);
-    Ok((
-        identity,
-        start.format("%Y-%m-%d").to_string(),
-        end.format("%Y-%m-%d").to_string(),
-    ))
+    let (start_str, end_str) = local_window(days);
+    Ok((identity, start_str, end_str))
 }
 
 fn unavailable() -> serde_json::Value {
@@ -1261,10 +1388,7 @@ pub async fn get_training_analytics(
         }));
     }
 
-    let end = chrono::Utc::now();
-    let start = end - chrono::Duration::days(period.days.max(1) as i64);
-    let start_str = start.format("%Y-%m-%d").to_string();
-    let end_str = end.format("%Y-%m-%d").to_string();
+    let (start_str, end_str) = local_window(period.days.max(1) as i64);
 
     let mut stats =
         storage::get_training_stats(pool, &start_str, &end_str).map_err(|e| e.to_string())?;

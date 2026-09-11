@@ -119,6 +119,7 @@
     "loading": "Carregando partidas...",
     "win": "V",
     "loss": "D",
+    "draw": "E",
     "overtime": "PR",
     "points": "pts",
     "goals": "gols",

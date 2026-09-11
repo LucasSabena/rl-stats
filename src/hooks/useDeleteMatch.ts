@@ -9,9 +9,17 @@ export function useDeleteMatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["matches"] });
       queryClient.invalidateQueries({ queryKey: ["analytics"] });
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["rollups"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
+      queryClient.invalidateQueries({ queryKey: ["sessionMatches"] });
+      queryClient.invalidateQueries({ queryKey: ["session-curve"] });
+      queryClient.invalidateQueries({ queryKey: ["teammate-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["player-analytics-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["player-analytics-matches"] });
+      queryClient.invalidateQueries({ queryKey: ["player-directory"] });
+      queryClient.invalidateQueries({ queryKey: ["player-detail"] });
+      queryClient.invalidateQueries({ queryKey: ["training-analytics"] });
     },
   });
 }

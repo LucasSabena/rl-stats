@@ -137,6 +137,125 @@ pub async fn get_matches(
     }
 }
 
+/// Build a CSV of the filtered match history for spreadsheets.
+///
+/// Returns the file contents (with a UTF-8 BOM so Excel detects the encoding)
+/// instead of writing a path: the frontend triggers the actual download, which
+/// is how the existing JSON export works too.
+#[tauri::command]
+pub async fn export_history_csv(
+    state: State<'_, AppState>,
+    filters: Option<MatchFilters>,
+) -> Result<String, String> {
+    let pool = &state.db_pool;
+    let f = filters.unwrap_or(MatchFilters {
+        limit: None,
+        offset: None,
+        arena: None,
+        match_type: None,
+        playlist: None,
+        result: None,
+        date_from: None,
+        date_to: None,
+        search: None,
+    });
+
+    let settings = load_identity_settings(pool);
+    let player_names = resolve_local_player_names(&settings);
+    let local_primary_id = settings.local_primary_id.as_deref();
+
+    let matches = storage::get_matches(
+        pool,
+        MatchQuery {
+            limit: f.limit.unwrap_or(10_000).clamp(1, 50_000),
+            offset: f.offset.unwrap_or(0),
+            arena: f.arena.as_deref(),
+            match_type: f.match_type.as_deref(),
+            playlist: f.playlist.as_deref(),
+            result: f.result.as_deref(),
+            date_from: f.date_from.as_deref(),
+            date_to: f.date_to.as_deref(),
+            search: f.search.as_deref(),
+            local_primary_id,
+            local_player_names: &player_names,
+        },
+    )
+    .map_err(|e| e.to_string())?;
+
+    let match_ids: Vec<i64> = matches.iter().map(|m| m.id).collect();
+    let stats_by_match =
+        storage::get_local_match_stats(pool, &match_ids, local_primary_id, &player_names)
+            .map_err(|e| e.to_string())?;
+
+    fn csv_field(value: &str) -> String {
+        if value.contains([',', '"', '\n', '\r']) {
+            format!("\"{}\"", value.replace('"', "\"\""))
+        } else {
+            value.to_string()
+        }
+    }
+
+    let mut out = String::from("\u{FEFF}");
+    out.push_str(
+        "Fecha,Arena,Playlist,Tipo,Resultado,Goles a favor,Goles en contra,Tiempo extra,Duración (s),Goles,Asistencias,Paradas,Tiros,Demos,Puntos,Goles de saque\r\n",
+    );
+
+    for m in &matches {
+        let stats = stats_by_match.get(&m.id);
+        let local_team = stats.and_then(|s| s.local_team_num);
+        let (gf, gc) = match local_team {
+            Some(0) => (m.score_blue, m.score_orange),
+            Some(1) => (m.score_orange, m.score_blue),
+            _ => (0, 0),
+        };
+        let result = match (m.winner, local_team) {
+            (Some(w), Some(team)) if w == team => "Victoria",
+            (Some(_), Some(_)) => "Derrota",
+            (None, Some(_)) => "Empate",
+            _ => "Desconocido",
+        };
+        let duration = m.duration_seconds.max(0);
+        let (goals, assists, saves, shots, demos, score, kickoffs) = match stats {
+            Some(s) => (
+                s.goals,
+                s.assists,
+                s.saves,
+                s.shots,
+                s.demos,
+                s.score,
+                if local_team.is_some() {
+                    s.kickoff_goals
+                } else {
+                    0
+                },
+            ),
+            None => (0, 0, 0, 0, 0, 0, 0),
+        };
+
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\r\n",
+            csv_field(&m.start_time.to_rfc3339()),
+            csv_field(m.arena.as_deref().unwrap_or("")),
+            csv_field(m.playlist.as_deref().unwrap_or("")),
+            csv_field(m.match_type.as_deref().unwrap_or("")),
+            csv_field(result),
+            gf,
+            gc,
+            if m.is_overtime { "Sí" } else { "No" },
+            duration,
+            goals,
+            assists,
+            saves,
+            shots,
+            demos,
+            score,
+            kickoffs,
+        ));
+    }
+
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn get_match_detail(
     state: State<'_, AppState>,
@@ -298,7 +417,21 @@ pub async fn update_match_cmd(
 ) -> Result<(), String> {
     let pool = &state.db_pool;
     match storage::update_match(pool, match_id, match_type.as_deref(), playlist.as_deref()) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            // The pre-aggregated daily rollups exclude training and are keyed
+            // by the stored match_type/playlist; an edit without a rebuild left
+            // the analytics table stale until the next settings save.
+            let settings = get_settings(pool).unwrap_or_default();
+            let names = storage::identity_candidate_names(&settings);
+            if let Err(error) = storage::rebuild_daily_rollups_for_identity(
+                pool,
+                settings.local_primary_id.as_deref(),
+                &names,
+            ) {
+                error!(error = %error, match_id, "Rollup rebuild after match update failed");
+            }
+            Ok(())
+        }
         Err(e) => {
             error!(error = %e, match_id, "Failed to update match");
             Err(e.to_string())

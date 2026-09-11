@@ -77,8 +77,8 @@ fn fetch_curve_rows(
          JOIN players p ON p.id = mp.player_id
          WHERE p.primary_id = ?1
            AND m.winner IS NOT NULL
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')",
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(player_primary_id.to_string()),
@@ -494,8 +494,8 @@ pub fn get_teammate_stats(
          JOIN players p2 ON p2.id = mate.player_id
          LEFT JOIN friends f ON f.player_id = p2.id
          WHERE m.winner IS NOT NULL
-           AND m.start_time >= ?2
-           AND m.start_time < date(?3, '+1 day')",
+           AND date(m.start_time, 'localtime') >= ?2
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(player_primary_id.to_string()),
@@ -767,22 +767,27 @@ fn weekday_label(w: i64) -> String {
 
 /// Recompute `match_players.kickoff_goals` from the persisted goal timeline.
 ///
-/// Live detection can miss kickoff goals (overtime anchors, streams without
-/// round markers, scorer-key mismatches, old threshold settings), so this
-/// backfill re-derives them from stored evidence:
+/// Live detection can miss kickoff goals (overtime anchors, late connects,
+/// scorer-key mismatches, old threshold settings) and, in past builds, could
+/// over-count them when the score snapshot landed before `GoalScored`. This
+/// backfill re-derives every count from stored evidence and *rewrites the
+/// whole match* — zeroing old false positives is the point, so a match with
+/// evidence is recounted even when the recount finds nothing.
 ///
-/// - Goals that carry `game_time_remaining` (recorded since v21): a goal is a
-///   kickoff goal when the game clock barely moved since the previous goal —
-///   the clock freezes through the replay and countdown, so
-///   `prev_clock - clock <= threshold + 2` with a short wall gap means the
-///   goal came straight off the restart. The match's opening goal counts when
-///   its clock is still within the threshold of a full 300s regulation clock.
-/// - Older goals without clock data: only the wall-clock gap is available, so
-///   a strict ≤12s gap to the previous goal counts (replay ≈5s + countdown
-///   ≈3s + a few seconds of play). These matches are reported as `estimated`.
+/// Evidence per goal, in priority order:
+/// - `goalTime` (recorded by current builds): round duration in seconds; a
+///   round shorter than the threshold is a kickoff goal. Works in overtime and
+///   needs no anchor.
+/// - `game_time_remaining` (v21+): the opening goal counts when the clock is
+///   still within the threshold of a fresh 300s period; later goals count when
+///   the clock barely moved (`0 <= prev - clock <= threshold + 2`) and the
+///   wall gap is short. Overtime uses the wall gap alone (clock frozen at 0).
+/// - Old goals without clock data: only the wall gap is available, so a strict
+///   ≤12s gap to the previous goal counts. Those matches are reported as
+///   `estimated`.
 ///
-/// Returns a summary with the counts; matches whose goals have no usable
-/// evidence keep their stored values and are reported as `matchesWithoutData`.
+/// Matches whose goals carry no evidence at all keep their stored values and
+/// are reported as `matchesWithoutData`.
 pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde_json::Value> {
     let conn = get_conn(pool)?;
 
@@ -831,6 +836,7 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
         row_id: i64,
         primary_id: String,
         name: String,
+        team_num: i32,
     }
     impl RosterKey for RosterEntry {
         fn row_id(&self) -> i64 {
@@ -842,11 +848,14 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
         fn name(&self) -> &str {
             &self.name
         }
+        fn team_num(&self) -> i32 {
+            self.team_num
+        }
     }
     let mut rosters: HashMap<i64, Vec<RosterEntry>> = HashMap::new();
     {
         let mut rstmt = conn.prepare(
-            "SELECT mp.match_id, mp.id, p.primary_id, p.name
+            "SELECT mp.match_id, mp.id, p.primary_id, p.name, mp.team_num
              FROM match_players mp JOIN players p ON p.id = mp.player_id",
         )?;
         let rrows = rstmt
@@ -856,15 +865,17 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
                     row.get::<_, i64>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
+                    row.get::<_, i32>(4)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::StorageError(e.to_string()))?;
-        for (match_id, row_id, primary_id, name) in rrows {
+        for (match_id, row_id, primary_id, name, team_num) in rrows {
             rosters.entry(match_id).or_default().push(RosterEntry {
                 row_id,
                 primary_id,
                 name,
+                team_num,
             });
         }
     }
@@ -888,7 +899,7 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
         let group = &events[idx..j];
         idx = j;
 
-        let is_ot = match_ot.get(&match_id).copied().unwrap_or(false);
+        let match_is_ot = match_ot.get(&match_id).copied().unwrap_or(false);
         let roster: &[RosterEntry] = rosters.get(&match_id).map_or(&[], Vec::as_slice);
 
         let mut prev: Option<(DateTime<Utc>, Option<i32>)> = None;
@@ -897,44 +908,54 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
         let mut match_recounts: HashMap<i64, i32> = HashMap::new();
 
         for (_, _, event_data, occurred_at, clock_col) in group {
+            let Some(parsed) = parse_goal_evidence(event_data) else {
+                // Replay artifacts (no scorer, no goal time) are not goals.
+                continue;
+            };
             goals_scanned += 1;
+
             let wall = DateTime::parse_from_rfc3339(occurred_at)
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now());
+            let is_ot = match_is_ot || parsed.is_overtime;
             // Clock evidence: dedicated column first, embedded JSON fallback.
-            let clock: Option<i32> = clock_col.and_then(|c| Some(c.round() as i32)).or_else(|| {
-                serde_json::from_str::<serde_json::Value>(event_data)
-                    .ok()
-                    .and_then(|v| {
-                        v.get("gameTimeRemaining")
-                            .and_then(serde_json::Value::as_i64)
-                            .map(|c| c as i32)
-                    })
-            });
+            let clock: Option<i32> = clock_col
+                .and_then(|c| Some(c.round() as i32))
+                .or(parsed.clock);
 
-            let kickoff = match (clock, prev) {
-                (Some(c), None) => {
-                    match_has_evidence = true;
-                    // Opening goal of the match: counts when the clock shows
-                    // a fresh regulation period (300s soccar clock). Overtime
-                    // matches sit at 0 permanently, so the rule cannot apply.
-                    !is_ot && c >= 300 - threshold
+            let kickoff = if parsed.goal_time > 0 {
+                // Authoritative: GoalTime is the duration of the round that
+                // just ended. Works in regulation and overtime alike.
+                match_has_evidence = true;
+                parsed.goal_time <= threshold
+            } else if let Some(c) = clock {
+                match_has_evidence = true;
+                match prev {
+                    None => {
+                        // Opening goal: only a fresh regulation clock proves
+                        // the opening kickoff. Overtime starts at 0.
+                        !is_ot && c >= 300 - threshold
+                    }
+                    Some((prev_wall, Some(pc))) => {
+                        let gap = (wall - prev_wall).num_seconds();
+                        if is_ot {
+                            // The clock is frozen at 0 in overtime, so the wall
+                            // gap since the previous goal is the only signal:
+                            // replay (~5s) + countdown (~3s) + the goal.
+                            (0..=i64::from(threshold) + 10).contains(&gap)
+                        } else {
+                            let delta = pc - c;
+                            (0..=25).contains(&gap) && (0..=threshold + 2).contains(&delta)
+                        }
+                    }
+                    Some(_) => false,
                 }
-                (Some(c), Some((prev_wall, Some(pc)))) => {
-                    match_has_evidence = true;
-                    let gap = (wall - prev_wall).num_seconds();
-                    (0..=25).contains(&gap) && pc - c <= threshold + 2
-                }
-                (Some(_), Some(_)) => {
-                    match_has_evidence = true;
-                    false
-                }
-                (None, Some((prev_wall, _))) => {
-                    match_estimated = true;
-                    let gap = (wall - prev_wall).num_seconds();
-                    (0..=12).contains(&gap)
-                }
-                (None, None) => false,
+            } else if let Some((prev_wall, _)) = prev {
+                match_estimated = true;
+                let gap = (wall - prev_wall).num_seconds();
+                (0..=12).contains(&gap)
+            } else {
+                false
             };
 
             if kickoff {
@@ -955,7 +976,11 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
         } else if match_estimated {
             estimated_matches.insert(match_id, true);
         }
-        if !match_recounts.is_empty() {
+
+        // A match with evidence is always rewritten: even a zero recount is a
+        // correction (it clears the old live false positives). Matches without
+        // evidence keep their stored values.
+        if match_has_evidence || match_estimated {
             matches_touched.insert(match_id, true);
             for (row_id, count) in match_recounts {
                 recounts.insert(row_id, count);
@@ -995,14 +1020,53 @@ pub fn recompute_kickoff_goals(pool: &DbPool, threshold: i32) -> AppResult<serde
     }))
 }
 
+/// Evidence extracted from one persisted `GoalScored` payload.
+struct GoalEvidence {
+    goal_time: i32,
+    clock: Option<i32>,
+    is_overtime: bool,
+}
+
+/// Parse a persisted goal payload into the evidence the backfill needs.
+/// Returns `None` for replay artifacts: events with neither a scorer nor a
+/// goal time (current builds skip persisting them, but old rows exist).
+fn parse_goal_evidence(event_data: &str) -> Option<GoalEvidence> {
+    let value: serde_json::Value = serde_json::from_str(event_data).ok()?;
+    let scorer = value.get("scorer");
+    let name = scorer
+        .and_then(|s| s.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let goal_time = value.get("goalTime").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+    if name.trim().is_empty() && goal_time <= 0 {
+        return None;
+    }
+    Some(GoalEvidence {
+        goal_time,
+        clock: value
+            .get("gameTimeRemaining")
+            .and_then(|v| v.as_i64())
+            .map(|c| c as i32),
+        is_overtime: value
+            .get("isOvertime")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+    })
+}
+
 /// Map a goal's scorer onto a `match_players` row id: exact primary id, then
-/// case-insensitive id, then case-insensitive name, then a contains-match on
-/// the name as a last resort.
+/// case-insensitive id, then name disambiguated by team, then a unique name
+/// match. The loose "contains" fallback was removed: with no `PrimaryId` on
+/// real goals it credited goals to the wrong player (e.g. "Messi" → "Messi10").
 fn attribute_scorer(event_data: &str, roster: &[impl RosterKey]) -> Option<i64> {
     let value: serde_json::Value = serde_json::from_str(event_data).ok()?;
     let scorer = value.get("scorer")?;
     let id = scorer.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let name = scorer.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let team_num = scorer
+        .get("teamNum")
+        .and_then(|v| v.as_i64())
+        .map(|t| t as i32);
 
     if !id.is_empty() {
         if let Some(e) = roster.iter().find(|e| e.primary_id() == id) {
@@ -1015,16 +1079,18 @@ fn attribute_scorer(event_data: &str, roster: &[impl RosterKey]) -> Option<i64> 
             return Some(e.row_id());
         }
     }
-    if !name.is_empty() {
-        if let Some(e) = roster.iter().find(|e| e.name().eq_ignore_ascii_case(name)) {
-            return Some(e.row_id());
+    if !name.is_empty() && !name.eq_ignore_ascii_case("unknown") {
+        let same_name: Vec<_> = roster
+            .iter()
+            .filter(|e| e.name().eq_ignore_ascii_case(name))
+            .collect();
+        if let Some(team_num) = team_num {
+            if let Some(e) = same_name.iter().find(|e| e.team_num() == team_num) {
+                return Some(e.row_id());
+            }
         }
-        let needle = name.to_lowercase();
-        if let Some(e) = roster.iter().find(|e| {
-            let n = e.name().to_lowercase();
-            n.contains(&needle) || needle.contains(&n)
-        }) {
-            return Some(e.row_id());
+        if same_name.len() == 1 {
+            return Some(same_name[0].row_id());
         }
     }
     None
@@ -1034,6 +1100,7 @@ trait RosterKey {
     fn row_id(&self) -> i64;
     fn primary_id(&self) -> &str;
     fn name(&self) -> &str;
+    fn team_num(&self) -> i32;
 }
 
 #[cfg(test)]
@@ -1041,6 +1108,7 @@ struct RosterEntryKey {
     row_id: i64,
     primary_id: String,
     name: String,
+    team_num: i32,
 }
 
 #[cfg(test)]
@@ -1053,6 +1121,9 @@ impl RosterKey for RosterEntryKey {
     }
     fn name(&self) -> &str {
         &self.name
+    }
+    fn team_num(&self) -> i32 {
+        self.team_num
     }
 }
 
@@ -1101,11 +1172,13 @@ mod tests {
                 row_id: 1,
                 primary_id: "ABC".into(),
                 name: "Alpha".into(),
+                team_num: 0,
             },
             RosterEntryKey {
                 row_id: 2,
                 primary_id: "DEF".into(),
                 name: "Beta".into(),
+                team_num: 1,
             },
         ];
         let exact = serde_json::json!({"scorer": {"id": "DEF", "name": "Beta", "teamNum": 0}});
@@ -1114,6 +1187,49 @@ mod tests {
         assert_eq!(attribute_scorer(&by_name.to_string(), &roster), Some(1));
         let unknown = serde_json::json!({"scorer": {"id": "?", "name": "Ghost", "teamNum": 0}});
         assert_eq!(attribute_scorer(&unknown.to_string(), &roster), None);
+    }
+
+    /// Regression: the old `contains` fallback credited "Messi" to "Messi10"
+    /// (and any short bot name to half the lobby). Two players with the same
+    /// display name are now disambiguated by team, never by substring.
+    #[test]
+    fn scorer_attribution_never_uses_substring_matches() {
+        let roster = vec![
+            RosterEntryKey {
+                row_id: 10,
+                primary_id: "p10".into(),
+                name: "Messi10".into(),
+                team_num: 0,
+            },
+            RosterEntryKey {
+                row_id: 11,
+                primary_id: "p11".into(),
+                name: "Messi".into(),
+                team_num: 1,
+            },
+            RosterEntryKey {
+                row_id: 12,
+                primary_id: "p12".into(),
+                name: "Messi".into(),
+                team_num: 0,
+            },
+        ];
+        // Exact name shared by two rows: team decides.
+        let same_name_blue =
+            serde_json::json!({"scorer": {"id": "", "name": "messi", "teamNum": 0}});
+        assert_eq!(
+            attribute_scorer(&same_name_blue.to_string(), &roster),
+            Some(12)
+        );
+        let same_name_orange =
+            serde_json::json!({"scorer": {"id": "", "name": "messi", "teamNum": 1}});
+        assert_eq!(
+            attribute_scorer(&same_name_orange.to_string(), &roster),
+            Some(11)
+        );
+        // A name not present must not fall back to a superstring match.
+        let not_present = serde_json::json!({"scorer": {"id": "", "name": "Mes", "teamNum": 0}});
+        assert_eq!(attribute_scorer(&not_present.to_string(), &roster), None);
     }
 
     #[test]

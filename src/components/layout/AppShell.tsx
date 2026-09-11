@@ -1,23 +1,12 @@
-import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { ToastContainer } from "@/components/ui/Toast";
-import { useUIStore } from "@/stores/uiStore";
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const location = useLocation();
-  const setActivePage = useUIStore((state) => state.setActivePage);
-
-  // Was called inline during render, which mutated the store mid-render.
-  useEffect(() => {
-    setActivePage(location.pathname);
-  }, [location.pathname, setActivePage]);
-
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-base text-text-primary">
       <Sidebar />

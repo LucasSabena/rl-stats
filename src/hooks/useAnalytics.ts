@@ -42,7 +42,11 @@ interface AnalyticsFiltersState {
   playerId?: string | null;
 }
 
-export function useAnalytics(period: AnalyticsPeriod, filters?: AnalyticsFiltersState) {
+export function useAnalytics(
+  period: AnalyticsPeriod,
+  filters?: AnalyticsFiltersState,
+  options?: { enabled?: boolean },
+) {
   return useQuery<AnalyticsResult>({
     queryKey: ["analytics", period, filters],
     queryFn: async () => {
@@ -54,6 +58,7 @@ export function useAnalytics(period: AnalyticsPeriod, filters?: AnalyticsFilters
       };
     },
     staleTime: QUERY_STALE_TIME.analytics,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -119,6 +124,12 @@ export function useKickoffBackfill() {
       queryClient.invalidateQueries({ queryKey: ["analytics"] });
       queryClient.invalidateQueries({ queryKey: ["insights"] });
       queryClient.invalidateQueries({ queryKey: ["rollups"] });
+      // Kickoff counts are embedded in match detail, session rows and the
+      // per-player match list too.
+      queryClient.invalidateQueries({ queryKey: ["match-detail"] });
+      queryClient.invalidateQueries({ queryKey: ["sessionMatches"] });
+      queryClient.invalidateQueries({ queryKey: ["player-analytics-matches"] });
+      queryClient.invalidateQueries({ queryKey: ["custom-breakdown"] });
     },
   });
 }

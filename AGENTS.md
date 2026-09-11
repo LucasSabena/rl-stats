@@ -117,7 +117,8 @@ Release is triggered by git tags `v*.*.*`. The release workflow builds NSIS + MS
 - **Frontend**: Vitest + React Testing Library + jsdom
 - **Rust**: Unit tests in modules; integration tests with captured event streams
 - **Coverage**: configured in `vite.config.ts`; excludes `dist/`, `src-tauri/`, `src-tauri/target/`, `src-tauri/overlays/`
-- **E2E**: Playwright planned but directory is currently empty
+- **E2E**: Playwright smoke suite in `e2e/` — `pnpm test:e2e` builds the bundle, serves it with `vite preview` and injects a mocked Tauri host. Run `pnpm exec playwright install chromium` once per machine.
+- **Rust command tests**: `src-tauri/tests/commands_integration.rs` drives real commands through `tauri::test` with a temp SQLite database.
 
 ---
 

@@ -325,13 +325,21 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
     .map_err(|e| AppError::StorageError(format!("Failed to create schema_migrations: {e}")))?;
 
     // Read the highest version that has already been applied.
+    //
+    // This used to `unwrap_or(0)`: a transient read failure (lock timeout,
+    // busy connection) was interpreted as "empty database", so every
+    // migration was re-applied — and `ALTER TABLE ... ADD COLUMN` fails the
+    // second time, turning a hiccup into a hard startup error. Any failure
+    // here must surface instead.
     let current_version: i32 = conn
         .query_row(
             "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
             [],
             |row| row.get(0),
         )
-        .unwrap_or(0);
+        .map_err(|e| {
+            AppError::StorageError(format!("Failed to read schema_migrations version: {e}"))
+        })?;
 
     info!(
         current_version,

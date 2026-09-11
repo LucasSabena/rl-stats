@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "i18next";
 import { useFriends } from "@/hooks/useFriends";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Button } from "@/components/ui/Button";
 import { Users } from "lucide-react";
 import type { SessionMatch } from "@/lib/types";
 import { MoodGlyph } from "./MoodGlyph";
@@ -10,10 +11,12 @@ export function SessionMatchDetail({
   matches,
   isLoading,
   isError,
+  onRetry,
 }: {
   matches: SessionMatch[];
   isLoading: boolean;
   isError: boolean;
+  onRetry?: () => void;
 }) {
   const { t } = useTranslation(["analytics", "common", "players", "mood"]);
   const { data: friends } = useFriends();
@@ -33,12 +36,17 @@ export function SessionMatchDetail({
 
   if (isError) {
     return (
-      <div className="flex h-32 items-center justify-center">
+      <div className="flex h-32 flex-col items-center justify-center gap-3">
         <p className="text-sm text-accent-danger">
           {t("analytics:matchDetail.error", {
             defaultValue: "No se pudieron cargar las partidas de esta sesión.",
           })}
         </p>
+        {onRetry && (
+          <Button variant="secondary" size="sm" onClick={onRetry}>
+            {t("common:buttons.retry")}
+          </Button>
+        )}
       </div>
     );
   }
@@ -71,26 +79,36 @@ export function SessionMatchDetail({
 
         const myPlayer = m.players.find((p) => p.team_num === m.local_team);
         const teammates = m.players.filter((p) => p.team_num === m.local_team && p.primary_id !== myPlayer?.primary_id);
+        const isDraw = m.winner === null;
+        const resultLabel = isDraw
+          ? t("analytics:matchDetail.draw", { defaultValue: "Empate" })
+          : m.is_win
+            ? t("analytics:matchDetail.win")
+            : t("analytics:matchDetail.loss");
 
         return (
           <div
             key={m.id}
             className={`rounded-lg border p-3 transition-colors ${
-              m.is_win
-                ? "border-accent-success/20 bg-accent-success/5"
-                : "border-accent-danger/20 bg-accent-danger/5"
+              isDraw
+                ? "border-border-subtle bg-bg-panel"
+                : m.is_win
+                  ? "border-accent-success/20 bg-accent-success/5"
+                  : "border-accent-danger/20 bg-accent-danger/5"
             }`}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span
                   className={`rounded px-2 py-0.5 text-xs font-bold ${
-                    m.is_win
-                      ? "bg-accent-success/20 text-accent-success"
-                      : "bg-accent-danger/20 text-accent-danger"
+                    isDraw
+                      ? "bg-bg-surface text-text-secondary"
+                      : m.is_win
+                        ? "bg-accent-success/20 text-accent-success"
+                        : "bg-accent-danger/20 text-accent-danger"
                   }`}
                 >
-                  {m.is_win ? t("analytics:matchDetail.win") : t("analytics:matchDetail.loss")}
+                  {resultLabel}
                 </span>
                 <span className="text-sm text-text-primary">
                   {myScore} - {theirScore}
