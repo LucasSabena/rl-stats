@@ -85,7 +85,9 @@ jobs:
   rust-check:
     name: Rust Check
     runs-on: windows-latest
-    timeout-minutes: 20
+    # The suite needs ~13 min plus the target-cache upload; 20 minutes
+    # cancelled the job mid-post-step even after all tests passed.
+    timeout-minutes: 45
 
     defaults:
       run:
