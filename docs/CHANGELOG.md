@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.11.2] - 2026-09-11
+
+### Changed
+- Release builds are pre-compiled on `main`: GitHub scopes caches per ref, so each tag started from a cold dependency cache and took ~15 minutes. A prebuild job now warms the release-profile cache on release commits (caches from the default branch are visible to tag runs), leaving the tag run only the bundle, signing and upload.
+
 ## [2.11.1] - 2026-09-11
 
 ### Changed
