@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Tests
+- Automated accessibility smoke test with `axe-core` over the UI primitives
+  (Button, Input, Switch) and the Modal dialog; it fails on unnamed icon
+  buttons, missing labels and broken dialog semantics. jsdom cannot evaluate
+  layout-based rules (contrast, landmarks), which are covered by the design
+  tokens instead.
+
 ## [2.16.4] - 2026-09-11
 
 Closes the remaining audit items from the 2.16.0 round.
