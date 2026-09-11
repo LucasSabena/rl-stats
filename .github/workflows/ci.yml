@@ -146,3 +146,65 @@ jobs:
           name: cargo-build-${{ github.run_id }}
           path: src-tauri/target/
           retention-days: 3
+
+  # ───────────────────────────────────────────────
+  # Warm the release-profile cache for the tag that follows a release commit.
+  #
+  # GitHub scopes Actions caches per ref: a cache saved by a tag run is only
+  # visible to that same tag, so every release was a cold ~15 minute build.
+  # Caches saved on the default branch ARE visible to tag runs, so this job
+  # compiles the release profile on the version-bump commit (message starts
+  # with "chore(release)") and the tag run only has to bundle and sign.
+  # ───────────────────────────────────────────────
+  release-prebuild:
+    name: Prebuild Release Cache
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release)')
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo target (release)
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-cargo-release-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build release profile (no bundles)
+        run: pnpm tauri build --no-bundle
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
