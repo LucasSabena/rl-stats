@@ -313,10 +313,12 @@ pub fn run() {
             {
                 let pool = db_pool.clone();
                 let app_dir_for_backup = app_dir.clone();
+                let profile_for_backup = active_profile_id.clone();
                 tauri::async_runtime::spawn_blocking(move || {
                     match crate::core::storage::ensure_daily_backup(
                         &pool,
                         &app_dir_for_backup,
+                        &profile_for_backup,
                         24,
                     ) {
                         Ok(Some(path)) => tracing::info!(path = %path.display(), "Auto backup ready"),

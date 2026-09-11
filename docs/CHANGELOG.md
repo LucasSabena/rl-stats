@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.16.2] - 2026-09-11
+
+### Fixed — per-profile backups
+- **Backups are now taken per profile.** The 24-hour check looked at the
+  newest file in the shared backups folder, so once one profile had a fresh
+  snapshot the next profile was skipped and its retention prune ran with no
+  backup of its own. Files are now named `auto-<profile>-<date>.sqlite`, the
+  freshness check and the 5-file rotation are per profile, and each profile
+  always gets its own daily snapshot.
+- **The Backups list shows which account each snapshot holds** (player name
+  read from the snapshot itself) and blocks restoring a backup that belongs
+  to a different profile, so a swap can never mix two accounts' histories.
+
 ## [2.16.1] - 2026-09-11
 
 ### Fixed — critical retention bug (2.16.0 data loss)

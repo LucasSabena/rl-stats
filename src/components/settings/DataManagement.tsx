@@ -17,6 +17,7 @@ import {
   type RetentionPreview,
 } from "@/lib/api";
 import { pullCurrentProfileFromCloud, wipeCurrentProfileFromCloud } from "@/lib/cloudSync";
+import { useActiveProfile } from "@/hooks/useProfiles";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
@@ -55,6 +56,7 @@ export function DataManagement() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const addToast = useUIStore((state) => state.addToast);
   const queryClient = useQueryClient();
+  const { data: activeProfile } = useActiveProfile();
 
   const { data: stats, isError, refetch } = useQuery({
     queryKey: ["storageStats"],
@@ -82,7 +84,6 @@ export function DataManagement() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleExport() {
@@ -388,7 +389,10 @@ export function DataManagement() {
               </p>
             ) : (
               <ul className="mt-3 space-y-1.5">
-                {backups.slice(0, 5).map((backup) => (
+                {backups.slice(0, 5).map((backup) => {
+                  const belongsToOtherProfile =
+                    !!backup.profileId && backup.profileId !== activeProfile?.id;
+                  return (
                   <li
                     key={backup.path}
                     className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-base px-3 py-2"
@@ -398,23 +402,35 @@ export function DataManagement() {
                         {backup.name}
                       </p>
                       <p className="text-[11px] text-text-tertiary">
+                        {backup.playerName
+                          ? `${t("settings:data.backupPlayer", { name: backup.playerName })} · `
+                          : ""}
                         {backup.modifiedAt
                           ? new Date(backup.modifiedAt).toLocaleString()
                           : "—"}{" "}
                         · {(backup.sizeBytes / 1024 / 1024).toFixed(1)} MB
                       </p>
+                      {belongsToOtherProfile && (
+                        <p className="text-[11px] text-accent-warning">
+                          {t("settings:data.backupOtherProfile", {
+                            profile: backup.profileId ?? "",
+                          })}
+                        </p>
+                      )}
                     </div>
                     <Button
                       variant="secondary"
                       size="sm"
                       leftIcon={RotateCcw}
+                      disabled={belongsToOtherProfile}
                       onClick={() => setRestoreTarget(backup)}
                       className="shrink-0"
                     >
                       {t("settings:data.restore")}
                     </Button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>

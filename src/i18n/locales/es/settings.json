@@ -183,7 +183,7 @@
     "restoreConfirmTitle": "Restaurar copia de seguridad",
     "restoreConfirmDescription": "Reemplaza la base de datos actual por la copia elegida.",
     "restoreConfirmAction": "Restaurar y reiniciar",
-    "restoreConfirmWarning": "Se reemplazará el historial actual por la copia \"{{name}}\". La base actual se guarda como copia pre-restore, así que podés deshacerlo restaurándola.",
+    "restoreConfirmWarning": "Se reemplazará el historial del perfil actual por la copia \"{{name}}\". La base actual se guarda como copia pre-restore, así que podés deshacerlo restaurándola.",
     "retentionBlockedBadge": "Bloqueada: no se elimina nada",
     "retentionActiveBadge": "Activa ({{days}} días) — nunca borra sola",
     "retentionSetupButton": "Borrar partidas antiguas…",
@@ -202,7 +202,9 @@
     "retentionDisabled": "Retención desactivada",
     "retentionDisabledMessage": "No se eliminará ninguna partida.",
     "retentionApplied": "Partidas eliminadas",
-    "retentionAppliedMessage": "Se eliminaron {{deleted}} partidas; se conservan las de los últimos {{days}} días."
+    "retentionAppliedMessage": "Se eliminaron {{deleted}} partidas; se conservan las de los últimos {{days}} días.",
+    "backupPlayer": "Cuenta: {{name}}",
+    "backupOtherProfile": "Es de otro perfil ({{profile}}). Cambiá a ese perfil para restaurarla."
   },
   "update": {
     "title": "Actualizaciones",

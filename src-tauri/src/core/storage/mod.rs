@@ -973,16 +973,28 @@ pub fn delete_match(pool: &DbPool, match_id: i64) -> AppResult<()> {
 pub fn ensure_daily_backup(
     pool: &DbPool,
     app_dir: &Path,
+    profile_id: &str,
     min_age_hours: i64,
 ) -> AppResult<Option<std::path::PathBuf>> {
     let dir = app_dir.join("backups");
     std::fs::create_dir_all(&dir).map_err(|e| AppError::IoError(e.to_string()))?;
+
+    // Per-profile: a shared "newest file" check meant the second profile
+    // never got its own backup (the first profile's fresh snapshot blocked
+    // it), which is exactly what made the 2.16.0 retention incident worse.
+    let prefix = format!("auto-{profile_id}-");
+    let is_this_profile = |path: &std::path::Path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy().starts_with(&prefix))
+            .unwrap_or(false)
+    };
 
     let newest = std::fs::read_dir(&dir)
         .map_err(|e| AppError::IoError(e.to_string()))?
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|ext| ext == "sqlite"))
+        .filter(|path| is_this_profile(path))
         .filter_map(|path| {
             let modified = std::fs::metadata(&path).ok()?.modified().ok()?;
             Some((modified, path))
@@ -999,19 +1011,22 @@ pub fn ensure_daily_backup(
     }
 
     let file = dir.join(format!(
-        "auto-{}.sqlite",
+        "{}{}.sqlite",
+        prefix,
         Utc::now().format("%Y%m%d-%H%M%S")
     ));
     let conn = get_conn(pool)?;
     conn.execute("VACUUM INTO ?1", params![file.to_string_lossy()])
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    // Keep the five most recent backups.
+    // Keep the five most recent backups OF THIS PROFILE; other profiles'
+    // snapshots are untouched.
     let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
         .map_err(|e| AppError::IoError(e.to_string()))?
         .flatten()
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|ext| ext == "sqlite"))
+        .filter(|path| is_this_profile(path))
         .collect();
     backups.sort();
     while backups.len() > 5 {
@@ -1031,6 +1046,49 @@ pub struct DatabaseBackupInfo {
     pub path: String,
     pub size_bytes: u64,
     pub modified_at: Option<String>,
+    /// Profile the snapshot belongs to, when the filename carries it
+    /// (`None` for backups created before 2.16.2).
+    pub profile_id: Option<String>,
+    /// Player name stored inside the snapshot, so the user can tell which
+    /// account it holds before restoring.
+    pub player_name: Option<String>,
+}
+
+/// Reads the player name stored in a backup without migrating or locking it.
+fn backup_player_name(path: &std::path::Path) -> Option<String> {
+    let flags =
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let conn = rusqlite::Connection::open_with_flags(path, flags).ok()?;
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = 'player_name'",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .filter(|name| !name.trim().is_empty())
+}
+
+/// Parses `auto-<profile>-<YYYYMMDD>-<HHMMSS>.sqlite` into its profile id.
+///
+/// Legacy names (`auto-<YYYYMMDD>-<HHMMSS>.sqlite`) carry no profile: the
+/// trailing date/time pair distinguishes them so `auto-20260911-...` is not
+/// mistaken for profile `20260911`.
+pub(crate) fn backup_profile_id(name: &str) -> Option<String> {
+    let stem = name.strip_suffix(".sqlite")?;
+    let rest = stem.strip_prefix("auto-")?;
+    let segments: Vec<&str> = rest.split('-').collect();
+    let is_date = |s: &str| s.len() == 8 && s.chars().all(|c| c.is_ascii_digit());
+    let is_time = |s: &str| s.len() == 6 && s.chars().all(|c| c.is_ascii_digit());
+    if segments.len() >= 3 {
+        let tail = &segments[segments.len() - 2..];
+        if is_date(tail[0]) && is_time(tail[1]) {
+            let profile = segments[..segments.len() - 2].join("-");
+            if !profile.is_empty() {
+                return Some(profile);
+            }
+        }
+    }
+    None
 }
 
 /// Lists `*.sqlite` backups (newest first, capped at 20).
@@ -1047,16 +1105,19 @@ pub fn list_database_backups(app_dir: &Path) -> AppResult<Vec<DatabaseBackupInfo
         .filter(|path| path.extension().is_some_and(|ext| ext == "sqlite"))
         .filter_map(|path| {
             let metadata = std::fs::metadata(&path).ok()?;
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
             let modified = metadata
                 .modified()
                 .ok()
                 .map(chrono::DateTime::<Utc>::from)
                 .map(|dt| dt.to_rfc3339());
             Some(DatabaseBackupInfo {
-                name: path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
+                profile_id: backup_profile_id(&name),
+                player_name: backup_player_name(&path),
+                name,
                 path: path.to_string_lossy().into_owned(),
                 size_bytes: metadata.len(),
                 modified_at: modified,
@@ -4601,6 +4662,22 @@ mod tests {
         assert_eq!(normalize_mood(Some("   ")).unwrap(), None);
         assert!(normalize_mood(Some("tilted")).is_err());
         assert_eq!(MATCH_MOODS.len(), 5);
+    }
+
+    #[test]
+    fn backup_profile_id_distinguishes_legacy_and_profile_names() {
+        assert_eq!(
+            backup_profile_id("auto-default-20260911-143259.sqlite").as_deref(),
+            Some("default")
+        );
+        assert_eq!(
+            backup_profile_id("auto-xmilianx-20260911-143259.sqlite").as_deref(),
+            Some("xmilianx")
+        );
+        // Legacy naming carries no profile and must not be misread as one.
+        assert_eq!(backup_profile_id("auto-20260911-143259.sqlite"), None);
+        assert_eq!(backup_profile_id("pre-sync-20260911-143259.sqlite"), None);
+        assert_eq!(backup_profile_id("random.sqlite"), None);
     }
 
     #[test]

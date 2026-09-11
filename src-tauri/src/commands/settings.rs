@@ -156,6 +156,25 @@ pub async fn restore_database_backup_cmd(
     path: String,
 ) -> Result<(), String> {
     let app_dir = settings_app_data_dir(&app_handle)?;
+
+    // A backup of another profile must not be swapped into this one: the
+    // account would end up with the wrong history.
+    if let Some(name) = std::path::Path::new(&path)
+        .file_name()
+        .and_then(|name| name.to_str())
+    {
+        if let Some(backup_profile) = storage::backup_profile_id(name) {
+            let active = crate::core::profiles::get_active_profile(&app_dir)
+                .map(|profile| profile.id)
+                .unwrap_or_default();
+            if !active.is_empty() && backup_profile != active {
+                return Err(format!(
+                    "Esta copia pertenece al perfil '{backup_profile}'. Cambiá a ese perfil (Ajustes → Perfiles) y volvé a intentar."
+                ));
+            }
+        }
+    }
+
     if let Ok(conn) = state.db_pool.get() {
         let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
     }

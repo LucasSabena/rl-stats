@@ -183,7 +183,7 @@
     "restoreConfirmTitle": "Restaurar cópia de segurança",
     "restoreConfirmDescription": "Substitui o banco de dados atual pela cópia escolhida.",
     "restoreConfirmAction": "Restaurar e reiniciar",
-    "restoreConfirmWarning": "O histórico atual será substituído pela cópia \"{{name}}\". O banco atual é mantido como cópia pré-restauração, então você pode desfazer restaurando-a.",
+    "restoreConfirmWarning": "O histórico do perfil atual será substituído pela cópia \"{{name}}\". O banco atual é mantido como cópia pré-restauração, então você pode desfazer restaurando-a.",
     "retentionBlockedBadge": "Bloqueada: nada é excluído",
     "retentionActiveBadge": "Ativa ({{days}} dias) — nunca exclui sozinha",
     "retentionSetupButton": "Excluir partidas antigas…",
@@ -202,7 +202,9 @@
     "retentionDisabled": "Retenção desativada",
     "retentionDisabledMessage": "Nenhuma partida será excluída.",
     "retentionApplied": "Partidas excluídas",
-    "retentionAppliedMessage": "{{deleted}} partidas foram excluídas; as dos últimos {{days}} dias são mantidas."
+    "retentionAppliedMessage": "{{deleted}} partidas foram excluídas; as dos últimos {{days}} dias são mantidas.",
+    "backupPlayer": "Conta: {{name}}",
+    "backupOtherProfile": "É de outro perfil ({{profile}}). Mude para esse perfil para restaurar."
   },
   "update": {
     "title": "Atualizações",

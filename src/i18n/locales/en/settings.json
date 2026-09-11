@@ -183,7 +183,7 @@
     "restoreConfirmTitle": "Restore backup",
     "restoreConfirmDescription": "Replaces the current database with the selected backup.",
     "restoreConfirmAction": "Restore and restart",
-    "restoreConfirmWarning": "Your current history will be replaced by \"{{name}}\". The current database is kept as a pre-restore backup, so you can undo this by restoring it.",
+    "restoreConfirmWarning": "The current profile history will be replaced by \"{{name}}\". The current database is kept as a pre-restore backup, so you can undo this by restoring it.",
     "retentionBlockedBadge": "Locked: nothing is deleted",
     "retentionActiveBadge": "Active ({{days}} days) — never deletes on its own",
     "retentionSetupButton": "Delete old matches…",
@@ -202,7 +202,9 @@
     "retentionDisabled": "Retention disabled",
     "retentionDisabledMessage": "No match will be deleted.",
     "retentionApplied": "Matches deleted",
-    "retentionAppliedMessage": "{{deleted}} matches were deleted; the last {{days}} days are kept."
+    "retentionAppliedMessage": "{{deleted}} matches were deleted; the last {{days}} days are kept.",
+    "backupPlayer": "Account: {{name}}",
+    "backupOtherProfile": "Belongs to another profile ({{profile}}). Switch to it to restore."
   },
   "update": {
     "title": "Updates",

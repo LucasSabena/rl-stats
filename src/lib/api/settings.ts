@@ -405,6 +405,8 @@ export interface DatabaseBackupInfo {
   path: string;
   sizeBytes: number;
   modifiedAt: string | null;
+  profileId: string | null;
+  playerName: string | null;
 }
 
 export async function listDatabaseBackups(): Promise<DatabaseBackupInfo[]> {
