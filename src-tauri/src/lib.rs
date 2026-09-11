@@ -181,6 +181,11 @@ pub fn run() {
             commands::settings::sync_rl_installations_cmd,
             commands::settings::export_data_json,
             commands::settings::import_data_json,
+            commands::settings::set_data_retention_cmd,
+            commands::settings::preview_data_retention_cmd,
+            commands::settings::apply_data_retention_cmd,
+            commands::settings::list_database_backups_cmd,
+            commands::settings::restore_database_backup_cmd,
             commands::settings::get_storage_stats_cmd,
             commands::settings::clear_all_data_cmd,
             commands::presets::list_user_presets_cmd,
@@ -293,6 +298,12 @@ pub fn run() {
 
             let db_path = get_db_path_for_profile(&app_dir, &active_profile_id);
 
+            // A staged restore (Settings > Data) swaps the database before the
+            // pool opens; the previous file is kept as a pre-restore backup.
+            if let Err(error) = crate::core::storage::apply_pending_restore(&app_dir, &db_path) {
+                tracing::error!(error = %error, "Could not apply staged database restore");
+            }
+
             info!(profile_id = %active_profile_id, db_path = %db_path.display(), "Initializing storage");
             let db_pool = Arc::new(init_storage(&db_path)?);
 
@@ -329,19 +340,25 @@ pub fn run() {
                         Ok(_) => {}
                         Err(e) => tracing::warn!(error = %e, "Outbox prune failed"),
                     }
-                    if let Ok(settings) = get_settings(&pool) {
-                        if settings.data_retention_days > 0 {
-                            match crate::core::storage::apply_data_retention(
-                                &pool,
-                                settings.data_retention_days.into(),
-                            ) {
-                                Ok(deleted) if deleted > 0 => {
-                                    tracing::info!(deleted, "Retention pruned old matches");
+                    // 2.16.0 applied the inherited `data_retention_days: 90`
+                    // default on startup and deleted older matches. Retention
+                    // must be opt-in: reset the stored value once for every
+                    // install that upgraded through that build, and never
+                    // auto-prune again.
+                    if !crate::core::storage::get_kv_flag(&pool, "retention_opt_in_v1") {
+                        if let Ok(mut settings) = get_settings(&pool) {
+                            if settings.data_retention_days != 0 {
+                                settings.data_retention_days = 0;
+                                if let Err(e) = set_settings(&pool, &settings) {
+                                    tracing::warn!(error = %e, "Could not reset data retention");
+                                } else {
+                                    tracing::warn!(
+                                        "Data retention reset to 0 (opt-in); no matches will be deleted automatically"
+                                    );
                                 }
-                                Ok(_) => {}
-                                Err(e) => tracing::warn!(error = %e, "Retention prune failed"),
                             }
                         }
+                        let _ = crate::core::storage::set_kv_flag(&pool, "retention_opt_in_v1");
                     }
                 });
             }

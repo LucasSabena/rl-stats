@@ -1,20 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   exportDataJson,
   importDataJson,
   getStorageStats,
   clearAllData,
   getSettings,
-  setSettings,
+  setDataRetention,
+  previewDataRetention,
+  applyDataRetention,
+  listDatabaseBackups,
+  restoreDatabaseBackup,
   createCloudBackup,
+  type DatabaseBackupInfo,
+  type RetentionPreview,
 } from "@/lib/api";
 import { pullCurrentProfileFromCloud, wipeCurrentProfileFromCloud } from "@/lib/cloudSync";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { Switch } from "@/components/ui/Switch";
 import { useUIStore } from "@/stores/uiStore";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Upload, Trash2, Database, FolderOpen, CloudDownload, CalendarClock } from "lucide-react";
+import { Download, Upload, Trash2, Database, FolderOpen, CloudDownload, CalendarClock, RotateCcw } from "lucide-react";
 
 async function invalidateDataQueries(queryClient: ReturnType<typeof useQueryClient>) {
   await Promise.all([
@@ -34,9 +42,16 @@ export function DataManagement() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
-  const [retentionDays, setRetentionDays] = useState<number | null>(null);
-  const [savedRetention, setSavedRetention] = useState<number | null>(null);
-  const [isSavingRetention, setIsSavingRetention] = useState(false);
+  const [retentionDays, setRetentionDays] = useState<number>(365);
+  const [savedRetention, setSavedRetention] = useState<number>(0);
+  const [retentionConfigureOpen, setRetentionConfigureOpen] = useState(false);
+  const [retentionFinalOpen, setRetentionFinalOpen] = useState(false);
+  const [retentionPreview, setRetentionPreview] = useState<RetentionPreview | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [isApplyingRetention, setIsApplyingRetention] = useState(false);
+  const [backups, setBackups] = useState<DatabaseBackupInfo[]>([]);
+  const [restoreTarget, setRestoreTarget] = useState<DatabaseBackupInfo | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const addToast = useUIStore((state) => state.addToast);
   const queryClient = useQueryClient();
@@ -46,17 +61,28 @@ export function DataManagement() {
     queryFn: getStorageStats,
   });
 
+  const refreshBackups = async () => {
+    try {
+      setBackups(await listDatabaseBackups());
+    } catch {
+      // Backups are best-effort; an empty list is fine.
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     void getSettings().then((settings) => {
       if (cancelled) return;
-      const days = settings.dataRetentionDays ?? 90;
-      setRetentionDays(days);
+      // 0 = retention disabled. Nothing is ever deleted automatically.
+      const days = settings.dataRetentionDays ?? 0;
       setSavedRetention(days);
+      if (days > 0) setRetentionDays(days);
     });
+    void refreshBackups();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleExport() {
@@ -157,31 +183,94 @@ export function DataManagement() {
     }
   }
 
-  async function handleSaveRetention() {
-    if (retentionDays === null) return;
-    setIsSavingRetention(true);
+  async function loadRetentionPreview(days: number) {
+    setIsPreviewLoading(true);
     try {
-      const settings = await getSettings();
-      await setSettings({ ...settings, dataRetentionDays: retentionDays });
-      setSavedRetention(retentionDays);
-      addToast({
-        type: "success",
-        title: t("settings:data.retentionSaved"),
-        message:
-          retentionDays > 0
-            ? t("settings:data.retentionSavedMessage", { days: retentionDays })
-            : t("settings:data.retentionUnlimited"),
-      });
-      await invalidateDataQueries(queryClient);
+      setRetentionPreview(await previewDataRetention(days));
     } catch {
-      addToast({ type: "error", title: t("settings:data.retentionError") });
+      setRetentionPreview(null);
     } finally {
-      setIsSavingRetention(false);
+      setIsPreviewLoading(false);
     }
   }
 
-  const retentionDirty =
-    retentionDays !== null && savedRetention !== null && retentionDays !== savedRetention;
+  function openRetentionSetup() {
+    setRetentionConfigureOpen(true);
+    void loadRetentionPreview(retentionDays);
+  }
+
+  function handleRetentionDaysChange(value: string) {
+    const parsed = Number(value.replace(/\D/g, ""));
+    const days = Number.isFinite(parsed) && parsed > 0 ? Math.min(3650, parsed) : 1;
+    setRetentionDays(days);
+    void loadRetentionPreview(days);
+  }
+
+  async function handleDisableRetention() {
+    try {
+      await setDataRetention(0);
+      setSavedRetention(0);
+      addToast({
+        type: "success",
+        title: t("settings:data.retentionDisabled"),
+        message: t("settings:data.retentionDisabledMessage"),
+      });
+    } catch {
+      addToast({ type: "error", title: t("settings:data.retentionError") });
+    }
+  }
+
+  async function handleApplyRetention() {
+    setIsApplyingRetention(true);
+    try {
+      // Fresh snapshot right before the destructive action.
+      try {
+        await createCloudBackup();
+      } catch {
+        // The daily backup still covers this.
+      }
+      const deleted = await applyDataRetention(retentionDays);
+      setSavedRetention(retentionDays);
+      addToast({
+        type: "success",
+        title: t("settings:data.retentionApplied"),
+        message: t("settings:data.retentionAppliedMessage", {
+          deleted,
+          days: retentionDays,
+        }),
+      });
+      await invalidateDataQueries(queryClient);
+      await refreshBackups();
+    } catch {
+      addToast({ type: "error", title: t("settings:data.retentionError") });
+    } finally {
+      setIsApplyingRetention(false);
+      setRetentionFinalOpen(false);
+      setRetentionConfigureOpen(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!restoreTarget) return;
+    setIsRestoring(true);
+    try {
+      await restoreDatabaseBackup(restoreTarget.path);
+      addToast({
+        type: "success",
+        title: t("settings:data.restoreStaged"),
+        message: t("settings:data.restoreStagedMessage"),
+      });
+      setTimeout(() => {
+        void relaunch();
+      }, 1500);
+    } catch {
+      addToast({ type: "error", title: t("settings:data.restoreError") });
+      setIsRestoring(false);
+      setRestoreTarget(null);
+    }
+  }
+
+  const retentionEnabled = savedRetention > 0;
 
   return (
     <div className="space-y-4">
@@ -229,48 +318,105 @@ export function DataManagement() {
         </div>
       </div>
 
-      {/* ── Retention Card ── */}
+      {/* ── Retention Card (locked unless explicitly armed) ── */}
       <div className="group rounded-xl border border-border-subtle bg-bg-surface/60 p-5 transition-all duration-200 hover:border-border-default hover:bg-bg-surface/80">
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-info/10">
             <CalendarClock size={20} className="text-accent-info" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-text-primary">
-              {t("settings:data.retention")}
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-text-primary">
+                {t("settings:data.retention")}
+              </p>
+              <Switch
+                checked={retentionEnabled}
+                onChange={(next) => {
+                  if (next) openRetentionSetup();
+                  else void handleDisableRetention();
+                }}
+                aria-label={t("settings:data.retention")}
+                size="sm"
+              />
+            </div>
             <p className="mt-0.5 text-xs text-text-secondary">
               {t("settings:data.retentionHint")}
             </p>
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                aria-label={t("settings:data.retention")}
-                value={retentionDays ?? ""}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/\D/g, "");
-                  setRetentionDays(raw === "" ? 0 : Math.min(3650, Number(raw)));
-                }}
-                className="w-20 rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-center text-sm text-text-primary focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20"
-                placeholder="90"
-              />
-              <span className="text-xs text-text-muted">
-                {t("settings:data.retentionUnit")}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => void handleSaveRetention()}
-                disabled={!retentionDirty}
-                isLoading={isSavingRetention}
-              >
-                {t("common:buttons.save")}
-              </Button>
-            </div>
-            <p className="mt-1 text-[11px] text-text-tertiary">
-              {t("settings:data.retentionZero")}
+            <p
+              className={
+                retentionEnabled
+                  ? "mt-2 inline-flex rounded-full bg-accent-warning/10 px-2.5 py-0.5 text-[11px] font-medium text-accent-warning"
+                  : "mt-2 inline-flex rounded-full bg-accent-success/10 px-2.5 py-0.5 text-[11px] font-medium text-accent-success"
+              }
+            >
+              {retentionEnabled
+                ? t("settings:data.retentionActiveBadge", { days: savedRetention })
+                : t("settings:data.retentionBlockedBadge")}
             </p>
+            {retentionEnabled && (
+              <div className="mt-3">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  leftIcon={Trash2}
+                  onClick={openRetentionSetup}
+                >
+                  {t("settings:data.retentionSetupButton")}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Backups Card ── */}
+      <div className="group rounded-xl border border-border-subtle bg-bg-surface/60 p-5 transition-all duration-200 hover:border-border-default hover:bg-bg-surface/80">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-success/10">
+            <RotateCcw size={20} className="text-accent-success" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-text-primary">
+              {t("settings:data.backups")}
+            </p>
+            <p className="mt-0.5 text-xs text-text-secondary">
+              {t("settings:data.backupsHint")}
+            </p>
+            {backups.length === 0 ? (
+              <p className="mt-3 text-xs text-text-muted">
+                {t("settings:data.backupsEmpty")}
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-1.5">
+                {backups.slice(0, 5).map((backup) => (
+                  <li
+                    key={backup.path}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-bg-base px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-medium text-text-primary">
+                        {backup.name}
+                      </p>
+                      <p className="text-[11px] text-text-tertiary">
+                        {backup.modifiedAt
+                          ? new Date(backup.modifiedAt).toLocaleString()
+                          : "—"}{" "}
+                        · {(backup.sizeBytes / 1024 / 1024).toFixed(1)} MB
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={RotateCcw}
+                      onClick={() => setRestoreTarget(backup)}
+                      className="shrink-0"
+                    >
+                      {t("settings:data.restore")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       </div>
@@ -312,6 +458,119 @@ export function DataManagement() {
           {t("settings:data.deleteAll")}
         </Button>
       </div>
+
+      {/* ── Retention step 1: configure + preview ── */}
+      <Modal
+        isOpen={retentionConfigureOpen}
+        onClose={() => setRetentionConfigureOpen(false)}
+        title={t("settings:data.retentionSetupTitle")}
+        description={t("settings:data.retentionSetupDescription")}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRetentionConfigureOpen(false)}>
+              {t("settings:data.cancel")}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => setRetentionFinalOpen(true)}
+              disabled={isPreviewLoading || (retentionPreview?.count ?? 0) === 0}
+            >
+              {t("settings:data.retentionContinue")}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              aria-label={t("settings:data.retentionDaysLabel")}
+              value={retentionDays}
+              onChange={(e) => handleRetentionDaysChange(e.target.value)}
+              className="w-20 rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-center text-sm text-text-primary focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20"
+            />
+            <span className="text-xs text-text-muted">
+              {t("settings:data.retentionUnit")}
+            </span>
+          </div>
+          <div className="rounded-lg border border-accent-danger/30 bg-accent-danger/5 p-3 text-xs text-text-secondary">
+            {isPreviewLoading ? (
+              t("settings:data.retentionPreviewLoading")
+            ) : retentionPreview && retentionPreview.count > 0 ? (
+              <span>
+                {t("settings:data.retentionPreviewCount", {
+                  count: retentionPreview.count,
+                })}
+                {retentionPreview.oldestStartTime && (
+                  <span className="mt-1 block text-text-tertiary">
+                    {t("settings:data.retentionPreviewOldest", {
+                      date: new Date(retentionPreview.oldestStartTime).toLocaleDateString(),
+                    })}
+                  </span>
+                )}
+              </span>
+            ) : (
+              t("settings:data.retentionPreviewEmpty")
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Retention step 2: final confirmation ── */}
+      <Modal
+        isOpen={retentionFinalOpen}
+        onClose={() => setRetentionFinalOpen(false)}
+        title={t("settings:data.retentionFinalTitle")}
+        description={t("settings:data.retentionFinalDescription")}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRetentionFinalOpen(false)}>
+              {t("settings:data.cancel")}
+            </Button>
+            <Button
+              variant="danger"
+              isLoading={isApplyingRetention}
+              onClick={() => void handleApplyRetention()}
+            >
+              {t("settings:data.retentionFinalAction", {
+                count: retentionPreview?.count ?? 0,
+              })}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-text-secondary">
+          {t("settings:data.retentionFinalWarning", {
+            count: retentionPreview?.count ?? 0,
+            days: retentionDays,
+          })}
+        </p>
+      </Modal>
+
+      {/* ── Restore confirmation ── */}
+      <Modal
+        isOpen={restoreTarget !== null}
+        onClose={() => setRestoreTarget(null)}
+        title={t("settings:data.restoreConfirmTitle")}
+        description={t("settings:data.restoreConfirmDescription")}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRestoreTarget(null)}>
+              {t("settings:data.cancel")}
+            </Button>
+            <Button variant="danger" isLoading={isRestoring} onClick={() => void handleRestore()}>
+              {t("settings:data.restoreConfirmAction")}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-text-secondary">
+          {t("settings:data.restoreConfirmWarning", {
+            name: restoreTarget?.name ?? "",
+          })}
+        </p>
+      </Modal>
 
       {/* ── Confirmation Modal ── */}
       <Modal

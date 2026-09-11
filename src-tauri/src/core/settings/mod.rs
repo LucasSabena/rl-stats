@@ -84,7 +84,9 @@ impl Default for AppSettings {
             local_primary_id: None,
             auto_start: true,
             port: 49123,
-            data_retention_days: 90,
+            // 0 = keep the full history. The old value (90) was never applied
+            // until 2.16.0 and must never silently delete a user's matches.
+            data_retention_days: 0,
             rl_path: None,
             rl_paths: Vec::new(),
             platform: None,
@@ -364,7 +366,7 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             }
             "auto_start" => settings.auto_start = value.parse().unwrap_or(true),
             "port" => settings.port = value.parse().unwrap_or(49123),
-            "data_retention_days" => settings.data_retention_days = value.parse().unwrap_or(90),
+            "data_retention_days" => settings.data_retention_days = value.parse().unwrap_or(0),
             "rl_path" => {
                 settings.rl_path = if value.is_empty() { None } else { Some(value) };
             }

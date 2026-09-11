@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.16.1] - 2026-09-11
+
+### Fixed — critical retention bug (2.16.0 data loss)
+- **2.16.0 began enforcing the inherited `data_retention_days: 90` default on
+  startup, deleting matches older than 90 days.** Retention is now strictly
+  opt-in and manual:
+  - Nothing is ever deleted automatically. The startup prune was removed and
+    the stored value is reset once for every install that ran the broken
+    build.
+  - The retention UI is a locked switch ("Bloqueada: no se elimina nada") with
+    a **two-step confirmation**: step 1 shows the exact number of matches that
+    would be deleted, step 2 is the final confirmation. A fresh database
+    backup is taken immediately before applying.
+  - A new **Backups** card lists the automatic, pre-sync and pre-restore
+    snapshots and restores one (staged, applied on the next launch; the
+    replaced database is kept as a pre-restore copy).
+- `set_settings_cmd` preserves the stored retention value, so no generic
+  settings save can ever re-arm a prune.
+
 ## [2.16.0] - 2026-09-11
 
 A full-app audit round: the OBS overlay contract (broken since the first

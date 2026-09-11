@@ -1023,6 +1023,141 @@ pub fn ensure_daily_backup(
     Ok(Some(file))
 }
 
+/// One database backup file offered for restore.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseBackupInfo {
+    pub name: String,
+    pub path: String,
+    pub size_bytes: u64,
+    pub modified_at: Option<String>,
+}
+
+/// Lists `*.sqlite` backups (newest first, capped at 20).
+pub fn list_database_backups(app_dir: &Path) -> AppResult<Vec<DatabaseBackupInfo>> {
+    let dir = app_dir.join("backups");
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut backups: Vec<DatabaseBackupInfo> = std::fs::read_dir(&dir)
+        .map_err(|e| AppError::IoError(e.to_string()))?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "sqlite"))
+        .filter_map(|path| {
+            let metadata = std::fs::metadata(&path).ok()?;
+            let modified = metadata
+                .modified()
+                .ok()
+                .map(chrono::DateTime::<Utc>::from)
+                .map(|dt| dt.to_rfc3339());
+            Some(DatabaseBackupInfo {
+                name: path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                path: path.to_string_lossy().into_owned(),
+                size_bytes: metadata.len(),
+                modified_at: modified,
+            })
+        })
+        .collect();
+    backups.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    backups.truncate(20);
+    Ok(backups)
+}
+
+/// Copies a backup into place for the next launch.
+///
+/// Replacing the live SQLite file while the connection pool is open is unsafe,
+/// so the swap happens at startup: this only stages `restore_pending.sqlite`.
+pub fn stage_database_restore(app_dir: &Path, backup_path: &Path) -> AppResult<()> {
+    let backups_dir = app_dir.join("backups");
+    let canonical_backups = std::fs::canonicalize(&backups_dir)
+        .map_err(|e| AppError::IoError(format!("No se pudo abrir la carpeta de copias: {e}")))?;
+    let canonical_backup = std::fs::canonicalize(backup_path)
+        .map_err(|e| AppError::IoError(format!("No se encontró la copia: {e}")))?;
+    if !canonical_backup.starts_with(&canonical_backups) {
+        return Err(AppError::ConfigError(
+            "La copia debe estar dentro de la carpeta de backups.".into(),
+        ));
+    }
+    if canonical_backup
+        .extension()
+        .is_none_or(|ext| ext != "sqlite")
+    {
+        return Err(AppError::ConfigError(
+            "El archivo seleccionado no es una copia de la base de datos.".into(),
+        ));
+    }
+
+    std::fs::copy(&canonical_backup, app_dir.join("restore_pending.sqlite"))
+        .map_err(|e| AppError::IoError(e.to_string()))?;
+    Ok(())
+}
+
+/// Applies a staged restore, if any. Called before the pool opens.
+///
+/// The previous database is moved into `backups/pre-restore-*.sqlite`, never
+/// deleted, so a restore can itself be undone.
+pub fn apply_pending_restore(app_dir: &Path, db_path: &Path) -> AppResult<bool> {
+    let pending = app_dir.join("restore_pending.sqlite");
+    if !pending.exists() {
+        return Ok(false);
+    }
+
+    let backups_dir = app_dir.join("backups");
+    std::fs::create_dir_all(&backups_dir).map_err(|e| AppError::IoError(e.to_string()))?;
+
+    if db_path.exists() {
+        let stamp = Utc::now().format("%Y%m%d-%H%M%S");
+        let previous = backups_dir.join(format!("pre-restore-{stamp}.sqlite"));
+        std::fs::rename(db_path, &previous).map_err(|e| AppError::IoError(e.to_string()))?;
+    }
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = std::path::PathBuf::from(format!("{}{}", db_path.display(), suffix));
+        if sidecar.exists() {
+            let _ = std::fs::remove_file(sidecar);
+        }
+    }
+    std::fs::rename(&pending, db_path).map_err(|e| AppError::IoError(e.to_string()))?;
+    info!(db_path = %db_path.display(), "Restored database from backup");
+    Ok(true)
+}
+
+/// What a retention run would delete, shown before the user confirms.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetentionPreview {
+    pub count: i64,
+    pub oldest_start_time: Option<String>,
+    pub newest_start_time: Option<String>,
+    pub cutoff: String,
+}
+
+/// Counts the matches a retention run would delete. Read-only.
+pub fn preview_data_retention(pool: &DbPool, retention_days: i64) -> AppResult<RetentionPreview> {
+    let conn = get_conn(pool)?;
+    let cutoff = (Utc::now() - chrono::Duration::days(retention_days.max(0))).to_rfc3339();
+
+    let (count, oldest, newest): (i64, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT COUNT(*), MIN(start_time), MAX(start_time)
+             FROM matches WHERE start_time < ?1",
+            params![cutoff],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    Ok(RetentionPreview {
+        count,
+        oldest_start_time: oldest,
+        newest_start_time: newest,
+        cutoff,
+    })
+}
+
 /// Deletes matches older than `retention_days` and their orphan players.
 ///
 /// `0` (or negative) keeps everything. The setting existed since the first
@@ -4480,6 +4615,64 @@ mod tests {
             local_date_string("garbage"),
             Local::now().format("%Y-%m-%d").to_string()
         );
+    }
+
+    fn temp_app_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-restore-{tag}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn stage_restore_rejects_paths_outside_the_backups_folder() {
+        let app_dir = temp_app_dir("stage");
+        std::fs::create_dir_all(app_dir.join("backups")).unwrap();
+
+        let outside = app_dir.join("not-a-backup.sqlite");
+        std::fs::write(&outside, b"x").unwrap();
+        assert!(stage_database_restore(&app_dir, &outside).is_err());
+
+        let wrong_ext = app_dir.join("backups").join("fake.txt");
+        std::fs::write(&wrong_ext, b"x").unwrap();
+        assert!(stage_database_restore(&app_dir, &wrong_ext).is_err());
+
+        let valid = app_dir.join("backups").join("auto-1.sqlite");
+        std::fs::write(&valid, b"db").unwrap();
+        stage_database_restore(&app_dir, &valid).unwrap();
+        assert!(app_dir.join("restore_pending.sqlite").exists());
+
+        let _ = std::fs::remove_dir_all(&app_dir);
+    }
+
+    #[test]
+    fn apply_pending_restore_keeps_the_previous_database() {
+        let app_dir = temp_app_dir("apply");
+        let db_path = app_dir.join("rl_stats_default.db");
+        std::fs::write(&db_path, b"current").unwrap();
+        std::fs::write(app_dir.join("rl_stats_default.db-wal"), b"wal").unwrap();
+
+        assert!(!apply_pending_restore(&app_dir, &db_path).unwrap());
+
+        std::fs::write(app_dir.join("restore_pending.sqlite"), b"backup").unwrap();
+        assert!(apply_pending_restore(&app_dir, &db_path).unwrap());
+
+        assert_eq!(std::fs::read(&db_path).unwrap(), b"backup");
+        assert!(!app_dir.join("rl_stats_default.db-wal").exists());
+        assert!(!app_dir.join("restore_pending.sqlite").exists());
+
+        let backups: Vec<_> = std::fs::read_dir(app_dir.join("backups"))
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("pre-restore-"))
+            .collect();
+        assert_eq!(backups.len(), 1, "the previous database must be kept");
+
+        let _ = std::fs::remove_dir_all(&app_dir);
     }
 }
 

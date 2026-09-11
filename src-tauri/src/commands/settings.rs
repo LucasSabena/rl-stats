@@ -25,7 +25,7 @@ pub async fn get_settings_cmd(state: State<'_, AppState>) -> Result<AppSettings,
 pub async fn set_settings_cmd(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
-    settings: AppSettings,
+    mut settings: AppSettings,
 ) -> Result<(), String> {
     let pool = &state.db_pool;
     let existing = get_settings(pool).ok();
@@ -33,14 +33,15 @@ pub async fn set_settings_cmd(
         .as_ref()
         .map(|s| s.auto_start != settings.auto_start)
         .unwrap_or(false);
-    let retention_changed = existing
-        .as_ref()
-        .map(|s| s.data_retention_days != settings.data_retention_days)
-        .unwrap_or(false);
     let language_changed = existing
         .as_ref()
         .map(|s| s.language != settings.language)
         .unwrap_or(false);
+    // Retention is only written through `set_data_retention_cmd`; a generic
+    // settings save must never re-arm the (previously destructive) prune.
+    if let Some(existing) = &existing {
+        settings.data_retention_days = existing.data_retention_days;
+    }
     match set_settings(pool, &settings) {
         Ok(()) => {
             if auto_start_changed {
@@ -48,13 +49,6 @@ pub async fn set_settings_cmd(
             }
             if language_changed {
                 crate::apply_tray_language(&app, &settings.language);
-            }
-            if retention_changed {
-                if let Err(e) =
-                    storage::apply_data_retention(pool, settings.data_retention_days.into())
-                {
-                    error!(error = %e, "Failed to apply data retention");
-                }
             }
             // Push the kickoff window to the live session manager: it used to
             // be read once at startup, so changing it here did nothing until
@@ -96,6 +90,77 @@ fn identity_candidate_names(settings: &AppSettings) -> Vec<String> {
     }
 
     names
+}
+
+fn settings_app_data_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    app_handle.path().app_data_dir().map_err(|e| e.to_string())
+}
+
+/// Saves the retention window WITHOUT deleting anything.
+///
+/// Deletion only happens through `apply_data_retention_cmd`, after the UI's
+/// double confirmation. There is no automatic pruning anywhere in the app.
+#[tauri::command]
+pub async fn set_data_retention_cmd(state: State<'_, AppState>, days: i32) -> Result<(), String> {
+    let pool = &state.db_pool;
+    let mut settings = get_settings(pool).map_err(|e| e.to_string())?;
+    settings.data_retention_days = days.max(0);
+    set_settings(pool, &settings).map_err(|e| e.to_string())
+}
+
+/// How many matches a retention run would delete, for the confirmation modal.
+#[tauri::command]
+pub async fn preview_data_retention_cmd(
+    state: State<'_, AppState>,
+    days: i32,
+) -> Result<storage::RetentionPreview, String> {
+    storage::preview_data_retention(&state.db_pool, days.max(0).into()).map_err(|e| e.to_string())
+}
+
+/// Deletes matches older than `days`. Only called after the two-step
+/// confirmation; a database backup is taken by the UI beforehand.
+#[tauri::command]
+pub async fn apply_data_retention_cmd(
+    state: State<'_, AppState>,
+    days: i32,
+) -> Result<u32, String> {
+    let pool = &state.db_pool;
+    let mut settings = get_settings(pool).map_err(|e| e.to_string())?;
+    settings.data_retention_days = days.max(0);
+    set_settings(pool, &settings).map_err(|e| e.to_string())?;
+
+    if settings.data_retention_days == 0 {
+        return Ok(0);
+    }
+
+    storage::apply_data_retention(pool, settings.data_retention_days.into())
+        .map(|deleted| deleted as u32)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_database_backups_cmd(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<storage::DatabaseBackupInfo>, String> {
+    let app_dir = settings_app_data_dir(&app_handle)?;
+    storage::list_database_backups(&app_dir).map_err(|e| e.to_string())
+}
+
+/// Stages a backup for restore. The app must be relaunched to apply it; the
+/// swap happens at startup, before SQLite opens.
+#[tauri::command]
+pub async fn restore_database_backup_cmd(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    let app_dir = settings_app_data_dir(&app_handle)?;
+    if let Ok(conn) = state.db_pool.get() {
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    }
+    storage::stage_database_restore(&app_dir, std::path::Path::new(&path))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

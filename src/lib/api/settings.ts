@@ -272,7 +272,6 @@ export async function reportFrontendError(
   });
 }
 
-// Data management
 export async function exportDataJson(): Promise<string> {
   return invokeCommand<string>("export_data_json");
 }
@@ -368,4 +367,54 @@ export async function findMatchingProfile(
     primaryId,
     playerName,
   });
+}
+
+// ─── Data retention & backups ───────────────────────────────────────────────
+
+/**
+ * Saves the retention window. NEVER deletes anything: deletion only happens
+ * through `applyDataRetention` after the UI's double confirmation.
+ */
+export async function setDataRetention(days: number): Promise<void> {
+  return invokeCommand<void>("set_data_retention_cmd", { days });
+}
+
+export interface RetentionPreview {
+  count: number;
+  oldestStartTime: string | null;
+  newestStartTime: string | null;
+  cutoff: string;
+}
+
+/** How many matches a retention run would delete (read-only). */
+export async function previewDataRetention(
+  days: number,
+): Promise<RetentionPreview> {
+  return invokeCommand<RetentionPreview>("preview_data_retention_cmd", {
+    days,
+  });
+}
+
+/** Deletes matches older than `days`. Called only after double confirmation. */
+export async function applyDataRetention(days: number): Promise<number> {
+  return invokeCommand<number>("apply_data_retention_cmd", { days });
+}
+
+export interface DatabaseBackupInfo {
+  name: string;
+  path: string;
+  sizeBytes: number;
+  modifiedAt: string | null;
+}
+
+export async function listDatabaseBackups(): Promise<DatabaseBackupInfo[]> {
+  return invokeCommand<DatabaseBackupInfo[]>("list_database_backups_cmd");
+}
+
+/**
+ * Stages a backup for restore. The app must be relaunched afterwards; the
+ * swap happens at startup and the previous database is kept as a backup.
+ */
+export async function restoreDatabaseBackup(path: string): Promise<void> {
+  return invokeCommand<void>("restore_database_backup_cmd", { path });
 }
