@@ -108,7 +108,7 @@ Must stay in sync across **three files**:
 2. `src-tauri/Cargo.toml`
 3. `src-tauri/tauri.conf.json`
 
-Release is triggered by git tags `v*.*.*`. The release workflow builds NSIS + MSI installers and generates `latest.json` for the Tauri updater.
+Release is triggered by git tags `v*.*.*`. The release workflow builds the NSIS installer (`bundle.targets` is `["nsis"]`), signs it and generates `latest.json` for the Tauri updater.
 
 ---
 
