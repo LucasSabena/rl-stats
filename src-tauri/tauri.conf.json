@@ -40,8 +40,7 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis",
-      "msi"
+      "nsis"
     ],
     "createUpdaterArtifacts": true,
     "windows": {

@@ -44,7 +44,9 @@ winreg = "0.55"
 
 [profile.release]
 opt-level = 3
-lto = true
+# Thin LTO keeps most of the size win of fat LTO but links much faster on the
+# Windows runners (release builds were spending several minutes in the linker).
+lto = "thin"
 strip = true
 
 [profile.dev]

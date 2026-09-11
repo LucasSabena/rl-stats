@@ -115,8 +115,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target
-          key: ${{ runner.os }}-cargo-target-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ hashFiles('src-tauri/**/*.rs') }}
+          # Key on the lockfile only (see release.yml): hashing every source
+          # file forced a full dependency rebuild on every push.
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('src-tauri/Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-cargo-target-${{ hashFiles('src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-cargo-target-
 
       - name: Run cargo check
