@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { Clock, Flame, Swords, Target, Trophy } from "lucide-react";
+import { AlarmClock, Clock, Flame, Swords, Target, Trophy } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
@@ -14,6 +14,7 @@ interface SessionSummaryPayload {
   goalsAgainst: number;
   durationSeconds: number;
   startedAt: string | null;
+  bestHour: number | null;
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -122,6 +123,12 @@ export function SessionSummaryModal() {
             t("analytics:sessionSummary.winRate", { defaultValue: "Win rate" }),
             `${Math.round((summary.wins / Math.max(1, summary.matches)) * 100)}%`,
           )}
+          {summary.bestHour !== null &&
+            stat(
+              <AlarmClock size={12} />,
+              t("analytics:sessionSummary.bestHour", { defaultValue: "Mejor hora" }),
+              `${String(summary.bestHour).padStart(2, "0")}:00`,
+            )}
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

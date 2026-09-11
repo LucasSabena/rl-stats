@@ -15,7 +15,43 @@ use tracing::{debug, info};
 pub mod migrations;
 pub mod sync;
 
-pub type DbPool = Pool<SqliteConnectionManager>;
+pub type DbConnectionPool = Pool<SqliteConnectionManager>;
+
+/// SQLite connection pool plus a per-pool settings cache.
+///
+/// `get_settings` is called from dozens of call sites (including the
+/// live-match loop) and re-reads ~50 key/value rows on every call. The cache
+/// lives on the pool itself, so two profiles (each with its own pool) can
+/// never serve each other's settings, and `set_settings` refreshes it on
+/// every write. Derefs to the underlying r2d2 pool, so existing `pool.get()`
+/// call sites keep working unchanged.
+pub struct DbPool {
+    inner: DbConnectionPool,
+    settings_cache: std::sync::Mutex<Option<crate::core::settings::AppSettings>>,
+}
+
+impl std::ops::Deref for DbPool {
+    type Target = DbConnectionPool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DbPool {
+    pub(crate) fn cached_settings(&self) -> Option<crate::core::settings::AppSettings> {
+        self.settings_cache
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+    }
+
+    pub(crate) fn store_settings(&self, settings: crate::core::settings::AppSettings) {
+        if let Ok(mut guard) = self.settings_cache.lock() {
+            *guard = Some(settings);
+        }
+    }
+}
 
 pub struct FinishMatchUpdate {
     pub end_time: DateTime<Utc>,
@@ -110,6 +146,10 @@ pub fn init_storage<P: AsRef<Path>>(db_path: P) -> AppResult<DbPool> {
         .connection_timeout(std::time::Duration::from_secs(10))
         .build(manager)
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let pool = DbPool {
+        inner: pool,
+        settings_cache: std::sync::Mutex::new(None),
+    };
 
     let conn = pool
         .get()

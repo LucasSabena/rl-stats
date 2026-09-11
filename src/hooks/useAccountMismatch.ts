@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useAccountMismatchStore } from "@/stores/accountMismatchStore";
-import { useProfileStore } from "@/stores/profileStore";
 import {
   detectLocalAccounts,
   findMatchingProfile,
   getActiveProfile,
   getSettings,
   restartApp,
+  switchProfile,
   updateProfilePlayerIdentity,
 } from "@/lib/api";
 
@@ -113,13 +113,11 @@ export function useAccountMismatch() {
   }, [setMismatch]);
 
   const handleSwitchProfile = async (targetProfileId: string) => {
-    const { switchProfile } = useProfileStore.getState();
     await switchProfile(targetProfileId);
     useAccountMismatchStore.getState().clearMismatch();
   };
 
   const handleSwitchProfileAndRestart = async (targetProfileId: string) => {
-    const { switchProfile } = useProfileStore.getState();
     await switchProfile(targetProfileId);
     useAccountMismatchStore.getState().clearMismatch();
     await restartApp();

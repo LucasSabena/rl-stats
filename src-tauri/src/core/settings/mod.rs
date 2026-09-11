@@ -257,12 +257,22 @@ impl AppSettings {
 }
 
 /// Load settings from the database, returning defaults if none exist.
+///
+/// Cached per pool: settings are read on hot paths (the live-match loop, every
+/// analytics command) and re-reading ~50 rows each time was measurable. The
+/// cache is refreshed by [`set_settings`], the only writer.
 pub fn get_settings(pool: &DbPool) -> AppResult<AppSettings> {
+    if let Some(cached) = pool.cached_settings() {
+        return Ok(cached);
+    }
+
     let conn = pool
         .get()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    settings_from_connection(&conn)
+    let settings = settings_from_connection(&conn)?;
+    pool.store_settings(settings.clone());
+    Ok(settings)
 }
 
 /// Read settings straight from a profile database file without opening a pool,
@@ -465,6 +475,9 @@ pub fn set_settings(pool: &DbPool, settings: &AppSettings) -> AppResult<()> {
 
     tx.commit()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    // Keep the per-pool cache coherent with the rows just written.
+    pool.store_settings(settings.clone());
 
     info!("Settings saved");
     Ok(())

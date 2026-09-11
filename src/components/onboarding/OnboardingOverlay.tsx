@@ -12,7 +12,6 @@ import {
   updateProfilePlayerIdentity,
 } from "@/lib/api";
 import type { DetectedAccount, RlInstallation } from "@/lib/types";
-import { useSettingsStore } from "@/stores/settingsStore";
 import { useUIStore } from "@/stores/uiStore";
 import { OnboardingWelcome } from "./OnboardingWelcome";
 import { OnboardingSetup } from "./OnboardingSetup";
@@ -29,9 +28,6 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
   const { t } = useTranslation("onboarding");
   const navigate = useNavigate();
   const setSidebarExpanded = useUIStore((state) => state.setSidebarExpanded);
-  const setStorePlayerName = useSettingsStore((state) => state.setPlayerName);
-  const setStorePath = useSettingsStore((state) => state.setRlPath);
-  const setStorePlatform = useSettingsStore((state) => state.setPlatform);
 
   const [phase, setPhase] = useState<Phase>("welcome");
   const [installations, setInstallations] = useState<RlInstallation[]>([]);
@@ -177,12 +173,9 @@ export default function OnboardingOverlay({ onComplete }: OnboardingOverlayProps
           account.primary_id,
           account.display_name,
         );
-        setStorePlayerName(account.display_name);
       }
-      if (paths.length > 0) {
-        setStorePath(paths[0]);
-        setStorePlatform(selectedInstallations[0]?.platform ?? null);
-      }
+      // No store mirror: the canonical values were just saved through
+      // setSettings, and other screens read them from useSettings().
 
       setSidebarExpanded(true);
       navigate("/");

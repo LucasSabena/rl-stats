@@ -612,6 +612,7 @@ pub fn run() {
                                         "goalsAgainst": tally.goals_against,
                                         "durationSeconds": tally.duration_seconds,
                                         "startedAt": tally.started_at.map(|d| d.to_rfc3339()),
+                                        "bestHour": tally.best_hour(),
                                     });
                                     let _ = app_handle.emit("session-summary", payload);
                                     tally.reset();
@@ -682,11 +683,18 @@ pub struct SessionTally {
     goals_against: i32,
     duration_seconds: i64,
     started_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Match starts per local hour of day, for the end-of-session summary's
+    /// "best hour" line.
+    hours: [u32; 24],
 }
 
 impl SessionTally {
     /// Fold one persisted non-training match into the running session tally.
-    fn add_match(&mut self, summary: &crate::core::models::SessionSummary) {
+    fn add_match(
+        &mut self,
+        summary: &crate::core::models::SessionSummary,
+        started_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) {
         self.matches += 1;
         self.duration_seconds += i64::from(summary.duration_seconds.max(0));
         if let Some(team) = summary.local_team_num {
@@ -698,6 +706,26 @@ impl SessionTally {
             self.goals_for += for_goals;
             self.goals_against += against_goals;
         }
+        if let Some(start) = started_at {
+            let hour = start
+                .with_timezone(&chrono::Local)
+                .format("%H")
+                .to_string()
+                .parse::<usize>()
+                .unwrap_or(0)
+                .min(23);
+            self.hours[hour] += 1;
+        }
+    }
+
+    /// Local hour with the most matches in this session, if any.
+    fn best_hour(&self) -> Option<u32> {
+        self.hours
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, count)| **count)
+            .filter(|(_, count)| **count > 0)
+            .map(|(hour, _)| hour as u32)
     }
 
     fn reset(&mut self) {
@@ -715,6 +743,9 @@ async fn persist_finished_session(
     app_handle: &tauri::AppHandle,
     tally: &mut SessionTally,
 ) {
+    // Read before persisting: `persist_finished_match` consumes the session
+    // (resets it), so the start time is gone afterwards.
+    let session_started_at = session.started_at();
     match session.persist_finished_match(db_pool) {
         Ok(result) => {
             let PersistResult {
@@ -737,14 +768,18 @@ async fn persist_finished_session(
             info!(guid = %summary.match_guid, "Match persisted");
 
             if !is_training {
-                tally.add_match(&summary);
+                tally.add_match(&summary, session_started_at);
                 if tally.started_at.is_none() {
                     // The summary carries duration, not start time; the first
                     // persisted match anchors the session window.
-                    tally.started_at = Some(
-                        chrono::Utc::now()
-                            - chrono::Duration::seconds(i64::from(summary.duration_seconds.max(0))),
-                    );
+                    tally.started_at = session_started_at.or_else(|| {
+                        Some(
+                            chrono::Utc::now()
+                                - chrono::Duration::seconds(i64::from(
+                                    summary.duration_seconds.max(0),
+                                )),
+                        )
+                    });
                 }
             }
 

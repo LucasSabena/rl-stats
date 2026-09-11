@@ -240,7 +240,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.nativeEvent.isComposing) return;
-    switch (event.key) {
+    // j/k are aliases for the arrow keys (vim-style navigation).
+    const key =
+      event.key === "j" || event.key === "J"
+        ? "ArrowDown"
+        : event.key === "k" || event.key === "K"
+          ? "ArrowUp"
+          : event.key;
+    switch (key) {
       case "Escape":
         event.preventDefault();
         onClose();

@@ -21,39 +21,44 @@ pub async fn get_mmr_history(
     playlist: Option<String>,
     period: AnalyticsPeriod,
 ) -> Result<serde_json::Value, String> {
-    let pool = &state.db_pool;
-    let settings = get_settings(pool).unwrap_or_default();
-    let identity = match player_id {
-        Some(pid) if !pid.trim().is_empty() => pid,
-        _ => match settings.local_primary_id.clone() {
-            Some(id) if !id.trim().is_empty() => id,
-            _ => {
-                return Ok(serde_json::json!({
-                    "available": false,
-                    "points": [],
-                    "playlists": [],
-                }))
-            }
-        },
-    };
+    let pool = state.db_pool.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = get_settings(&pool).unwrap_or_default();
+        let identity = match player_id {
+            Some(pid) if !pid.trim().is_empty() => pid,
+            _ => match settings.local_primary_id.clone() {
+                Some(id) if !id.trim().is_empty() => id,
+                _ => {
+                    return Ok(serde_json::json!({
+                        "available": false,
+                        "points": [],
+                        "playlists": [],
+                    }))
+                }
+            },
+        };
 
-    let days = if period.days == 0 { 365 } else { period.days };
-    let (start_date, end_date) = crate::commands::analytics::local_window(days as i64);
-    let playlist_filter = playlist
-        .as_deref()
-        .filter(|value| !value.trim().is_empty() && *value != "all");
+        let days = if period.days == 0 { 365 } else { period.days };
+        let (start_date, end_date) = crate::commands::analytics::local_window(days as i64);
+        let playlist_filter = playlist
+            .as_deref()
+            .filter(|value| !value.trim().is_empty() && *value != "all");
 
-    let playlists = get_mmr_history_playlists(pool, &identity).map_err(|e| e.to_string())?;
-    let points = get_mmr_history_points(pool, &identity, playlist_filter, &start_date, &end_date)
-        .map_err(|e| e.to_string())?;
+        let playlists = get_mmr_history_playlists(&pool, &identity).map_err(|e| e.to_string())?;
+        let points =
+            get_mmr_history_points(&pool, &identity, playlist_filter, &start_date, &end_date)
+                .map_err(|e| e.to_string())?;
 
-    Ok(serde_json::json!({
-        "available": !points.is_empty(),
-        "points": points,
-        "playlists": playlists,
-        "startDate": start_date,
-        "endDate": end_date,
-    }))
+        Ok(serde_json::json!({
+            "available": !points.is_empty(),
+            "points": points,
+            "playlists": playlists,
+            "startDate": start_date,
+            "endDate": end_date,
+        }))
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }
 
 #[tauri::command]

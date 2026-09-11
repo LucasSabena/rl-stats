@@ -18,30 +18,33 @@ pub async fn get_player_directory(
     state: State<'_, AppState>,
     filters: PlayerDirectoryFilters,
 ) -> Result<serde_json::Value, String> {
-    let pool = &state.db_pool;
+    let pool = state.db_pool.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
+        let player_names = resolve_player_names(&settings);
+        let local_primary_id = settings.local_primary_id.as_deref();
+        let limit = filters.limit.unwrap_or(100);
+        let offset = filters.offset.unwrap_or(0);
 
-    let settings = crate::core::settings::get_settings(pool).unwrap_or_default();
-    let player_names = resolve_player_names(&settings);
-    let local_primary_id = settings.local_primary_id.as_deref();
-    let limit = filters.limit.unwrap_or(100);
-    let offset = filters.offset.unwrap_or(0);
-
-    match storage::get_player_directory(
-        pool,
-        local_primary_id,
-        &player_names,
-        filters.search.as_deref(),
-        filters.relationship.as_deref(),
-        filters.sort_by.as_deref(),
-        limit,
-        offset,
-    ) {
-        Ok(entries) => Ok(serde_json::json!({ "players": entries })),
-        Err(e) => {
-            error!(error = %e, "Failed to get player directory");
-            Err(e.to_string())
+        match storage::get_player_directory(
+            &pool,
+            local_primary_id,
+            &player_names,
+            filters.search.as_deref(),
+            filters.relationship.as_deref(),
+            filters.sort_by.as_deref(),
+            limit,
+            offset,
+        ) {
+            Ok(entries) => Ok(serde_json::json!({ "players": entries })),
+            Err(e) => {
+                error!(error = %e, "Failed to get player directory");
+                Err(e.to_string())
+            }
         }
-    }
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -49,8 +52,16 @@ pub async fn get_player_detail(
     state: State<'_, AppState>,
     player_id: i64,
 ) -> Result<serde_json::Value, String> {
-    let pool = &state.db_pool;
+    let pool = state.db_pool.clone();
+    tauri::async_runtime::spawn_blocking(move || player_detail_inner(&pool, player_id))
+        .await
+        .map_err(|e| format!("task join error: {e}"))?
+}
 
+fn player_detail_inner(
+    pool: &storage::DbPool,
+    player_id: i64,
+) -> Result<serde_json::Value, String> {
     let settings = crate::core::settings::get_settings(pool).unwrap_or_default();
     let player_names = resolve_player_names(&settings);
     let local_primary_id = settings.local_primary_id.as_deref();
@@ -75,16 +86,20 @@ pub async fn get_player_detail_by_primary_id(
     state: State<'_, AppState>,
     primary_id: String,
 ) -> Result<serde_json::Value, String> {
-    let pool = &state.db_pool;
+    let pool = state.db_pool.clone();
 
-    let player_id = storage::find_player_id_by_primary_id(pool, &primary_id)
-        .map_err(|e| {
-            error!(error = %e, primary_id, "Failed to resolve player by primary id");
-            e.to_string()
-        })?
-        .ok_or_else(|| "Player not found".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let player_id = storage::find_player_id_by_primary_id(&pool, &primary_id)
+            .map_err(|e| {
+                error!(error = %e, primary_id, "Failed to resolve player by primary id");
+                e.to_string()
+            })?
+            .ok_or_else(|| "Player not found".to_string())?;
 
-    get_player_detail(state, player_id).await
+        player_detail_inner(&pool, player_id)
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }
 
 fn resolve_player_names(settings: &crate::core::settings::AppSettings) -> Vec<String> {

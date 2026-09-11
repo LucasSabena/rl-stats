@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
+import { deriveRank, TIER_COLOR } from "@/lib/rank";
 import type { AnalyticsPeriod } from "@/lib/types";
 import { useMmrHistory } from "@/hooks/useMmrHistory";
 
@@ -49,7 +50,12 @@ export function MmrHistoryChart({
     const last = points[points.length - 1].mmr;
     const peak = Math.max(...points.map((p) => p.mmr));
     const low = Math.min(...points.map((p) => p.mmr));
-    return { current: last, delta: last - first, peak, low, games: points.length };
+    // Rank is derived on the ladder of the playlist being shown (or the last
+    // reading's playlist when "all" is selected).
+    const lastPlaylist = points[points.length - 1].playlist;
+    const rank = deriveRank(last, lastPlaylist);
+    const peakRank = deriveRank(peak, lastPlaylist);
+    return { current: last, delta: last - first, peak, low, games: points.length, rank, peakRank };
   }, [points]);
 
   const chartData = useMemo(
@@ -61,6 +67,8 @@ export function MmrHistoryChart({
       })),
     [points, i18n.language],
   );
+
+  const rankPlaylist = points[points.length - 1]?.playlist ?? null;
 
   return (
     <Card className="p-4">
@@ -127,6 +135,14 @@ export function MmrHistoryChart({
               <p className="numeral text-xl font-bold text-text-primary">
                 {Math.round(stats.current)}
               </p>
+              {stats.rank && (
+                <p
+                  className="text-[10px] font-semibold"
+                  style={{ color: TIER_COLOR[stats.rank.tier] }}
+                >
+                  {stats.rank.label}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-text-tertiary">
@@ -153,6 +169,14 @@ export function MmrHistoryChart({
               <p className="numeral text-xl font-bold text-text-primary">
                 {stats.peak}
               </p>
+              {stats.peakRank && (
+                <p
+                  className="text-[10px] font-semibold"
+                  style={{ color: TIER_COLOR[stats.peakRank.tier] }}
+                >
+                  {stats.peakRank.label}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wide text-text-tertiary">
@@ -187,7 +211,13 @@ export function MmrHistoryChart({
                     fontSize: 12,
                   }}
                   labelStyle={{ color: "var(--color-text-secondary)" }}
-                  formatter={(value: number) => [`${value}`, "MMR"]}
+                  formatter={(value: number) => {
+                    const rank = deriveRank(Number(value), rankPlaylist);
+                    return [
+                      rank ? `${value} · ${rank.label}` : `${value}`,
+                      "MMR",
+                    ];
+                  }}
                 />
                 <Line
                   type="monotone"

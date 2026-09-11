@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.14.0] - 2026-09-11
+
+### Changed
+- **Analytics no longer blocks the async runtime.** 23 commands (analytics, insights, patterns, history, players, MMR) now run their SQLite work inside `spawn_blocking`, so long reads stop occupying tokio workers while other commands wait.
+- **Settings are cached per profile pool.** `get_settings` re-read ~50 rows on every call (including the live-match loop); the cache lives on the `DbPool` itself so two profiles can never serve each other's settings, and `set_settings` refreshes it on every write.
+- **Analytics panels mount by viewport.** The fatigue, chemistry, mood and custom-builder panels (one aggregate query each) now mount when they approach the viewport instead of all firing on page load.
+- **Locales load per language.** `src/i18n` imports each language/namespace on demand and `main.tsx` awaits `i18nReady` before the first paint: the entry chunk dropped from 225 KB to 93 KB (74 KB → 27 KB gzip) and only the detected language plus the Spanish fallback are fetched.
+- **One source of truth for settings and profiles.** `settingsStore` now stores only the onboarding flags (player name/RL path/platform/autostart/default type were duplicated mirrors of `app_settings`, the source of earlier theme/language clobbering); the zustand `profileStore` was retired in favour of React Query (`useProfiles`/`useProfileMutations`), which invalidates on every mutation; `uiStore.activePage` (never read) was removed.
+- `useLiveMatch` dropped its private copy of the live-player mapping and uses the shared `mapLiveState`, so the initial load and the real-time updates can no longer drift.
+- MMR chart: the current and peak values now show their rank tier (per-playlist ladder) and tooltips include the rank label. Session summary now includes the session's best hour.
+- Keyboard: `j`/`k` navigate match rows in History (Enter opens) and are aliases for the arrow keys in the command palette.
+
+### Added
+- Tests for the split sharing pipeline (tokens/layout/render with a mock canvas, 6 cases) and for `LazyMount` (observer and fallback paths). 105 frontend tests, 221 Rust tests and the 2 Playwright smoke tests pass.
+
+### Known gaps
+- Training packs remain local: syncing them needs a matching entity in the cloud-sync server (`supabase/migrations`), otherwise sync_push rejects the batch.
+- History virtualization is deferred until the page size grows (the smoke test covers the current list).
+- Release LTO stays at the current lighter setting: the bundle-time tradeoff is deliberate while releases ship in ~9 minutes.
+- The `tauri::test` harness covers three read commands; extending it needs the remaining Wry-typed state abstracted.
+
 ## [2.13.0] - 2026-09-11
 
 ### Fixed

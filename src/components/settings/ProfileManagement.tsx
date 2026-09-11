@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { useProfileStore } from "@/stores/profileStore";
+import { useActiveProfile, useProfiles, useProfileMutations } from "@/hooks/useProfiles";
+import { restartApp } from "@/lib/api";
 import { User, Trash2, Edit3, Plus, AlertCircle } from "lucide-react";
 import {
   CreateProfileModal,
@@ -13,21 +14,24 @@ import {
 
 export function ProfileManagement() {
   const { t } = useTranslation(["profiles", "common"]);
+  const profilesQuery = useProfiles();
+  const activeProfileQuery = useActiveProfile();
   const {
-    profiles,
-    activeProfile,
-    isLoading,
-    fetchProfiles,
-    createProfile,
-    switchProfile,
-    deleteProfile,
-    renameProfile,
-    restartApp,
-  } = useProfileStore();
+    createProfile: createProfileMutation,
+    switchProfile: switchProfileMutation,
+    deleteProfile: deleteProfileMutation,
+    renameProfile: renameProfileMutation,
+  } = useProfileMutations();
 
-  useEffect(() => {
-    void fetchProfiles();
-  }, [fetchProfiles]);
+  const profiles = profilesQuery.data ?? [];
+  const activeProfile = activeProfileQuery.data ?? null;
+  const isLoading =
+    profilesQuery.isLoading ||
+    activeProfileQuery.isLoading ||
+    createProfileMutation.isPending ||
+    switchProfileMutation.isPending ||
+    deleteProfileMutation.isPending ||
+    renameProfileMutation.isPending;
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -68,21 +72,21 @@ export function ProfileManagement() {
     }
     setCreateError("");
     try {
-      await createProfile(trimmed, trimmedPlayerName);
-      const created = useProfileStore.getState().activeProfile;
-      if (created) {
-        await switchProfile(created.id);
-      }
+      const created = await createProfileMutation.mutateAsync({
+        name: trimmed,
+        playerName: trimmedPlayerName,
+      });
+      await switchProfileMutation.mutateAsync(created.id);
       setIsCreateOpen(false);
       await restartApp();
     } catch {
-      // Error is already handled in the store
+      // The modal stays open so the error is visible
     }
   };
 
   const handleSwitchConfirm = async () => {
     if (!pendingProfileId) return;
-    await switchProfile(pendingProfileId);
+    await switchProfileMutation.mutateAsync(pendingProfileId);
     setIsSwitchOpen(false);
     await restartApp();
   };
@@ -97,7 +101,7 @@ export function ProfileManagement() {
       setIsDeleteOpen(false);
       return;
     }
-    await deleteProfile(pendingProfileId);
+    await deleteProfileMutation.mutateAsync(pendingProfileId);
     setIsDeleteOpen(false);
   };
 
@@ -117,7 +121,7 @@ export function ProfileManagement() {
       return;
     }
     setRenameError("");
-    await renameProfile(pendingProfileId, trimmed);
+    await renameProfileMutation.mutateAsync({ id: pendingProfileId, newName: trimmed });
     setIsRenameOpen(false);
   };
 

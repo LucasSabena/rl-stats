@@ -101,6 +101,7 @@ export const MatchCard = memo(function MatchCard({
     >
       <div
         onClick={handleClick}
+        data-history-match="true"
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();

@@ -118,6 +118,11 @@ impl SessionManager {
         &self.phase
     }
 
+    /// When the current session started, if it has started.
+    pub fn started_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.start_time
+    }
+
     pub fn players(&self) -> &HashMap<String, LivePlayer> {
         &self.players
     }

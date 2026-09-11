@@ -2,144 +2,135 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
-import common from "./locales/es/common.json";
-import live from "./locales/es/live.json";
-import history from "./locales/es/history.json";
-import analytics from "./locales/es/analytics.json";
-import settings from "./locales/es/settings.json";
-import onboarding from "./locales/es/onboarding.json";
-import overlay from "./locales/es/overlay.json";
-import tracker from "./locales/es/tracker.json";
-import profiles from "./locales/es/profiles.json";
-import players from "./locales/es/players.json";
-import matchDetail from "./locales/es/match-detail.json";
-import proConfigs from "./locales/es/pro-configs.json";
-import share from "./locales/es/share.json";
-import presets from "./locales/es/presets.json";
-import trainingPacks from "./locales/es/training-packs.json";
-import mood from "./locales/es/mood.json";
-import prompt from "./locales/es/prompt.json";
+/**
+ * Locale bundles are loaded on demand: the app ships three languages and
+ * statically importing all of them put every namespace of all three in the
+ * entry bundle. `i18nReady` resolves once the detected language (and the
+ * Spanish fallback) are available; `languageChanged` loads on switch.
+ */
+const SUPPORTED = ["es", "en", "pt"] as const;
+type Lang = (typeof SUPPORTED)[number];
 
-import commonEn from "./locales/en/common.json";
-import liveEn from "./locales/en/live.json";
-import historyEn from "./locales/en/history.json";
-import analyticsEn from "./locales/en/analytics.json";
-import settingsEn from "./locales/en/settings.json";
-import onboardingEn from "./locales/en/onboarding.json";
-import overlayEn from "./locales/en/overlay.json";
-import trackerEn from "./locales/en/tracker.json";
-import profilesEn from "./locales/en/profiles.json";
-import playersEn from "./locales/en/players.json";
-import matchDetailEn from "./locales/en/match-detail.json";
-import proConfigsEn from "./locales/en/pro-configs.json";
-import shareEn from "./locales/en/share.json";
-import presetsEn from "./locales/en/presets.json";
-import trainingPacksEn from "./locales/en/training-packs.json";
-import moodEn from "./locales/en/mood.json";
-import promptEn from "./locales/en/prompt.json";
+export const NAMESPACES = [
+  "common",
+  "live",
+  "history",
+  "analytics",
+  "settings",
+  "onboarding",
+  "overlay",
+  "tracker",
+  "profiles",
+  "players",
+  "matchDetail",
+  "proConfigs",
+  "share",
+  "presets",
+  "trainingPacks",
+  "mood",
+  "prompt",
+] as const;
 
-import commonPt from "./locales/pt/common.json";
-import livePt from "./locales/pt/live.json";
-import historyPt from "./locales/pt/history.json";
-import analyticsPt from "./locales/pt/analytics.json";
-import settingsPt from "./locales/pt/settings.json";
-import onboardingPt from "./locales/pt/onboarding.json";
-import overlayPt from "./locales/pt/overlay.json";
-import trackerPt from "./locales/pt/tracker.json";
-import profilesPt from "./locales/pt/profiles.json";
-import playersPt from "./locales/pt/players.json";
-import matchDetailPt from "./locales/pt/match-detail.json";
-import proConfigsPt from "./locales/pt/pro-configs.json";
-import sharePt from "./locales/pt/share.json";
-import presetsPt from "./locales/pt/presets.json";
-import trainingPacksPt from "./locales/pt/training-packs.json";
-import moodPt from "./locales/pt/mood.json";
-import promptPt from "./locales/pt/prompt.json";
+type Bundle = Partial<Record<(typeof NAMESPACES)[number], Record<string, unknown>>>;
+
+const LOCALE_LOADERS: Record<Lang, () => Promise<Bundle>> = {
+  es: async () => ({
+    common: (await import("./locales/es/common.json")).default,
+    live: (await import("./locales/es/live.json")).default,
+    history: (await import("./locales/es/history.json")).default,
+    analytics: (await import("./locales/es/analytics.json")).default,
+    settings: (await import("./locales/es/settings.json")).default,
+    onboarding: (await import("./locales/es/onboarding.json")).default,
+    overlay: (await import("./locales/es/overlay.json")).default,
+    tracker: (await import("./locales/es/tracker.json")).default,
+    profiles: (await import("./locales/es/profiles.json")).default,
+    players: (await import("./locales/es/players.json")).default,
+    matchDetail: (await import("./locales/es/match-detail.json")).default,
+    proConfigs: (await import("./locales/es/pro-configs.json")).default,
+    share: (await import("./locales/es/share.json")).default,
+    presets: (await import("./locales/es/presets.json")).default,
+    trainingPacks: (await import("./locales/es/training-packs.json")).default,
+    mood: (await import("./locales/es/mood.json")).default,
+    prompt: (await import("./locales/es/prompt.json")).default,
+  }),
+  en: async () => ({
+    common: (await import("./locales/en/common.json")).default,
+    live: (await import("./locales/en/live.json")).default,
+    history: (await import("./locales/en/history.json")).default,
+    analytics: (await import("./locales/en/analytics.json")).default,
+    settings: (await import("./locales/en/settings.json")).default,
+    onboarding: (await import("./locales/en/onboarding.json")).default,
+    overlay: (await import("./locales/en/overlay.json")).default,
+    tracker: (await import("./locales/en/tracker.json")).default,
+    profiles: (await import("./locales/en/profiles.json")).default,
+    players: (await import("./locales/en/players.json")).default,
+    matchDetail: (await import("./locales/en/match-detail.json")).default,
+    proConfigs: (await import("./locales/en/pro-configs.json")).default,
+    share: (await import("./locales/en/share.json")).default,
+    presets: (await import("./locales/en/presets.json")).default,
+    trainingPacks: (await import("./locales/en/training-packs.json")).default,
+    mood: (await import("./locales/en/mood.json")).default,
+    prompt: (await import("./locales/en/prompt.json")).default,
+  }),
+  pt: async () => ({
+    common: (await import("./locales/pt/common.json")).default,
+    live: (await import("./locales/pt/live.json")).default,
+    history: (await import("./locales/pt/history.json")).default,
+    analytics: (await import("./locales/pt/analytics.json")).default,
+    settings: (await import("./locales/pt/settings.json")).default,
+    onboarding: (await import("./locales/pt/onboarding.json")).default,
+    overlay: (await import("./locales/pt/overlay.json")).default,
+    tracker: (await import("./locales/pt/tracker.json")).default,
+    profiles: (await import("./locales/pt/profiles.json")).default,
+    players: (await import("./locales/pt/players.json")).default,
+    matchDetail: (await import("./locales/pt/match-detail.json")).default,
+    proConfigs: (await import("./locales/pt/pro-configs.json")).default,
+    share: (await import("./locales/pt/share.json")).default,
+    presets: (await import("./locales/pt/presets.json")).default,
+    trainingPacks: (await import("./locales/pt/training-packs.json")).default,
+    mood: (await import("./locales/pt/mood.json")).default,
+    prompt: (await import("./locales/pt/prompt.json")).default,
+  }),
+};
+
+function normalizeLang(lng: string | undefined): Lang {
+  const base = (lng ?? "es").split("-")[0].toLowerCase();
+  return (SUPPORTED as readonly string[]).includes(base) ? (base as Lang) : "es";
+}
+
+const loaded = new Set<Lang>();
+const inFlight = new Map<Lang, Promise<void>>();
+
+async function loadLanguage(lng: string | undefined): Promise<void> {
+  const lang = normalizeLang(lng);
+  if (loaded.has(lang)) return;
+
+  const pending = inFlight.get(lang);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    const bundle = await LOCALE_LOADERS[lang]();
+    for (const [namespace, resources] of Object.entries(bundle)) {
+      if (resources) {
+        i18n.addResourceBundle(lang, namespace, resources, true, true);
+      }
+    }
+    loaded.add(lang);
+    inFlight.delete(lang);
+  })();
+
+  inFlight.set(lang, promise);
+  return promise;
+}
 
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources: {
-      es: {
-        common,
-        live,
-        history,
-        analytics,
-        settings,
-        onboarding,
-        overlay,
-        tracker,
-        profiles,
-        players,
-        matchDetail,
-        proConfigs,
-        share,
-        presets,
-        trainingPacks,
-        mood,
-        prompt,
-      },
-      en: {
-        common: commonEn,
-        live: liveEn,
-        history: historyEn,
-        analytics: analyticsEn,
-        settings: settingsEn,
-        onboarding: onboardingEn,
-        overlay: overlayEn,
-        tracker: trackerEn,
-        profiles: profilesEn,
-        players: playersEn,
-        matchDetail: matchDetailEn,
-        proConfigs: proConfigsEn,
-        share: shareEn,
-        presets: presetsEn,
-        trainingPacks: trainingPacksEn,
-        mood: moodEn,
-        prompt: promptEn,
-      },
-      pt: {
-        common: commonPt,
-        live: livePt,
-        history: historyPt,
-        analytics: analyticsPt,
-        settings: settingsPt,
-        onboarding: onboardingPt,
-        overlay: overlayPt,
-        tracker: trackerPt,
-        profiles: profilesPt,
-        players: playersPt,
-        matchDetail: matchDetailPt,
-        proConfigs: proConfigsPt,
-        share: sharePt,
-        presets: presetsPt,
-        trainingPacks: trainingPacksPt,
-        mood: moodPt,
-        prompt: promptPt,
-      },
-    },
+    resources: {},
     fallbackLng: "es",
-    supportedLngs: ["es", "en", "pt"],
-    ns: [
-      "common",
-      "live",
-      "history",
-      "analytics",
-      "settings",
-      "onboarding",
-      "overlay",
-      "tracker",
-      "profiles",
-      "players",
-      "matchDetail",
-      "proConfigs",
-      "share",
-      "presets",
-      "trainingPacks",
-      "mood",
-      "prompt",
-    ],
+    supportedLngs: [...SUPPORTED],
+    ns: [...NAMESPACES],
     defaultNS: "common",
     interpolation: {
       escapeValue: false,
@@ -150,5 +141,22 @@ i18n
       caches: ["localStorage"],
     },
   });
+
+i18n.on("languageChanged", (lng) => {
+  void loadLanguage(lng);
+});
+
+/**
+ * Resolves once the detected language and the Spanish fallback are loaded.
+ * `main.tsx` awaits it before the first render so the UI never flashes raw
+ * keys; other entrypoints (overlay/prompt) share the same bundle instance.
+ */
+export const i18nReady: Promise<void> = (async () => {
+  const detected = normalizeLang(i18n.language);
+  await loadLanguage(detected);
+  if (detected !== "es") {
+    await loadLanguage("es");
+  }
+})();
 
 export default i18n;

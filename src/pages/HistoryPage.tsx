@@ -197,6 +197,38 @@ export function HistoryPage() {
   const closeShare = useCallback(() => setShareOpen(false), []);
 
   const [exportingCsv, setExportingCsv] = useState(false);
+
+  // Vim-style j/k navigation over the visible match rows. Enter/Space already
+  // open a row (MatchCard handles them), so this only moves focus.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== "j" && key !== "k") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      if (document.querySelector('[role="dialog"]')) return;
+
+      const rows = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-history-match]"),
+      );
+      if (rows.length === 0) return;
+      event.preventDefault();
+
+      const active = document.activeElement as HTMLElement | null;
+      const currentIndex = active ? rows.indexOf(active) : -1;
+      const nextIndex =
+        key === "j"
+          ? Math.min(rows.length - 1, currentIndex + 1)
+          : Math.max(0, currentIndex - 1);
+      const next = rows[nextIndex];
+      next?.focus();
+      next?.scrollIntoView({ block: "nearest" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const handleExportCsv = useCallback(async () => {
     try {
       setExportingCsv(true);

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./i18n";
+import { i18nReady } from "./i18n";
 import "./styles/globals.css";
 import App from "./App";
 
@@ -11,6 +12,9 @@ async function bootstrap() {
     const { installMockBackend } = await import("@/dev/mockBackend");
     installMockBackend();
   }
+
+  // Locales load on demand; rendering before they resolve would flash keys.
+  await i18nReady;
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

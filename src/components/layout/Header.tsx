@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { useLiveStore } from "@/stores/liveStore";
-import { useProfileStore } from "@/stores/profileStore";
+import { useActiveProfile, useProfiles, useProfileMutations } from "@/hooks/useProfiles";
+import { restartApp } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
@@ -41,21 +42,24 @@ export function Header() {
     (state) => state.connectionStatus === "connected" && state.currentMatch !== null,
   );
 
-  const profiles = useProfileStore((state) => state.profiles);
-  const activeProfile = useProfileStore((state) => state.activeProfile);
-  const isLoading = useProfileStore((state) => state.isLoading);
-  const fetchProfiles = useProfileStore((state) => state.fetchProfiles);
-  const createProfile = useProfileStore((state) => state.createProfile);
-  const switchProfile = useProfileStore((state) => state.switchProfile);
-  const restartApp = useProfileStore((state) => state.restartApp);
+  const profilesQuery = useProfiles();
+  const activeProfileQuery = useActiveProfile();
+  const {
+    createProfile: createProfileMutation,
+    switchProfile: switchProfileMutation,
+  } = useProfileMutations();
+
+  const profiles = profilesQuery.data ?? [];
+  const activeProfile = activeProfileQuery.data ?? null;
+  const isLoading =
+    profilesQuery.isLoading ||
+    activeProfileQuery.isLoading ||
+    createProfileMutation.isPending ||
+    switchProfileMutation.isPending;
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSwitchOpen, setIsSwitchOpen] = useState(false);
   const [pendingSwitchId, setPendingSwitchId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchProfiles();
-  }, [fetchProfiles]);
 
   const profileOptions = profiles.map((p) => ({ value: p.id, label: p.name }));
 
@@ -79,26 +83,26 @@ export function Header() {
   const handleSwitchConfirm = async () => {
     if (!pendingSwitchId) return;
     try {
-      await switchProfile(pendingSwitchId);
+      await switchProfileMutation.mutateAsync(pendingSwitchId);
       setIsSwitchOpen(false);
       await restartApp();
     } catch {
-      // Error is already handled in the store
+      // The modal stays open so the error is visible
     }
   };
 
   const handleCreateConfirm = async (name: string, playerName: string) => {
     if (!name.trim()) return;
     try {
-      await createProfile(name.trim(), playerName.trim());
-      const created = useProfileStore.getState().activeProfile;
-      if (created) {
-        await switchProfile(created.id);
-      }
+      const created = await createProfileMutation.mutateAsync({
+        name: name.trim(),
+        playerName: playerName.trim(),
+      });
+      await switchProfileMutation.mutateAsync(created.id);
       setIsCreateOpen(false);
       await restartApp();
     } catch {
-      // Error is already handled in the store
+      // The modal stays open so the error is visible
     }
   };
 

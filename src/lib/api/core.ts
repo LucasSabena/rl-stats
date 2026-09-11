@@ -199,7 +199,12 @@ export function mapPlayer(player: RawLivePlayer): Player {
 
 export function mapLiveState(state: RawLiveMatchState | null): LiveMatchState | null {
   if (!state) return null;
-  const mappedPlayers = state.players.map(mapPlayer);
+  let mappedPlayers = state.players.map(mapPlayer);
+  // Free Play reports a single player with team 1; force blue so the live
+  // panel and overlay render the stint instead of an empty orange side.
+  if (mappedPlayers.length === 1) {
+    mappedPlayers = mappedPlayers.map((player) => ({ ...player, team: 0 as const }));
+  }
   const playerCount = mappedPlayers.length;
   const matchType = state.is_online ? "online" : "local";
   return {

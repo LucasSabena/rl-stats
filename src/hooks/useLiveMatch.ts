@@ -1,37 +1,14 @@
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
-import { getConnectionStatus, getLiveState } from "@/lib/api";
+import {
+  getConnectionStatus,
+  getLiveState,
+  mapLiveState,
+  type RawLiveMatchState,
+} from "@/lib/api";
 import { useLiveStore } from "@/stores/liveStore";
-import type { LiveMatchState, Player, SessionSummary, RlEventType } from "@/lib/types";
-
-interface RawPlayer {
-  id: string;
-  name: string;
-  team: number;
-  score: number;
-  goals: number;
-  shots: number;
-  assists: number;
-  saves: number;
-  touches: number;
-  demos: number;
-  speed: number;
-  boost: number;
-}
-
-interface RawLiveUpdate {
-  match_guid: string | null;
-  arena: string | null;
-  is_online: boolean;
-  is_overtime: boolean;
-  time_remaining: number;
-  score_blue: number;
-  score_orange: number;
-  players: RawPlayer[];
-  ball_speed: number;
-  training_elapsed_seconds?: number | null;
-}
+import type { SessionSummary, RlEventType } from "@/lib/types";
 
 interface RawSessionSummary {
   match_guid: string;
@@ -55,51 +32,6 @@ interface RawLiveEvent {
   type: RlEventType;
   timestamp: number;
   data: Record<string, unknown>;
-}
-
-function mapPlayer(raw: RawPlayer): Player {
-  return {
-    id: raw.id ?? "unknown",
-    name: raw.name ?? "Unknown",
-    team: raw.team === 0 ? (0 as const) : raw.team === 1 ? (1 as const) : (-1 as const),
-    score: raw.score,
-    goals: raw.goals,
-    shots: raw.shots,
-    assists: raw.assists,
-    saves: raw.saves,
-    demos: raw.demos,
-    touches: raw.touches,
-    boostAmount: raw.boost,
-    speed: raw.speed,
-  };
-}
-
-function mapLiveUpdate(raw: RawLiveUpdate): LiveMatchState {
-  const playersArray = Array.isArray(raw.players) ? raw.players : [];
-  let mappedPlayers = playersArray.map(mapPlayer);
-
-  // En entrenamiento (1 jugador), forzar team 0 para que aparezca en el panel azul
-  if (mappedPlayers.length === 1) {
-    mappedPlayers = mappedPlayers.map((p) => ({ ...p, team: 0 as const }));
-  }
-
-  return {
-    matchGuid: raw.match_guid,
-    players: mappedPlayers,
-    gameState: {
-      timeRemaining: raw.time_remaining,
-      isOvertime: raw.is_overtime,
-      isReplay: false,
-      arena: raw.arena,
-      ballSpeed: raw.ball_speed,
-      ballPosition: null,
-    },
-    teamBlueScore: raw.score_blue,
-    teamOrangeScore: raw.score_orange,
-    playerCount: mappedPlayers.length,
-    matchType: raw.is_online ? "online" : "local",
-    trainingElapsedSeconds: raw.training_elapsed_seconds ?? null,
-  };
 }
 
 function mapSessionSummary(raw: RawSessionSummary): SessionSummary {
@@ -145,10 +77,10 @@ export function useLiveMatch() {
 
       // Listen for real-time Tauri events from the Rust backend
       try {
-        const un = await listen<RawLiveUpdate>("live-update", (event) => {
+        const un = await listen<RawLiveMatchState>("live-update", (event) => {
           if (cancelled) return;
-          const liveState = mapLiveUpdate(event.payload);
-          setMatch(liveState);
+          const liveState = mapLiveState(event.payload);
+          if (liveState) setMatch(liveState);
         });
         if (cancelled) un();
         else unlisten = un;
