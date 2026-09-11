@@ -141,8 +141,12 @@ jobs:
       - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
+          # Only the downloaded crates + index: caching the extracted
+          # ~/.cargo/registry/src (thousands of small files) made every cache
+          # save take ~4.5 minutes on Windows.
           path: |
-            ~/.cargo/registry
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
             ~/.cargo/git
           # No lockfile hash: a version bump changed it and re-downloaded the
           # whole registry. run_id + prefix restore keeps it warm.
