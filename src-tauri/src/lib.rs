@@ -953,6 +953,23 @@ async fn persist_finished_session(
     // Read before persisting: `persist_finished_match` consumes the session
     // (resets it), so the start time is gone afterwards.
     let session_started_at = session.started_at();
+
+    // Capture the roster too: if the frontend never delivered an MMR snapshot
+    // (slow provider, window hidden), the match is enriched in the background
+    // after it is saved.
+    let enrichment_roster = if session.is_real_match() {
+        let live = session.live_state();
+        Some((
+            live.players,
+            live.playlist_id
+                .and_then(crate::core::mmr::playlists::playlist_id_to_key)
+                .map(str::to_string),
+            live.is_online,
+        ))
+    } else {
+        None
+    };
+
     match session.persist_finished_match(db_pool) {
         Ok(result) => {
             let PersistResult {
@@ -973,6 +990,16 @@ async fn persist_finished_session(
                 return;
             }
             info!(guid = %summary.match_guid, "Match persisted");
+
+            // Server-side MMR snapshot: never blocks persistence and never
+            // overwrites values the frontend already delivered.
+            if !is_training {
+                if let Some((players, playlist, is_online)) = enrichment_roster {
+                    if is_online {
+                        spawn_match_mmr_enrichment(app_handle, match_id, players, playlist);
+                    }
+                }
+            }
 
             if !is_training {
                 tally.add_match(&summary, session_started_at);
@@ -1430,6 +1457,71 @@ fn broadcast_to_overlay(
             }
         }
     }
+}
+
+/// Fills missing per-player MMR for a just-persisted match, in the background.
+///
+/// The frontend usually captures the live MMR snapshot during the match, but a
+/// slow provider or a hidden window can miss it. This runs the same provider
+/// chain after persistence and only writes `NULL` values.
+fn spawn_match_mmr_enrichment(
+    app_handle: &tauri::AppHandle,
+    match_id: i64,
+    players: Vec<crate::core::models::LivePlayer>,
+    playlist: Option<String>,
+) {
+    let state = app_handle.state::<AppState>();
+    let db_pool = Arc::clone(&state.db_pool);
+    let scraper = state.rlstats_scraper.clone();
+    let app = app_handle.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let Ok(settings) = get_settings(&db_pool) else {
+            return;
+        };
+        let snapshot = crate::core::mmr::resolve_lobby_mmr(
+            Arc::clone(&db_pool),
+            settings.rapidapi_key.clone(),
+            settings.rapidapi_enabled,
+            settings.tracker_api_key.clone(),
+            settings.parsebot_api_key.clone(),
+            settings.parsebot_scraper_id.clone(),
+            settings.parsebot_endpoint.clone(),
+            settings.parsebot_enabled,
+            settings.local_primary_id.clone(),
+            true,
+            playlist,
+            settings.mmr_scraper_enabled.then_some(scraper).flatten(),
+            players,
+        )
+        .await;
+
+        let Ok(snapshot) = snapshot else {
+            return;
+        };
+        let mmr_by_primary_id: std::collections::HashMap<String, Option<i32>> = snapshot
+            .players
+            .iter()
+            // Estimates are not real values; never persist them as such.
+            .filter(|player| !player.estimated)
+            .map(|player| (player.primary_id.clone(), player.mmr))
+            .collect();
+
+        match crate::core::storage::update_match_players_mmr(&db_pool, match_id, &mmr_by_primary_id)
+        {
+            Ok(updated) if updated > 0 => {
+                info!(match_id, updated, "Post-match MMR enrichment filled values");
+                let _ = app.emit(
+                    "match-mmr-enriched",
+                    serde_json::json!({ "matchId": match_id }),
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(error = %error, match_id, "Post-match MMR enrichment failed");
+            }
+        }
+    });
 }
 
 async fn tracker_refresh_loop(db_pool: Arc<DbPool>, app_handle: tauri::AppHandle) {

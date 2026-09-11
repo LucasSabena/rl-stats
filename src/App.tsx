@@ -6,7 +6,8 @@ import {
   Navigate,
   Outlet,
 } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "@/components/layout/AppShell";
 import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
@@ -106,6 +107,27 @@ function AppFallback({ transparent = false }: { transparent?: boolean }) {
 function MainWindowHooks() {
   useAutoUpdateCheck();
   useCloudAutoSync();
+  const queryClient = useQueryClient();
+
+  // The backend fills missing per-match MMR after persistence; refresh the
+  // views that show it when that finishes.
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    let disposed = false;
+    void listen("match-mmr-enriched", () => {
+      void queryClient.invalidateQueries({ queryKey: ["match-detail"] });
+      void queryClient.invalidateQueries({ queryKey: ["matches"] });
+      void queryClient.invalidateQueries({ queryKey: ["mmr-history"] });
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [queryClient]);
+
   return null;
 }
 

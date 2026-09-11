@@ -1263,6 +1263,33 @@ mod tests {
     };
 
     #[test]
+    fn for_sync_strips_api_keys_and_keeps_everything_else() {
+        let settings = AppSettings {
+            player_name: "Alice".into(),
+            tracker_api_key: Some("tracker-secret".into()),
+            rapidapi_key: Some("rapid-secret".into()),
+            parsebot_api_key: Some("parsebot-secret".into()),
+            ..Default::default()
+        };
+
+        let safe = settings.for_sync();
+        assert!(safe.tracker_api_key.is_none());
+        assert!(safe.rapidapi_key.is_none());
+        assert!(safe.parsebot_api_key.is_none());
+        assert_eq!(safe.player_name, "Alice");
+
+        // Serializing the sync payload must not contain the secrets.
+        let value = serde_json::to_value(&safe).unwrap();
+        let text = value.to_string();
+        assert!(!text.contains("tracker-secret"));
+        assert!(!text.contains("rapid-secret"));
+        assert!(!text.contains("parsebot-secret"));
+
+        // The original keeps the real values for the local database.
+        assert_eq!(settings.tracker_api_key.as_deref(), Some("tracker-secret"));
+    }
+
+    #[test]
     fn focus_prompt_defaults_to_opt_in_off() {
         let settings = AppSettings::default();
         assert!(!settings.prompt_focus_enabled);

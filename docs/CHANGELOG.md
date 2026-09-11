@@ -1,5 +1,46 @@
 # Changelog
 
+## [2.16.4] - 2026-09-11
+
+Closes the remaining audit items from the 2.16.0 round.
+
+### Added
+- **Post-match MMR enrichment.** The frontend snapshot can be missed when a
+  provider is slow or the window is hidden. After a match is persisted, the
+  backend now resolves the lobby MMR in a background task and fills only the
+  rows that are still `NULL` (never overwrites), enqueuing a cloud sync for
+  each value it adds and emitting `match-mmr-enriched` so open views refresh.
+
+### Fixed
+- **Corrupt MMR cache rows self-repair**: an unparsable cache entry is
+  dropped and treated as a miss so the provider refetches, instead of failing
+  that player forever.
+- **Live MMR errors are visible**: the live header now shows an "MMR
+  unavailable" chip with a retry button when the provider chain fails.
+- **Cloud pull cannot reset preferences**: an empty or partial settings
+  payload (which `#[serde(default)]` would otherwise turn into defaults) is
+  skipped.
+
+### Tests
+- Cloud pull/apply: natural-key upserts, idempotent re-apply, FK-cascade
+  deletes, unresolved dependencies skipped, invalid settings payloads
+  rejected.
+- Profiles: name validation, case-insensitive duplicate rejection, one
+  account per profile, active-profile delete protection and WAL/SHM sidecar
+  cleanup.
+- `for_sync` strips API keys from the serialized payload; MMR enrichment only
+  fills `NULL`s and enqueues sync; backup-name parser distinguishes legacy
+  snapshots.
+- Totals: 202 Rust unit + 3 harness + 36 integration + 3 overlay-server,
+  125 frontend, 2 Playwright.
+
+### CI
+- New advisory **Dependency Audit** job (pnpm audit + cargo audit); it
+  reports without blocking.
+- The Windows job runs unit + pure integration tests; the `tauri::test`
+  harness binary cannot load on the runner (STATUS_ENTRYPOINT_NOT_FOUND,
+  pre-existing) and is covered locally.
+
 ## [2.16.3] - 2026-09-11
 
 ### Changed

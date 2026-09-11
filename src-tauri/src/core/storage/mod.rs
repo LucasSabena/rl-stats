@@ -904,6 +904,60 @@ pub fn update_match(
     Ok(())
 }
 
+/// Post-match MMR enrichment: fills `mmr` for players of a persisted match.
+///
+/// Never overwrites a value that is already there (only `NULL` rows are
+/// touched) and enqueues a sync upsert for every row it changes so the cloud
+/// receives the enriched values too. Returns how many rows were filled.
+pub fn update_match_players_mmr(
+    pool: &DbPool,
+    match_id: i64,
+    mmr_by_primary_id: &HashMap<String, Option<i32>>,
+) -> AppResult<usize> {
+    let conn = get_conn(pool)?;
+    let guid: Option<String> = conn
+        .query_row(
+            "SELECT guid FROM matches WHERE id = ?1",
+            params![match_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let Some(guid) = guid else {
+        return Ok(0);
+    };
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let mut updated = 0usize;
+    for (primary_id, mmr) in mmr_by_primary_id {
+        let Some(mmr) = mmr else { continue };
+        let changed = tx
+            .execute(
+                "UPDATE match_players
+                 SET mmr = ?1
+                 WHERE match_id = ?2
+                   AND mmr IS NULL
+                   AND player_id = (SELECT id FROM players WHERE primary_id = ?3)",
+                params![mmr, match_id, primary_id],
+            )
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
+        if changed > 0 {
+            sync::enqueue_upsert_conn(
+                &tx,
+                "match_player",
+                &format!("{guid}:{primary_id}"),
+                serde_json::json!({ "mmr": mmr }),
+            )?;
+            updated += changed;
+        }
+    }
+    tx.commit()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    Ok(updated)
+}
+
 /// Valid post-match mood values, ordered from most positive to most negative.
 pub const MATCH_MOODS: &[&str] = &["very_happy", "happy", "neutral", "angry", "very_angry"];
 
@@ -4741,6 +4795,68 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = temp_app_dir(tag);
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    #[test]
+    fn match_mmr_enrichment_only_fills_nulls_and_enqueues_sync() {
+        let pool = temp_pool("mmr-enrich");
+        let conn = get_conn(&pool).unwrap();
+        conn.execute(
+            "INSERT INTO matches (guid, start_time, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds)
+             VALUES ('g1', '2026-01-01T00:00:00+00:00', 1, 0, 0, 1, 0, 300)",
+            [],
+        )
+        .unwrap();
+        let match_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO players (primary_id, name) VALUES ('epic|a', 'A')",
+            [],
+        )
+        .unwrap();
+        let player_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO match_players (match_id, player_id, team_num, score) VALUES (?1, ?2, 0, 100)",
+            params![match_id, player_id],
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut mmr_map = HashMap::new();
+        mmr_map.insert("epic|a".to_string(), Some(1200));
+        mmr_map.insert("epic|missing".to_string(), Some(999));
+        mmr_map.insert("epic|none".to_string(), None);
+
+        assert_eq!(
+            update_match_players_mmr(&pool, match_id, &mmr_map).unwrap(),
+            1
+        );
+
+        let conn = get_conn(&pool).unwrap();
+        let mmr: Option<i32> = conn
+            .query_row("SELECT mmr FROM match_players", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(mmr, Some(1200));
+
+        // Never overwrites an existing value.
+        assert_eq!(
+            update_match_players_mmr(&pool, match_id, &mmr_map).unwrap(),
+            0
+        );
+
+        let outbox: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_outbox
+                 WHERE entity_type = 'match_player' AND entity_key = 'g1:epic|a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(outbox, 1, "enriched MMR must be re-pushed to the cloud");
     }
 
     #[test]

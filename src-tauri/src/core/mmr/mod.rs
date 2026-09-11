@@ -1,7 +1,7 @@
 use crate::core::models::LivePlayer;
 use crate::core::storage::{
-    get_latest_player_mmr_for_playlist, get_mmr_cache, get_player_mmr_history_for_playlist,
-    upsert_mmr_cache, DbPool,
+    delete_mmr_cache, get_latest_player_mmr_for_playlist, get_mmr_cache,
+    get_player_mmr_history_for_playlist, upsert_mmr_cache, DbPool,
 };
 use crate::core::tracker_api::{
     PlaylistStats as TrackerPlaylistStats, TrackerClient, TrackerProfile,
@@ -2157,8 +2157,23 @@ fn read_cached_profile(
         return Ok(None);
     }
 
-    let cached_profile: CachedMmrProfile = serde_json::from_str(&payload_json)
-        .map_err(|e| AppError::ParseError(format!("MMR cache invalido: {e}")))?;
+    let cached_profile: CachedMmrProfile = match serde_json::from_str(&payload_json) {
+        Ok(profile) => profile,
+        Err(e) => {
+            // A corrupted cache row used to fail the provider for this player
+            // forever. Treat it as a cache miss and drop the bad row so the
+            // provider refetches and repairs itself.
+            warn!(
+                provider,
+                platform,
+                identifier,
+                error = %e,
+                "Dropping corrupt MMR cache row"
+            );
+            let _ = delete_mmr_cache(db_pool, provider, platform, identifier);
+            return Ok(None);
+        }
+    };
     Ok(Some(cached_profile))
 }
 

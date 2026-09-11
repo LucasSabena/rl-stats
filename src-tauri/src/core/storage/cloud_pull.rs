@@ -614,9 +614,293 @@ fn apply_training_pack(
 /// Settings are last-write-wins for every non-secret, non-device-local field
 /// (that merge lives in [`crate::core::settings::AppSettings::merge_remote`]).
 fn apply_settings(conn: &rusqlite::Connection, change: &RemoteChange) -> AppResult<bool> {
+    // `AppSettings` is `#[serde(default)]`, so ANY object deserializes — an
+    // empty or partial payload would reset every user preference to its
+    // default. Require a key that every real settings payload carries.
+    let Some(object) = change.payload_json.as_object() else {
+        return Ok(false);
+    };
+    if !object.contains_key("player_name") && !object.contains_key("theme") {
+        return Ok(false);
+    }
+
     let Ok(remote) = serde_json::from_value::<AppSettings>(change.payload_json.clone()) else {
         return Ok(false);
     };
     crate::core::settings::set_settings_conn_no_sync(conn, &remote)?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::storage::{get_conn, init_storage, DbPool};
+
+    fn temp_pool(tag: &str) -> DbPool {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-pull-{tag}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        init_storage(dir.join("test.db")).expect("init storage")
+    }
+
+    fn change(
+        server_revision: i64,
+        entity_type: &str,
+        entity_key: &str,
+        operation: &str,
+        payload: Value,
+    ) -> RemoteChange {
+        RemoteChange {
+            server_revision,
+            entity_type: entity_type.to_string(),
+            entity_key: entity_key.to_string(),
+            operation: operation.to_string(),
+            payload_json: payload,
+        }
+    }
+
+    #[test]
+    fn applies_entities_by_natural_keys() {
+        let conn = get_conn(&temp_pool("apply")).unwrap();
+
+        let summary = apply_remote_changes(
+            &conn,
+            &[
+                change(
+                    1,
+                    "player",
+                    "epic|abc",
+                    "upsert",
+                    serde_json::json!({ "primary_id": "epic|abc", "name": "Alice" }),
+                ),
+                change(
+                    2,
+                    "match",
+                    "guid-1",
+                    "upsert",
+                    serde_json::json!({
+                        "guid": "guid-1",
+                        "start_time": "2026-01-02T10:00:00+00:00",
+                        "end_time": "2026-01-02T10:05:00+00:00",
+                        "arena": "DFH Stadium",
+                        "score_blue": 3,
+                        "score_orange": 2,
+                        "winner": 0,
+                        "is_online": true,
+                        "is_overtime": false,
+                        "duration_seconds": 300
+                    }),
+                ),
+                change(
+                    3,
+                    "match_player",
+                    "guid-1:epic|abc",
+                    "upsert",
+                    serde_json::json!({
+                        "match_guid": "guid-1",
+                        "player_primary_id": "epic|abc",
+                        "team_num": 0,
+                        "score": 500,
+                        "goals": 2,
+                        "shots": 4
+                    }),
+                ),
+                change(
+                    4,
+                    "session",
+                    "1",
+                    "upsert",
+                    serde_json::json!({
+                        "match_guid": "guid-1",
+                        "summary_json": "{\"note\":\"remote\"}",
+                        "created_at": "2026-01-02T10:06:00+00:00"
+                    }),
+                ),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(summary.applied, 4);
+        assert_eq!(summary.skipped, 0);
+        assert_eq!(summary.max_revision, 4);
+        assert!(summary.touched_matches);
+
+        let name: String = conn
+            .query_row(
+                "SELECT name FROM players WHERE primary_id = 'epic|abc'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Alice");
+
+        let (score, goals): (i32, i32) = conn
+            .query_row(
+                "SELECT mp.score, mp.goals
+                 FROM match_players mp
+                 JOIN matches m ON m.id = mp.match_id
+                 JOIN players p ON p.id = mp.player_id
+                 WHERE m.guid = 'guid-1' AND p.primary_id = 'epic|abc'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((score, goals), (500, 2));
+
+        let sessions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(sessions, 1);
+
+        // Re-applying is idempotent and updates in place.
+        let summary = apply_remote_changes(
+            &conn,
+            &[change(
+                5,
+                "match",
+                "guid-1",
+                "upsert",
+                serde_json::json!({
+                    "guid": "guid-1",
+                    "start_time": "2026-01-02T10:00:00+00:00",
+                    "score_blue": 4,
+                    "score_orange": 2,
+                    "winner": 0,
+                    "duration_seconds": 320
+                }),
+            )],
+        )
+        .unwrap();
+        assert_eq!(summary.applied, 1);
+        let matches: i64 = conn
+            .query_row("SELECT COUNT(*) FROM matches", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(matches, 1);
+        let score_blue: i32 = conn
+            .query_row(
+                "SELECT score_blue FROM matches WHERE guid = 'guid-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(score_blue, 4);
+    }
+
+    #[test]
+    fn missing_dependencies_are_skipped_and_deletes_cascade() {
+        let conn = get_conn(&temp_pool("skip")).unwrap();
+
+        // A match_player whose match has not arrived yet is skipped, not an
+        // error: a later page of the same pull retries it.
+        let summary = apply_remote_changes(
+            &conn,
+            &[change(
+                1,
+                "match_player",
+                "guid-x:epic|abc",
+                "upsert",
+                serde_json::json!({
+                    "match_guid": "guid-x",
+                    "player_primary_id": "epic|abc",
+                    "team_num": 0
+                }),
+            )],
+        )
+        .unwrap();
+        assert_eq!(summary.applied, 0);
+        assert_eq!(summary.skipped, 1);
+
+        // Build a match with a player, then delete it remotely: the FK
+        // cascade must remove the child rows.
+        apply_remote_changes(
+            &conn,
+            &[
+                change(
+                    2,
+                    "player",
+                    "epic|abc",
+                    "upsert",
+                    serde_json::json!({ "primary_id": "epic|abc", "name": "Alice" }),
+                ),
+                change(
+                    3,
+                    "match",
+                    "guid-y",
+                    "upsert",
+                    serde_json::json!({
+                        "guid": "guid-y",
+                        "start_time": "2026-01-03T10:00:00+00:00",
+                        "score_blue": 1,
+                        "score_orange": 0,
+                        "winner": 0,
+                        "duration_seconds": 200
+                    }),
+                ),
+                change(
+                    4,
+                    "match_player",
+                    "guid-y:epic|abc",
+                    "upsert",
+                    serde_json::json!({
+                        "match_guid": "guid-y",
+                        "player_primary_id": "epic|abc",
+                        "team_num": 0
+                    }),
+                ),
+            ],
+        )
+        .unwrap();
+
+        let summary = apply_remote_changes(
+            &conn,
+            &[change(
+                5,
+                "match",
+                "guid-y",
+                "delete",
+                serde_json::json!({}),
+            )],
+        )
+        .unwrap();
+        assert_eq!(summary.applied, 1);
+
+        let matches: i64 = conn
+            .query_row("SELECT COUNT(*) FROM matches", [], |row| row.get(0))
+            .unwrap();
+        let match_players: i64 = conn
+            .query_row("SELECT COUNT(*) FROM match_players", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(matches, 0);
+        assert_eq!(match_players, 0, "FK cascade must clean child rows");
+    }
+
+    #[test]
+    fn invalid_settings_payload_never_wipes_local_secrets() {
+        let pool = temp_pool("settings");
+        let conn = get_conn(&pool).unwrap();
+
+        let mut local = crate::core::settings::get_settings(&pool).unwrap();
+        local.rapidapi_key = Some("secret".into());
+        crate::core::settings::set_settings(&pool, &local).unwrap();
+
+        // A malformed payload is skipped, not applied.
+        let summary = apply_remote_changes(
+            &conn,
+            &[change(
+                1,
+                "app_settings",
+                "all",
+                "upsert",
+                serde_json::json!({ "not": "app settings" }),
+            )],
+        )
+        .unwrap();
+        assert_eq!(summary.applied, 0);
+
+        let after = crate::core::settings::get_settings(&pool).unwrap();
+        assert_eq!(after.rapidapi_key.as_deref(), Some("secret"));
+    }
 }

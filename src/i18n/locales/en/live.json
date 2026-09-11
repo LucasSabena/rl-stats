@@ -63,7 +63,8 @@
     "historical": "{{count}} historical",
     "estimated": "{{count}} estimated",
     "unavailableCount": "{{count}} unavailable",
-    "coverageHint": "Historical and estimated values are labeled separately; they are never shown as the exact current MMR."
+    "coverageHint": "Historical and estimated values are labeled separately; they are never shown as the exact current MMR.",
+    "error": "MMR unavailable"
   },
   "players": {
     "bots": "Bots",

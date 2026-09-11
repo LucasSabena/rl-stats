@@ -171,7 +171,12 @@ export function LiveDashboard() {
   const navigate = useNavigate();
   const currentMatch = useLiveStore((state) => state.currentMatch);
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
-  const { data: liveMmr, isFetching: isFetchingMmr, forceRefresh } = useLiveMmr();
+  const {
+    data: liveMmr,
+    isFetching: isFetchingMmr,
+    isError: mmrError,
+    forceRefresh,
+  } = useLiveMmr();
   const { data: liveHeadToHead } = useLiveHeadToHead();
   const { data: settings } = useSettings();
   const statsApiPort = settings?.port ?? 49123;
@@ -209,7 +214,7 @@ export function LiveDashboard() {
 
   const matchTypeLabel = currentMatch.matchType === "local" ? t("live:matchType.local") : undefined;
 
-  const showInfoBar = Boolean(liveMmr) || connectionStatus !== "connected";
+  const showInfoBar = Boolean(liveMmr) || connectionStatus !== "connected" || mmrError;
 
   return (
     <div className="space-y-4">
@@ -235,6 +240,28 @@ export function LiveDashboard() {
             <ConnectionStatus status={connectionStatus} />
           ) : (
             <span />
+          )}
+          {mmrError && !liveMmr && (
+            <div
+              className="flex items-center gap-1.5 text-[10px]"
+              role="status"
+              aria-live="polite"
+            >
+              <Gauge size={11} className="shrink-0 text-accent-warning" />
+              <span className="rounded bg-accent-warning/10 px-1.5 py-0.5 font-semibold text-accent-warning">
+                {t("live:mmr.error")}
+              </span>
+              <button
+                onClick={forceRefresh}
+                disabled={isFetchingMmr}
+                className="inline-flex items-center gap-1 rounded border border-border-subtle px-1.5 py-0.5 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+                aria-label={t("live:playlist.refreshAriaLabel")}
+                type="button"
+              >
+                <RefreshCw size={10} className={cn(isFetchingMmr && "animate-spin")} />
+                {t("common:buttons.retry")}
+              </button>
+            </div>
           )}
           {liveMmr && (
             <div

@@ -588,3 +588,97 @@ pub fn update_profile_player_identity(
     info!(profile_id = %profile_id, primary_id = %primary_id, player_name = %player_name, "Updated profile player identity");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_app_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-profiles-{tag}-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn validates_profile_names() {
+        assert!(validate_profile_name("").is_err());
+        assert!(validate_profile_name("   ").is_err());
+        assert!(validate_profile_name(&"x".repeat(49)).is_err());
+        assert!(validate_profile_name("bad\u{0007}name").is_err());
+        assert_eq!(
+            validate_profile_name("  Main account  ").unwrap(),
+            "Main account"
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_names_case_insensitively() {
+        let app_dir = temp_app_dir("duplicate");
+        init_profiles(&app_dir).unwrap();
+
+        create_profile(&app_dir, "Secondary").unwrap();
+        assert!(create_profile(&app_dir, "secondary").is_err());
+
+        let profiles = list_profiles(&app_dir).unwrap();
+        let secondary = profiles.iter().find(|p| p.name == "Secondary").unwrap();
+        assert!(rename_profile(&app_dir, &secondary.id, "default").is_err());
+        rename_profile(&app_dir, &secondary.id, "Secundaria").unwrap();
+
+        let profiles = list_profiles(&app_dir).unwrap();
+        assert!(profiles.iter().any(|p| p.name == "Secundaria"));
+
+        let _ = fs::remove_dir_all(&app_dir);
+    }
+
+    #[test]
+    fn an_account_cannot_belong_to_two_profiles() {
+        let app_dir = temp_app_dir("identity");
+        init_profiles(&app_dir).unwrap();
+        // Profiles get their database on first use; identity lives there.
+        crate::core::storage::init_storage(get_db_path_for_profile(&app_dir, "default")).unwrap();
+        let second = create_profile(&app_dir, "Second").unwrap();
+
+        update_profile_player_identity(&app_dir, "default", "epic|abc", "Alice").unwrap();
+        let error =
+            update_profile_player_identity(&app_dir, &second.id, "epic|abc", "Bob").unwrap_err();
+        assert!(
+            error.to_string().contains("asignada"),
+            "a primary id already owned by another profile must be rejected: {error}"
+        );
+
+        // A different account is still accepted.
+        update_profile_player_identity(&app_dir, &second.id, "steam|xyz", "Bob").unwrap();
+
+        let owner = find_profile_by_primary_id(&app_dir, "epic|abc")
+            .unwrap()
+            .expect("owner");
+        assert_eq!(owner.id, "default");
+
+        let _ = fs::remove_dir_all(&app_dir);
+    }
+
+    #[test]
+    fn delete_protects_the_active_profile_and_cleans_sidecars() {
+        let app_dir = temp_app_dir("delete");
+        init_profiles(&app_dir).unwrap();
+        let second = create_profile(&app_dir, "Second").unwrap();
+
+        assert!(delete_profile(&app_dir, "default").is_err());
+
+        let db_path = get_db_path_for_profile(&app_dir, &second.id);
+        fs::write(&db_path, b"db").unwrap();
+        fs::write(format!("{}-wal", db_path.display()), b"wal").unwrap();
+        fs::write(format!("{}-shm", db_path.display()), b"shm").unwrap();
+
+        delete_profile(&app_dir, &second.id).unwrap();
+        assert!(!db_path.exists());
+        assert!(!PathBuf::from(format!("{}-wal", db_path.display())).exists());
+        assert!(!PathBuf::from(format!("{}-shm", db_path.display())).exists());
+
+        let _ = fs::remove_dir_all(&app_dir);
+    }
+}
