@@ -19,6 +19,65 @@ pub struct MatchFilters {
     pub search: Option<String>,
 }
 
+/// Typed shape of a match row in list and detail responses.
+///
+/// Keeps the exact snake_case keys the frontend maps in `src/lib/api.ts`; a
+/// serialization test pins them so a rename cannot silently break the UI.
+#[derive(serde::Serialize)]
+struct MatchEntry {
+    id: i64,
+    guid: String,
+    start_time: chrono::DateTime<chrono::Utc>,
+    end_time: Option<chrono::DateTime<chrono::Utc>>,
+    arena: Option<String>,
+    score_blue: i32,
+    score_orange: i32,
+    winner: Option<i32>,
+    local_team_num: Option<i32>,
+    is_online: bool,
+    is_overtime: bool,
+    duration_seconds: i32,
+    match_type: Option<String>,
+    playlist: Option<String>,
+    mood: Option<String>,
+}
+
+impl MatchEntry {
+    fn from_match(m: crate::core::models::Match, local_team_num: Option<i32>) -> Self {
+        Self {
+            id: m.id,
+            guid: m.guid,
+            start_time: m.start_time,
+            end_time: m.end_time,
+            arena: m.arena,
+            score_blue: m.score_blue,
+            score_orange: m.score_orange,
+            winner: m.winner,
+            local_team_num,
+            is_online: m.is_online,
+            is_overtime: m.is_overtime,
+            duration_seconds: m.duration_seconds,
+            match_type: m.match_type,
+            playlist: m.playlist,
+            mood: m.mood,
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct MatchListResponse {
+    matches: Vec<MatchEntry>,
+}
+
+#[derive(serde::Serialize)]
+struct MatchDetailResponse {
+    #[serde(rename = "match")]
+    match_entry: MatchEntry,
+    players: Vec<crate::core::models::Player>,
+    events: Vec<Value>,
+    goals: Vec<Value>,
+}
+
 #[tauri::command]
 pub async fn get_matches(
     state: State<'_, AppState>,
@@ -60,31 +119,16 @@ pub async fn get_matches(
             let local_stats_by_match =
                 storage::get_local_match_stats(pool, &match_ids, local_primary_id, &player_names)
                     .unwrap_or_default();
-            let mut result: Vec<serde_json::Value> = Vec::new();
-            for m in matches {
-                let local_team = local_stats_by_match
-                    .get(&m.id)
-                    .and_then(|stats| stats.local_team_num);
-
-                result.push(serde_json::json!({
-                    "id": m.id,
-                    "guid": m.guid,
-                    "start_time": m.start_time,
-                    "end_time": m.end_time,
-                    "arena": m.arena,
-                    "score_blue": m.score_blue,
-                    "score_orange": m.score_orange,
-                    "winner": m.winner,
-                    "local_team_num": local_team,
-                    "is_online": m.is_online,
-                    "is_overtime": m.is_overtime,
-                    "duration_seconds": m.duration_seconds,
-                    "match_type": m.match_type,
-                    "playlist": m.playlist,
-                    "mood": m.mood,
-                }));
-            }
-            Ok(serde_json::json!({ "matches": result }))
+            let result: Vec<MatchEntry> = matches
+                .into_iter()
+                .map(|m| {
+                    let local_team = local_stats_by_match
+                        .get(&m.id)
+                        .and_then(|stats| stats.local_team_num);
+                    MatchEntry::from_match(m, local_team)
+                })
+                .collect();
+            serde_json::to_value(MatchListResponse { matches: result }).map_err(|e| e.to_string())
         }
         Err(e) => {
             error!(error = %e, "Failed to get matches");
@@ -108,29 +152,18 @@ pub async fn get_match_detail(
                 .map(|events| map_match_events(events, m.start_time))
                 .unwrap_or_default();
             let goals = build_goals_from_events(&events);
+            let local_team_num =
+                storage::get_local_team_num(pool, m.id, local_primary_id, &player_names)
+                    .ok()
+                    .flatten();
 
-            Ok(serde_json::json!({
-                "match": {
-                "id": m.id,
-                "guid": m.guid,
-                "start_time": m.start_time,
-                "end_time": m.end_time,
-                "arena": m.arena,
-                "score_blue": m.score_blue,
-                "score_orange": m.score_orange,
-                "winner": m.winner,
-                "local_team_num": storage::get_local_team_num(pool, m.id, local_primary_id, &player_names).ok().flatten(),
-                "is_online": m.is_online,
-                "is_overtime": m.is_overtime,
-                "duration_seconds": m.duration_seconds,
-                "match_type": m.match_type,
-                "playlist": m.playlist,
-                "mood": m.mood,
-            },
-                "players": players,
-                "events": events,
-                "goals": goals,
-            }))
+            let response = MatchDetailResponse {
+                match_entry: MatchEntry::from_match(m, local_team_num),
+                players,
+                events,
+                goals,
+            };
+            serde_json::to_value(response).map_err(|e| e.to_string())
         }
         Err(e) => {
             error!(error = %e, match_id, "Failed to get match detail");
@@ -287,5 +320,89 @@ pub async fn set_match_mood_cmd(
             error!(error = %e, match_id, "Failed to set match mood");
             Err(e.to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod serialization_tests {
+    use super::*;
+
+    fn entry() -> MatchEntry {
+        MatchEntry {
+            id: 1,
+            guid: "guid-1".to_string(),
+            start_time: chrono::Utc::now(),
+            end_time: None,
+            arena: Some("DFH Stadium".to_string()),
+            score_blue: 1,
+            score_orange: 2,
+            winner: Some(1),
+            local_team_num: Some(1),
+            is_online: true,
+            is_overtime: false,
+            duration_seconds: 300,
+            match_type: Some("ranked".to_string()),
+            playlist: Some("Doubles".to_string()),
+            mood: None,
+        }
+    }
+
+    fn keys(value: &serde_json::Value) -> Vec<String> {
+        let mut keys: Vec<String> = value.as_object().expect("object").keys().cloned().collect();
+        keys.sort();
+        keys
+    }
+
+    #[test]
+    fn match_entry_keeps_the_frontend_contract() {
+        let value = serde_json::to_value(entry()).unwrap();
+        assert_eq!(
+            keys(&value),
+            vec![
+                "arena",
+                "duration_seconds",
+                "end_time",
+                "guid",
+                "id",
+                "is_online",
+                "is_overtime",
+                "local_team_num",
+                "match_type",
+                "mood",
+                "playlist",
+                "score_blue",
+                "score_orange",
+                "start_time",
+                "winner",
+            ]
+        );
+        assert!(
+            value["start_time"]
+                .as_str()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .is_some(),
+            "start_time must stay RFC3339-compatible for Date.parse()"
+        );
+    }
+
+    #[test]
+    fn list_response_wraps_matches() {
+        let value = serde_json::to_value(MatchListResponse {
+            matches: vec![entry()],
+        })
+        .unwrap();
+        assert_eq!(keys(&value), vec!["matches"]);
+    }
+
+    #[test]
+    fn detail_response_uses_the_match_key() {
+        let value = serde_json::to_value(MatchDetailResponse {
+            match_entry: entry(),
+            players: Vec::new(),
+            events: Vec::new(),
+            goals: Vec::new(),
+        })
+        .unwrap();
+        assert_eq!(keys(&value), vec!["events", "goals", "match", "players"]);
     }
 }
