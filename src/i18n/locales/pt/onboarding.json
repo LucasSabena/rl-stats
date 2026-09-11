@@ -11,9 +11,17 @@
     "searchingGame": "Buscando na Steam, Epic e locais conhecidos…", "searchingAccount": "Lendo contas locais da Steam…", "alreadyConfigured": "API já configurada",
     "noGame": "Nenhuma instalação válida foi encontrada. Cole a pasta do Rocket League para validar ou configure depois.",
     "noAccount": "Nenhuma conta local foi encontrada. Você pode continuar: o app identificará seu PrimaryId exato ao entrar em uma partida.",
-    "pathPlaceholder": "Pasta do Rocket League…", "validatePath": "Validar pasta", "active": "Ativa", "detectAgain": "Detectar novamente",
+    "pathLabel": "Pasta do Rocket League", "pathPlaceholder": "Pasta do Rocket League…", "validatePath": "Validar pasta", "active": "Ativa", "detectAgain": "Detectar novamente",
     "detectError": "Não foi possível concluir a detecção automática.", "invalidPath": "Essa pasta não contém uma instalação válida do Rocket League.", "saveError": "Não foi possível salvar a configuração.",
-    "later": "Configurar depois", "configure": "Configurar e explorar"
+    "later": "Configurar depois", "configure": "Configurar e explorar",
+    "connectionTitle": "Conexão com o Rocket League",
+    "checked": "Verificado",
+    "connectionDescription": "Abra o Rocket League (pode ficar no menu) e teste a conexão: o app lê o stream de estatísticas na porta configurada.",
+    "testConnection": "Testar conexão",
+    "connectionConnected": "Conectado: recebendo dados",
+    "connectionNoGame": "O Rocket League não está aberto",
+    "connectionConnecting": "Conectando…",
+    "connectionDisconnected": "Ainda sem conexão. Verifique a porta ou reinicie o jogo."
   },
   "tour": {
     "progress": "Passo {{current}} de {{total}}", "finish": "Concluir",

@@ -36,6 +36,7 @@ export function CloudConnectionSection({
             setConfigState({ ...config, supabase_url: event.target.value })
           }
           placeholder={t("cloud.supabaseUrlPlaceholder")}
+          aria-label={t("cloud.supabaseUrlLabel")}
         />
         <input
           className={inputClass}
@@ -47,6 +48,7 @@ export function CloudConnectionSection({
             })
           }
           placeholder={t("cloud.supabaseAnonKeyPlaceholder")}
+          aria-label={t("cloud.supabaseAnonKeyLabel")}
         />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">

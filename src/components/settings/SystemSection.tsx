@@ -52,6 +52,7 @@ export function SystemSection({
                 type="button"
                 role="switch"
                 aria-checked={field.value}
+                aria-label={t("settings:fields.autoStart")}
                 id="autoStart"
                 onClick={() => field.onChange(!field.value)}
                 className={cn(

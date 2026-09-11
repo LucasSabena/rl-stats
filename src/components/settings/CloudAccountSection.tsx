@@ -51,6 +51,7 @@ export function CloudAccountSection({
             value={email}
             onChange={(event) => onEmailChange(event.target.value)}
             placeholder={t("cloud.emailPlaceholder")}
+            aria-label={t("cloud.emailLabel")}
           />
           <input
             className={inputClass}
@@ -58,6 +59,7 @@ export function CloudAccountSection({
             value={password}
             onChange={(event) => onPasswordChange(event.target.value)}
             placeholder={t("cloud.passwordPlaceholder")}
+            aria-label={t("cloud.passwordLabel")}
           />
           <Button
             type="button"

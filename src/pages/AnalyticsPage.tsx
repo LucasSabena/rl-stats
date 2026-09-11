@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ShareModal } from "@/components/share/ShareModal";
+import { WeeklyGoalCard } from "@/components/analytics/WeeklyGoalCard";
 import { buildDayShareContext, buildWeekShareContext, buildSessionShareContext, buildSummaryShareContext } from "@/lib/shareContext";
 import type { AnalyticsPeriod, MatchSession, PlaylistFilter, MatchTypeFilter, DataScope, ShareContext } from "@/lib/types";
 import { BarChart3, X, Share2 } from "lucide-react";
@@ -187,6 +188,15 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
           />
         </div>
       </div>
+
+      {period === "week" && result?.data && (
+        <div className="mb-6">
+          <WeeklyGoalCard
+            matches={result.data.totalMatches}
+            wins={result.data.wins}
+          />
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex flex-col gap-6">
@@ -374,6 +384,7 @@ export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytic
                 </Button>
                 <button
                   onClick={() => setSelectedSession(null)}
+                  aria-label={t("common:buttons.close")}
                   className="rounded-lg p-1.5 text-text-tertiary hover:bg-bg-panel hover:text-text-primary"
                 >
                   <X size={18} />

@@ -355,6 +355,7 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
           value={configName}
           onChange={(e) => setConfigName(e.target.value)}
           placeholder={t("analytics:builder.savePlaceholder")}
+          aria-label={t("analytics:builder.saveLabel")}
           maxLength={40}
           className="h-9 flex-1 rounded-lg border border-border-subtle bg-bg-panel px-3 text-xs text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none"
         />

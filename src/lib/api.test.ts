@@ -60,7 +60,7 @@ describe("invokeCommand", () => {
       settle = resolve;
     }));
 
-    const promise = invokeCommand("export_data");
+    const promise = invokeCommand("create_cloud_backup_cmd");
     await vi.advanceTimersByTimeAsync(120_000);
 
     settle({ done: true });

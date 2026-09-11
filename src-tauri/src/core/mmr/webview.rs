@@ -181,7 +181,18 @@ pub struct RlstatsScraper {
     /// Epoch millis of the last scrape activity. Read by the reaper; a plain
     /// atomic keeps the reaper from needing the window lock on every tick.
     last_used_ms: AtomicU64,
+    /// Consecutive failed scrapes since the last success.
+    failure_streak: AtomicU64,
+    /// Epoch millis until which scraping is skipped entirely (circuit open).
+    open_until_ms: AtomicU64,
 }
+
+/// Consecutive failures that open the circuit.
+const CIRCUIT_FAILURE_THRESHOLD: u64 = 3;
+/// How long the circuit stays open once tripped. A Cloudflare challenge that
+/// fails three times will not succeed on the fourth player of the same lobby;
+/// retrying it N times used to hang the whole lobby for minutes.
+const CIRCUIT_OPEN: Duration = Duration::from_secs(5 * 60);
 
 impl RlstatsScraper {
     pub fn new(app: AppHandle) -> Arc<Self> {
@@ -190,6 +201,8 @@ impl RlstatsScraper {
             window: Mutex::new(None),
             scrape_lock: Mutex::new(()),
             last_used_ms: AtomicU64::new(now_ms()),
+            failure_streak: AtomicU64::new(0),
+            open_until_ms: AtomicU64::new(0),
         });
 
         let weak = Arc::downgrade(&scraper);
@@ -208,6 +221,37 @@ impl RlstatsScraper {
 
     fn mark_used(&self) {
         self.last_used_ms.store(now_ms(), Ordering::Relaxed);
+    }
+
+    /// Whether the circuit is open (scraping is in cool-down).
+    pub fn is_circuit_open(&self) -> bool {
+        now_ms() < self.open_until_ms.load(Ordering::Relaxed)
+    }
+
+    /// Remaining cool-down, for user-facing error messages.
+    pub fn circuit_remaining_secs(&self) -> u64 {
+        self.open_until_ms
+            .load(Ordering::Relaxed)
+            .saturating_sub(now_ms())
+            / 1000
+    }
+
+    fn record_success(&self) {
+        self.failure_streak.store(0, Ordering::Relaxed);
+        self.open_until_ms.store(0, Ordering::Relaxed);
+    }
+
+    fn record_failure(&self) {
+        let streak = self.failure_streak.fetch_add(1, Ordering::Relaxed) + 1;
+        if streak >= CIRCUIT_FAILURE_THRESHOLD {
+            let open_until = now_ms() + CIRCUIT_OPEN.as_millis() as u64;
+            self.open_until_ms.store(open_until, Ordering::Relaxed);
+            warn!(
+                streak,
+                cooldown_secs = CIRCUIT_OPEN.as_secs(),
+                "RLStats scraper circuit opened after repeated failures"
+            );
+        }
     }
 
     /// Destroys the hidden window once it has been unused for [`IDLE_CLOSE`].
@@ -261,12 +305,29 @@ impl RlstatsScraper {
         platform: &str,
         identifier: &str,
     ) -> AppResult<ExtractedProfile> {
+        if self.is_circuit_open() {
+            return Err(AppError::ConnectionError(format!(
+                "RLStats esta en enfriamiento tras varios errores; reintentando en {}s.",
+                self.circuit_remaining_secs()
+            )));
+        }
+
         let url = build_profile_url(platform, identifier)?;
         self.mark_used();
-        let window = self.ensure_window().await?;
-        window
-            .navigate(url)
-            .map_err(|e| AppError::ConnectionError(format!("No se pudo abrir RLStats: {e}")))?;
+        let window = match self.ensure_window().await {
+            Ok(window) => window,
+            Err(error) => {
+                self.record_failure();
+                return Err(error);
+            }
+        };
+        if let Err(error) = window.navigate(url) {
+            self.record_failure();
+            return Err(AppError::ConnectionError(format!(
+                "No se pudo abrir RLStats: {e}",
+                e = error
+            )));
+        }
 
         let started = Instant::now();
         tokio::time::sleep(FIRST_POLL_DELAY).await;
@@ -281,6 +342,7 @@ impl RlstatsScraper {
                             elapsed_ms = started.elapsed().as_millis() as u64,
                             "RLStats profile extracted via webview"
                         );
+                        self.record_success();
                         self.park_window(&window);
                         return Ok(profile);
                     }
@@ -302,6 +364,7 @@ impl RlstatsScraper {
             tokio::time::sleep(POLL_INTERVAL).await;
         }
 
+        self.record_failure();
         Err(AppError::ConnectionError(format!(
             "RLStats no devolvio el perfil en {}s (estado: {last_reason}). \
              Abri rlstats.net en tu navegador una vez para resolver el challenge.",

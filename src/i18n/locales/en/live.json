@@ -44,13 +44,13 @@
     "refresh": "Refresh"
   },
   "teams": {
-    "blue": "Blue Team",
-    "orange": "Orange Team",
+    "blue": "Blue team",
+    "orange": "Orange team",
     "blueShort": "Blue",
     "orangeShort": "Orange"
   },
   "mmr": {
-    "average": "Avg MMR",
+    "average": "Avg {{mmr}}",
     "searching": "Searching...",
     "unavailable": "No data",
     "infoLabel": "Info",
@@ -100,7 +100,10 @@
     "MatchPaused": "Match paused",
     "MatchUnpaused": "Match resumed",
     "ClockUpdatedSeconds": "Clock updated",
-    "RoundStarted": "Round started"
+    "RoundStarted": "Round started",
+    "detail": {
+      "goalWithAssist": "{{scorer}} (assist: {{assister}})"
+    }
   },
   "overtime": "OVERTIME",
   "connectionStatus": {
@@ -128,5 +131,24 @@
     "title": "Training",
     "hint": "The time is saved when you leave Free Play.",
     "aria": "Training time"
+  },
+  "statfeed": {
+    "Goal": "Goal",
+    "Assist": "Assist",
+    "Save": "Save",
+    "EpicSave": "Epic save",
+    "Demo": "Demo",
+    "Demolition": "Demolition",
+    "HatTrick": "Hat trick",
+    "AerialGoal": "Aerial goal",
+    "Shot": "Shot",
+    "Center": "Center",
+    "Clear": "Clear",
+    "FirstTouch": "First touch",
+    "Bicycle": "Bicycle",
+    "LongGoal": "Long goal",
+    "PoolShot": "Pool shot",
+    "Turtle": "Turtle",
+    "Hoops": "Hoops"
   }
 }

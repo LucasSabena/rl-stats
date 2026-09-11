@@ -88,15 +88,67 @@ export const EventFeed = memo(function EventFeed() {
   );
 });
 
+function formatClock(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+}
+
+/** Human-readable detail for events that carry a payload. */
+function eventDetail(event: RlEvent, t: (key: string) => string): string | null {
+  const data = event.data ?? {};
+  switch (event.type) {
+    case "GoalScored": {
+      const scorer =
+        typeof data.scorerName === "string" ? data.scorerName : null;
+      const assister =
+        typeof data.assisterName === "string" ? data.assisterName : null;
+      if (scorer && assister) {
+        return t("live:events.detail.goalWithAssist")
+          .replace("{{scorer}}", scorer)
+          .replace("{{assister}}", assister);
+      }
+      return scorer;
+    }
+    case "StatfeedEvent": {
+      const label =
+        typeof data.eventName === "string"
+          ? t(`live:statfeed.${data.eventName}`)
+          : null;
+      const target =
+        typeof data.mainTargetName === "string" ? data.mainTargetName : null;
+      if (label && label !== `live:statfeed.${String(data.eventName)}`) {
+        return target ? `${label} · ${target}` : label;
+      }
+      return target;
+    }
+    case "ClockUpdatedSeconds":
+      return typeof data.time === "number" ? formatClock(data.time) : null;
+    case "MatchEnded": {
+      const winner = data.winnerTeamNum;
+      if (winner === 0) return t("live:teams.blue");
+      if (winner === 1) return t("live:teams.orange");
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
 function EventItem({ event }: { event: RlEvent }) {
   const { t } = useTranslation(["live", "common"]);
   const Icon = eventIcons[event.type] ?? CircleDot;
+  const detail = eventDetail(event, t);
   return (
     <div className="animate-slide-down flex items-center gap-2 px-4 py-1.5 text-[11px]">
       <Icon size={11} className={cn("shrink-0", eventColors[event.type] ?? "text-text-tertiary")} />
       <span className="truncate text-text-secondary">
         {t(eventTranslationKeys[event.type] ?? `live:events.${event.type}`) ?? event.type}
       </span>
+      {detail && (
+        <span className="truncate font-medium text-text-primary">{detail}</span>
+      )}
       <span className="ml-auto shrink-0 font-mono text-[10px] text-text-muted">
         {formatDateTime(event.timestamp * 1000)}
       </span>

@@ -1,20 +1,28 @@
 import {
+  applyCloudPullBatch,
+  createCloudBackup,
   getActiveProfile,
   getCloudConfig,
   getCloudSyncStatus,
+  getLastPulledRevision,
   getSettings,
   markCloudPushFailed,
   markCloudPushSucceeded,
   prepareCloudPushBatch,
   setCloudConfig,
+  setLastPulledRevision,
 } from "./api";
 import type { CloudConfig, CloudPushRequest, Profile } from "./types";
 import {
   ensureFreshCloudSession,
   getCloudSubscription,
+  getLatestServerRevision,
   hasCloudSyncAccess,
   listCloudProfiles,
+  pullCloudChanges,
   pushCloudChanges,
+  wipeCloudProfile,
+  type CloudSession,
   type CloudSubscription,
 } from "./cloudClient";
 
@@ -24,6 +32,9 @@ const DEFAULT_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as
 const DEFAULT_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as
   | string
   | undefined;
+
+const PULL_PAGE_SIZE = 500;
+const MAX_PULL_PAGES = 20;
 
 function isActiveSubscription(subscription: CloudSubscription | null): boolean {
   return (
@@ -116,21 +127,30 @@ async function ensureCloudProfile(
   return { config: nextConfig, cloudProfileId: matchingProfile.id };
 }
 
-export async function syncCurrentProfileToCloud(): Promise<{
-  uploaded: number;
-  skippedReason?: string;
-}> {
-  const settings = await getSettings();
-  if (settings.autoSyncOnMatchEnd === false) {
-    return { uploaded: 0, skippedReason: "auto_sync_disabled" };
-  }
+interface CloudAccess {
+  config: CloudConfig;
+  credentials: { supabaseUrl: string; supabaseAnonKey: string };
+  session: CloudSession;
+  subscription: CloudSubscription | null;
+  cloudProfileId: string;
+}
 
+type CloudAccessResult =
+  | ({ ok: true } & CloudAccess)
+  | { ok: false; skippedReason: string };
+
+/**
+ * Resolves config, credentials, session, plan and the cloud profile id.
+ *
+ * Shared by push, pull and wipe so all three follow the exact same gating.
+ */
+async function resolveCloudAccess(): Promise<CloudAccessResult> {
   let config = withEnvDefaults(await getCloudConfig());
   const credentials = getCredentials(config);
-  if (!credentials) return { uploaded: 0, skippedReason: "missing_config" };
+  if (!credentials) return { ok: false, skippedReason: "missing_config" };
 
   const session = await ensureFreshCloudSession(credentials);
-  if (!session) return { uploaded: 0, skippedReason: "signed_out" };
+  if (!session) return { ok: false, skippedReason: "signed_out" };
 
   const [subscription, hasAccess] = await Promise.all([
     getCloudSubscription(credentials, session),
@@ -140,20 +160,47 @@ export async function syncCurrentProfileToCloud(): Promise<{
     hasAccess ||
     isActiveSubscription(subscription) ||
     config.plan_status === "active";
-  if (!hasActivePlan) return { uploaded: 0, skippedReason: "inactive_plan" };
+  if (!hasActivePlan) return { ok: false, skippedReason: "inactive_plan" };
 
   const ensured = await ensureCloudProfile(config, credentials, session);
   config = ensured.config;
-  const cloudProfileId = ensured.cloudProfileId;
 
-  await setCloudConfig({
-    ...config,
+  return {
+    ok: true,
+    config,
+    credentials,
+    session,
+    subscription,
+    cloudProfileId: ensured.cloudProfileId,
+  };
+}
+
+function persistedConfig(
+  access: CloudAccess,
+): CloudConfig {
+  return {
+    ...access.config,
     enabled: true,
     cloud_sync_enabled: true,
-    cloud_profile_id: cloudProfileId,
-    plan_code: subscription?.plan_code ?? config.plan_code ?? null,
-    plan_status: subscription?.status ?? config.plan_status ?? null,
-  });
+    cloud_profile_id: access.cloudProfileId,
+    plan_code: access.subscription?.plan_code ?? access.config.plan_code ?? null,
+    plan_status: access.subscription?.status ?? access.config.plan_status ?? null,
+  };
+}
+
+export async function syncCurrentProfileToCloud(): Promise<{
+  uploaded: number;
+  skippedReason?: string;
+}> {
+  const settings = await getSettings();
+  if (settings.autoSyncOnMatchEnd === false) {
+    return { uploaded: 0, skippedReason: "auto_sync_disabled" };
+  }
+
+  const access = await resolveCloudAccess();
+  if (!access.ok) return { uploaded: 0, skippedReason: access.skippedReason };
+
+  await setCloudConfig(persistedConfig(access));
 
   const batch = await prepareCloudPushBatch(250);
   if (!batch) return { uploaded: 0 };
@@ -163,19 +210,39 @@ export async function syncCurrentProfileToCloud(): Promise<{
     .filter((id) => id > 0);
 
   try {
-    await pushCloudChanges(credentials, session, {
+    const response = await pushCloudChanges(access.credentials, access.session, {
       ...batch,
-      p_profile_id: cloudProfileId,
+      p_profile_id: access.cloudProfileId,
     });
-    await markCloudPushSucceeded(outboxIds);
+
+    // The response used to be ignored: a 200 with `processed: 0` (or a
+    // partial batch) still marked every row as synced, silently dropping
+    // data. Accept only a processed batch or an idempotent replay.
+    const accepted =
+      response.duplicate ||
+      (response.status === "processed" &&
+        response.processed >= outboxIds.length);
+    if (!accepted) {
+      throw new Error(
+        `Cloud accepted ${response.processed}/${outboxIds.length} changes`
+      );
+    }
+
+    // Record the server revision when we can read it; 0 only means "unknown".
+    let revision = 0;
+    try {
+      revision = await getLatestServerRevision(
+        access.credentials,
+        access.session,
+      );
+    } catch {
+      // Non-fatal: the revision is bookkeeping for future conflict handling.
+    }
+
+    await markCloudPushSucceeded(outboxIds, revision);
     await setCloudConfig({
-      ...config,
-      enabled: true,
-      cloud_sync_enabled: true,
-      cloud_profile_id: cloudProfileId,
+      ...persistedConfig(access),
       last_sync_at: new Date().toISOString(),
-      plan_code: subscription?.plan_code ?? config.plan_code ?? null,
-      plan_status: subscription?.status ?? config.plan_status ?? null,
     });
     return { uploaded: outboxIds.length };
   } catch (error) {
@@ -184,4 +251,82 @@ export async function syncCurrentProfileToCloud(): Promise<{
     if (outboxIds.length > 0) await markCloudPushFailed(outboxIds, message);
     throw error;
   }
+}
+
+export interface CloudPullResult {
+  applied: number;
+  skipped: number;
+  pages: number;
+  skippedReason?: string;
+}
+
+/**
+ * Pulls remote changes and applies them to SQLite.
+ *
+ * The first pull on a device snapshots the database first: applying a full
+ * remote history is the most destructive sync operation there is.
+ */
+export async function pullCurrentProfileFromCloud(): Promise<CloudPullResult> {
+  const access = await resolveCloudAccess();
+  if (!access.ok) {
+    return { applied: 0, skipped: 0, pages: 0, skippedReason: access.skippedReason };
+  }
+
+  const lastRevision = await getLastPulledRevision();
+  if (lastRevision === 0) {
+    try {
+      await createCloudBackup();
+    } catch {
+      // Backup is best-effort; the pull itself is idempotent.
+    }
+  }
+
+  let after = lastRevision;
+  let applied = 0;
+  let skipped = 0;
+  let pages = 0;
+
+  for (let page = 0; page < MAX_PULL_PAGES; page++) {
+    const changes = await pullCloudChanges(
+      access.credentials,
+      access.session,
+      after,
+      PULL_PAGE_SIZE,
+    );
+    if (changes.length === 0) break;
+
+    const summary = await applyCloudPullBatch(
+      changes.map((change) => ({
+        server_revision: change.server_revision,
+        entity_type: change.entity_type,
+        entity_key: change.entity_key,
+        operation: change.operation,
+        payload_json: change.payload_json,
+      })),
+    );
+    applied += summary.applied;
+    skipped += summary.skipped;
+    pages += 1;
+    after = Math.max(after, summary.max_revision);
+
+    if (changes.length < PULL_PAGE_SIZE) break;
+  }
+
+  return { applied, skipped, pages };
+}
+
+/** Deletes this profile's cloud data. Returns false when cloud is not set up. */
+export async function wipeCurrentProfileFromCloud(): Promise<boolean> {
+  const access = await resolveCloudAccess();
+  if (!access.ok) return false;
+
+  await wipeCloudProfile(
+    access.credentials,
+    access.session,
+    access.cloudProfileId,
+  );
+  // Everything was deleted server-side, including the change log; restart
+  // the local cursor so nothing can resurrect the wiped rows.
+  await setLastPulledRevision(0);
+  return true;
 }

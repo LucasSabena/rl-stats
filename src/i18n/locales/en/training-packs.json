@@ -2,6 +2,7 @@
   "page": {
     "title": "Training Packs",
     "searchPlaceholder": "Search by name, code, or creator...",
+    "searchLabel": "Search training packs",
     "noResults": "No training packs found",
     "noResultsFiltered": "Try adjusting your search or filters.",
     "clearFilters": "Clear filters",

@@ -115,6 +115,40 @@
       "copyError": "Erro ao copiar",
       "copyErrorMessage": "Não foi possível copiar para a área de transferência.",
       "unknownError": "Erro desconhecido"
+    },
+    "autostartHint": "O servidor reinicia automaticamente com o aplicativo.",
+    "preview": "Pré-visualizar",
+    "previewTitle": "Pré-visualização do overlay",
+    "previewHint": "Sem dados ao vivo até uma partida começar",
+    "scene": {
+      "title": "Personalização de cena",
+      "matchTitle": "Título da partida",
+      "matchTitlePlaceholder": "GRANDE FINAL",
+      "series": "Série (BO)",
+      "blueName": "Nome do time azul",
+      "orangeName": "Nome do time laranja",
+      "hideModules": "Ocultar módulos",
+      "alertTypes": "Alertas ativos",
+      "apply": "Atualizar URLs",
+      "modules": {
+        "scorebug": "Placar",
+        "rosters": "Jogadores",
+        "ball": "Bola",
+        "series": "Série"
+      }
+    },
+    "alerts": {
+      "Goal": "Gols",
+      "Save": "Defesas",
+      "Demo": "Demolições",
+      "HatTrick": "Hat tricks",
+      "EpicSave": "Defesas épicas",
+      "AerialGoal": "Gols aéreos"
+    },
+    "streamerbot": {
+      "title": "Streamer.bot / integrações",
+      "description": "Conecte o Streamer.bot ou outra ferramenta a este WebSocket para disparar ações.",
+      "copyJson": "Copiar configuração"
     }
   }
 }

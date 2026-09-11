@@ -83,25 +83,30 @@ pub async fn fetch_live_mmr_snapshot(
     let settings = get_settings(&state.db_pool).map_err(|e| e.to_string())?;
 
     if force_refresh {
-        // Clear relevant cache entries so fresh data is fetched
+        // Clear relevant cache entries so fresh data is fetched. Platforms are
+        // normalized to provider keys (`xbox` -> `xbl`, `ps4` -> `psn`);
+        // deleting with the raw game platform silently missed every row it
+        // meant to clear.
         for player in &live_players {
-            if let Some(parts) = player.id.split('|').nth(1) {
-                let platform = player.id.split('|').next().unwrap_or("");
-                let normalized_platform = platform.to_ascii_lowercase();
-                for provider in &[
-                    "rapidapi",
-                    "tracker",
-                    "parsebot",
-                    "rlstats",
-                    "rlstats-webview",
-                ] {
-                    let _ = crate::core::storage::delete_mmr_cache(
-                        &state.db_pool,
-                        provider,
-                        &normalized_platform,
-                        parts,
-                    );
-                }
+            let mut parts = player.id.split('|');
+            let raw_platform = parts.next().unwrap_or("");
+            let Some(identifier) = parts.next() else {
+                continue;
+            };
+            let platform = crate::core::mmr::normalize_provider_platform(raw_platform);
+            for provider in &[
+                "rapidapi",
+                "tracker",
+                "parsebot",
+                "rlstats",
+                "rlstats-webview",
+            ] {
+                let _ = crate::core::storage::delete_mmr_cache(
+                    &state.db_pool,
+                    provider,
+                    platform,
+                    identifier,
+                );
             }
         }
     }

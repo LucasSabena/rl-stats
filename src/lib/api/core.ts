@@ -379,12 +379,12 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
  */
 const UNBOUNDED_COMMANDS = new Set([
   // Bulk database / filesystem work
-  "export_data",
   "export_data_json",
   "export_history_csv",
-  "import_data",
   "import_data_json",
   "clear_all_data_cmd",
+  "create_cloud_backup_cmd",
+  "apply_cloud_pull_batch_cmd",
   "enqueue_existing_profile_history_for_sync_cmd",
   // Network round-trips (tracker / RLStats / MMR providers)
   "fetch_live_mmr_snapshot",

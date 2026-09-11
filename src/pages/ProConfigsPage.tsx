@@ -96,6 +96,7 @@ export function ProConfigsPage() {
             <input
               type="text"
               placeholder={t("proConfigs:search.placeholder")}
+              aria-label={t("proConfigs:search.label")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-md border border-border-subtle bg-bg-base py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:outline-none"

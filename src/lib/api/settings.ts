@@ -54,6 +54,8 @@ interface RawAppSettings {
   overlay_show_boost?: boolean;
   overlay_show_mmr?: boolean;
   overlay_show_speed?: boolean;
+  overlay_server_enabled?: boolean;
+  overlay_server_port?: number;
   game_running?: boolean;
   warn_on_profile_mismatch?: boolean;
   auto_switch_profile_on_exact_match?: boolean;
@@ -62,6 +64,8 @@ interface RawAppSettings {
   prompt_timeout_secs?: number;
   prompt_only_when_game_running?: boolean;
   training_tracking_enabled?: boolean;
+  weekly_goal_matches?: number;
+  weekly_goal_wins?: number;
 }
 
 interface RawStorageStats {
@@ -112,7 +116,7 @@ export async function getSettings(): Promise<AppSettings> {
     parsebotScraperId: settings.parsebot_scraper_id ?? null,
     parsebotEndpoint: settings.parsebot_endpoint ?? null,
     parsebotEnabled: settings.parsebot_enabled ?? false,
-    mmrScraperEnabled: settings.mmr_scraper_enabled ?? true,
+    mmrScraperEnabled: settings.mmr_scraper_enabled ?? false,
     trackerAutoRefresh: settings.tracker_auto_refresh ?? true,
     trackerRefreshIntervalMin: settings.tracker_refresh_interval_min ?? 5,
     sessionGapMinutes: settings.session_gap_minutes ?? 30,
@@ -137,6 +141,8 @@ export async function getSettings(): Promise<AppSettings> {
     overlayShowBoost: settings.overlay_show_boost ?? false,
     overlayShowMmr: settings.overlay_show_mmr ?? false,
     overlayShowSpeed: settings.overlay_show_speed ?? false,
+    overlayServerEnabled: settings.overlay_server_enabled ?? false,
+    overlayServerPort: settings.overlay_server_port ?? 9528,
     gameRunning: settings.game_running ?? false,
     warnOnProfileMismatch: settings.warn_on_profile_mismatch ?? true,
     autoSwitchProfileOnExactMatch:
@@ -146,6 +152,8 @@ export async function getSettings(): Promise<AppSettings> {
     promptTimeoutSecs: settings.prompt_timeout_secs ?? 30,
     promptOnlyWhenGameRunning: settings.prompt_only_when_game_running ?? true,
     trainingTrackingEnabled: settings.training_tracking_enabled ?? true,
+    weeklyGoalMatches: settings.weekly_goal_matches ?? 0,
+    weeklyGoalWins: settings.weekly_goal_wins ?? 0,
   };
 }
 
@@ -173,7 +181,7 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       parsebot_scraper_id: settings.parsebotScraperId ?? null,
       parsebot_endpoint: settings.parsebotEndpoint ?? null,
       parsebot_enabled: settings.parsebotEnabled ?? false,
-      mmr_scraper_enabled: settings.mmrScraperEnabled ?? true,
+      mmr_scraper_enabled: settings.mmrScraperEnabled ?? false,
       tracker_auto_refresh: settings.trackerAutoRefresh ?? true,
       tracker_refresh_interval_min: settings.trackerRefreshIntervalMin ?? 5,
       session_gap_minutes: settings.sessionGapMinutes ?? 30,
@@ -196,6 +204,8 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       overlay_show_boost: settings.overlayShowBoost ?? false,
       overlay_show_mmr: settings.overlayShowMmr ?? false,
       overlay_show_speed: settings.overlayShowSpeed ?? false,
+      overlay_server_enabled: settings.overlayServerEnabled ?? false,
+      overlay_server_port: settings.overlayServerPort ?? 9528,
       game_running: settings.gameRunning ?? false,
       warn_on_profile_mismatch: settings.warnOnProfileMismatch ?? true,
       auto_switch_profile_on_exact_match:
@@ -205,6 +215,8 @@ export async function setSettings(settings: AppSettings): Promise<void> {
       prompt_timeout_secs: settings.promptTimeoutSecs ?? 30,
       prompt_only_when_game_running: settings.promptOnlyWhenGameRunning ?? true,
       training_tracking_enabled: settings.trainingTrackingEnabled ?? true,
+      weekly_goal_matches: settings.weeklyGoalMatches ?? 0,
+      weekly_goal_wins: settings.weeklyGoalWins ?? 0,
     },
   });
 }
@@ -261,14 +273,6 @@ export async function reportFrontendError(
 }
 
 // Data management
-export async function exportData(path: string): Promise<void> {
-  return invokeCommand<void>("export_data", { path });
-}
-
-export async function importData(path: string): Promise<void> {
-  return invokeCommand<void>("import_data", { path });
-}
-
 export async function exportDataJson(): Promise<string> {
   return invokeCommand<string>("export_data_json");
 }
@@ -297,6 +301,22 @@ export async function clearAllData(): Promise<void> {
 
 export async function listProfiles(): Promise<Profile[]> {
   return invokeCommand<Profile[]>("list_profiles_cmd");
+}
+
+export interface ProfileComparisonRow {
+  id: string;
+  name: string;
+  isActive: boolean;
+  playerName: string | null;
+  matches: number;
+  wins: number;
+  winRate: number | null;
+  lastMatchAt: string | null;
+  trainingSessions: number;
+}
+
+export async function getProfileComparison(): Promise<ProfileComparisonRow[]> {
+  return invokeCommand<ProfileComparisonRow[]>("get_profile_comparison_cmd");
 }
 
 export async function getActiveProfile(): Promise<Profile> {

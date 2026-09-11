@@ -111,5 +111,14 @@
     "emptyDescription": "Play a match with Rocket League open and your career builds itself from here.",
     "errorTitle": "Could not load your career",
     "errorDescription": "There was a problem loading your stats."
+  },
+  "comparison": {
+    "title": "Profile comparison",
+    "description": "Your accounts side by side, without switching profiles.",
+    "profile": "Profile",
+    "matches": "Matches",
+    "winRate": "Win rate",
+    "training": "Training",
+    "lastMatch": "Last match"
   }
 }

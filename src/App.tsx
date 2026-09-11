@@ -13,6 +13,7 @@ import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
 import { MatchMoodModal } from "@/components/mood/MatchMoodModal";
 import { SessionSummaryModal } from "@/components/analytics/SessionSummaryModal";
 import { CommandPaletteHost } from "@/components/CommandPaletteHost";
+import { GlobalShortcuts } from "@/components/GlobalShortcuts";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PromptHost } from "@/components/prompt/PromptHost";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -108,6 +109,11 @@ function MainWindowHooks() {
   return null;
 }
 
+/** Shortcuts live inside the router so navigation works. */
+function MainWindowShortcuts() {
+  return <GlobalShortcuts />;
+}
+
 function AppContent() {
   const hasCompletedOnboarding = useSettingsStore(
     (s) =>
@@ -187,6 +193,7 @@ function AppContent() {
     <BrowserRouter>
       <>
         <MainWindowHooks />
+        <MainWindowShortcuts />
         <Suspense fallback={<AppFallback />}>
           <Routes>
             <Route

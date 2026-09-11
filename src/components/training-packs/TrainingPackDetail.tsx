@@ -99,6 +99,7 @@ export function TrainingPackDetail({
           <button
             type="button"
             onClick={onClose}
+            aria-label={t("common:buttons.close")}
             className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-bg-hover hover:text-text-primary"
           >
             <X size={18} />

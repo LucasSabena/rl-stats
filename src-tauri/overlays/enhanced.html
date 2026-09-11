@@ -4,10 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RL Enhanced Overlay</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/overlays/fonts/geist-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/overlays/fonts/geist-mono-latin.woff2') format('woff2');
+}
 :root {
   --blue-primary: #168cff;
   --blue-secondary: #dff1ff;
@@ -18,8 +29,8 @@
   --bg-panel: rgba(8,12,20,0.78);
   --bg-dark: rgba(4,6,12,0.65);
   --radius: 6px;
-  --font-display: 'Rajdhani', 'Arial Narrow', sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
+  --font-display: 'Geist', 'Arial Narrow', system-ui, sans-serif;
+  --font-body: 'Geist', system-ui, sans-serif;
   --stage-w: 1600;
   --stage-h: 900;
 }
@@ -474,10 +485,10 @@ html, body {
   </div>
 </div>
 
+<script src="/sdk/rl-overlay.js"></script>
 <script>
 (function() {
-  var WS_URL = 'ws://127.0.0.1:9528/ws';
-  var ws;
+  var overlay = RLOverlay.connect();
   var prevBlue = -1;
   var prevOrange = -1;
   var lastState = null;
@@ -498,6 +509,16 @@ html, body {
     orangeSeriesWins: 0,
   };
 
+  // Modules hidden via ?hide=scorebug,rosters,ball,series
+  var hiddenModules = {};
+
+  var MODULE_ELEMENTS = {
+    scorebug: ['scorebug'],
+    rosters: ['blueRoster', 'orangeRoster'],
+    ball: ['ballBadge'],
+    series: ['seriesRow'],
+  };
+
   var COUNTDOWN_DELAY = 850;
   var COUNTDOWN_STEP = 1000;
   var COUNTDOWN_STEPS = ['3', '2', '1'];
@@ -513,6 +534,11 @@ html, body {
     if (params.get('blueLogo')) config.blueLogoUrl = params.get('blueLogo');
     if (params.get('orangeLogo')) config.orangeLogoUrl = params.get('orangeLogo');
     if (params.get('series')) config.seriesLength = parseInt(params.get('series')) || 0;
+    if (params.get('hide')) {
+      params.get('hide').split(',').forEach(function(name) {
+        hiddenModules[name.trim()] = true;
+      });
+    }
     applyConfig();
   }
 
@@ -523,73 +549,88 @@ html, body {
     if (config.blueLogoUrl) setLogo('blueLogo', config.blueLogoUrl);
     if (config.orangeLogoUrl) setLogo('orangeLogo', config.orangeLogoUrl);
     renderSeries();
+    applyHiddenModules();
+  }
+
+  function applyHiddenModules() {
+    Object.keys(MODULE_ELEMENTS).forEach(function(name) {
+      MODULE_ELEMENTS[name].forEach(function(id) {
+        var el = $(id);
+        if (el && hiddenModules[name]) el.classList.add('hidden');
+      });
+    });
   }
 
   function setLogo(id, url) {
     var el = $(id);
-    el.innerHTML = '<img src="' + url + '" alt="" crossorigin="anonymous">';
+    el.replaceChildren();
+    if (!url) return;
+    // The logo URL comes from a query string anyone can craft: accept only
+    // image sources and set them through `src`, never innerHTML.
+    if (!/^(https?:|data:image\/)/i.test(url)) return;
+    var img = document.createElement('img');
+    img.alt = '';
+    img.src = url;
+    img.addEventListener('error', function() { img.remove(); });
+    el.appendChild(img);
   }
 
   function renderSeries() {
-    if (!config.seriesLength) { $('seriesRow').textContent = ''; return; }
+    var row = $('seriesRow');
+    row.replaceChildren();
+    if (!config.seriesLength) return;
+
     var winsNeeded = Math.ceil(config.seriesLength / 2);
-    var html = '';
-    html += '<div class="series-dots series-blue">';
-    for (var i = 0; i < winsNeeded; i++) {
-      html += '<div class="series-dot' + (i < config.blueSeriesWins ? ' won' : '') + '"></div>';
+
+    function dots(won, className) {
+      var wrap = document.createElement('div');
+      wrap.className = 'series-dots ' + className;
+      for (var i = 0; i < winsNeeded; i++) {
+        var dot = document.createElement('div');
+        dot.className = 'series-dot' + (i < won ? ' won' : '');
+        wrap.appendChild(dot);
+      }
+      return wrap;
     }
-    html += '</div>';
-    html += '<span>BO' + config.seriesLength + '</span>';
-    html += '<div class="series-dots series-orange">';
-    for (var i = 0; i < winsNeeded; i++) {
-      html += '<div class="series-dot' + (i < config.orangeSeriesWins ? ' won' : '') + '"></div>';
-    }
-    html += '</div>';
-    $('seriesRow').innerHTML = html;
+
+    row.appendChild(dots(config.blueSeriesWins, 'series-blue'));
+    var label = document.createElement('span');
+    label.textContent = 'BO' + config.seriesLength;
+    row.appendChild(label);
+    row.appendChild(dots(config.orangeSeriesWins, 'series-orange'));
   }
 
-  function connect() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = function() {
-      $('disconnected').classList.remove('visible');
-    };
-    ws.onmessage = function(e) {
-      var msg = JSON.parse(e.data);
-      switch (msg.type) {
-        case 'connected':
-          $('disconnected').classList.remove('visible');
-          break;
-        case 'snapshot':
-          $('disconnected').classList.remove('visible');
-          handleSnapshot(msg.data);
-          break;
-        case 'goal':
-          handleGoal(msg.data);
-          break;
-        case 'match_started':
-          resetOverlay();
-          break;
-        case 'match_ended':
-          break;
-        case 'replay_start':
-          break;
-        case 'replay_end':
-          break;
-        case 'match_paused':
-          break;
-        case 'match_unpaused':
-          break;
-        case 'countdown_begin':
-          showCountdown();
-          break;
-      }
-    };
-    ws.onclose = function() {
-      $('disconnected').classList.add('visible');
-      setTimeout(connect, 2000);
-    };
-    ws.onerror = function() { ws.close(); };
-  }
+  overlay.on('connected', function() {
+    $('disconnected').classList.remove('visible');
+  });
+
+  overlay.on('disconnected', function() {
+    $('disconnected').classList.add('visible');
+  });
+
+  overlay.on('state', function(d) {
+    $('disconnected').classList.remove('visible');
+    handleState(d);
+  });
+
+  overlay.on('goal', function(data) {
+    handleGoal(data);
+  });
+
+  overlay.on('match_started', function() {
+    resetOverlay();
+  });
+
+  overlay.on('match_ended', function(data) {
+    if (!config.seriesLength) return;
+    if (data && data.winnerTeamNum === 0) config.blueSeriesWins++;
+    else if (data && data.winnerTeamNum === 1) config.orangeSeriesWins++;
+    renderSeries();
+  });
+
+  overlay.on('countdown_begin', function() {
+    showCountdown();
+  });
 
   function fmtTime(seconds) {
     seconds = Math.max(0, Math.floor(seconds || 0));
@@ -598,7 +639,7 @@ html, body {
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
-  function handleSnapshot(d) {
+  function handleState(d) {
     if (!d) return;
     lastState = d;
 
@@ -641,17 +682,35 @@ html, body {
 
   function renderRoster(id, players) {
     players.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
-    var html = '';
+    var container = $(id);
+    container.replaceChildren();
     for (var i = 0; i < Math.min(players.length, 3); i++) {
       var p = players[i];
       var boost = (p.boost != null && p.boost >= 0) ? p.boost : null;
-      html += '<div class="roster-card">';
-      html += '<div class="roster-name">' + escapeHtml(p.name || 'Unknown') + '</div>';
-      html += '<div class="roster-boost">' + (boost !== null ? boost : '--') + '</div>';
-      html += '<div class="roster-boost-bar-wrap"><div class="roster-boost-bar" style="width:' + (boost || 0) + '%"></div></div>';
-      html += '</div>';
+
+      var card = document.createElement('div');
+      card.className = 'roster-card';
+
+      var name = document.createElement('div');
+      name.className = 'roster-name';
+      name.textContent = p.name || 'Unknown';
+
+      var boostValue = document.createElement('div');
+      boostValue.className = 'roster-boost';
+      boostValue.textContent = boost !== null ? String(boost) : '--';
+
+      var barWrap = document.createElement('div');
+      barWrap.className = 'roster-boost-bar-wrap';
+      var bar = document.createElement('div');
+      bar.className = 'roster-boost-bar';
+      bar.style.width = (boost || 0) + '%';
+      barWrap.appendChild(bar);
+
+      card.appendChild(name);
+      card.appendChild(boostValue);
+      card.appendChild(barWrap);
+      container.appendChild(card);
     }
-    $(id).innerHTML = html;
   }
 
   function pulse(el) {
@@ -661,34 +720,52 @@ html, body {
   }
 
   function handleGoal(data) {
-    var team = data.teamNum === 1 ? 'orange' : 'blue';
-    var scorer = data.scorerName || 'Player';
-    var overlay = $('goalOverlay');
-    overlay.innerHTML = '<div class="goal-panel ' + team + '-goal">' +
-      '<div class="goal-team-label">' + (team === 'blue' ? config.blueTeamName : config.orangeTeamName) + '</div>' +
-      '<div class="goal-word">GOAL</div>' +
-      '<div class="goal-scorer">' + escapeHtml(scorer) + '</div>' +
-      '</div>';
-    overlay.classList.add('active');
+    var team = (data && data.teamNum === 1) ? 'orange' : 'blue';
+    var scorer = (data && data.scorerName) || 'Player';
+    var overlayEl = $('goalOverlay');
+    overlayEl.replaceChildren();
+
+    var panel = document.createElement('div');
+    panel.className = 'goal-panel ' + team + '-goal';
+
+    var label = document.createElement('div');
+    label.className = 'goal-team-label';
+    label.textContent = team === 'blue' ? config.blueTeamName : config.orangeTeamName;
+
+    var word = document.createElement('div');
+    word.className = 'goal-word';
+    word.textContent = 'GOAL';
+
+    var scorerEl = document.createElement('div');
+    scorerEl.className = 'goal-scorer';
+    scorerEl.textContent = scorer;
+
+    panel.appendChild(label);
+    panel.appendChild(word);
+    panel.appendChild(scorerEl);
+    overlayEl.appendChild(panel);
+
+    overlayEl.classList.add('active');
     hideModules(true);
 
     clearTimeout(goalTimer);
     goalTimer = setTimeout(function() {
-      overlay.classList.remove('active');
+      overlayEl.classList.remove('active');
       hideModules(false);
-      setTimeout(function() { overlay.innerHTML = ''; }, 500);
+      setTimeout(function() { overlayEl.replaceChildren(); }, 500);
     }, GOAL_DURATION);
   }
 
   function hideModules(hide) {
-    var mods = ['scorebug', 'blueRoster', 'orangeRoster', 'ballBadge'];
-    for (var i = 0; i < mods.length; i++) {
-      var el = $(mods[i]);
-      if (el) {
+    Object.keys(MODULE_ELEMENTS).forEach(function(name) {
+      if (hiddenModules[name]) return; // stay hidden regardless
+      MODULE_ELEMENTS[name].forEach(function(id) {
+        var el = $(id);
+        if (!el) return;
         if (hide) el.classList.add('hidden');
         else el.classList.remove('hidden');
-      }
-    }
+      });
+    });
   }
 
   function showCountdown() {
@@ -745,25 +822,18 @@ html, body {
     clearTimeout(goalTimer);
     clearKickoffCountdown();
     $('goalOverlay').classList.remove('active');
-    $('goalOverlay').innerHTML = '';
+    $('goalOverlay').replaceChildren();
     hideModules(false);
     $('scoreBlue').textContent = '0';
     $('scoreOrange').textContent = '0';
     $('clock').textContent = '5:00';
     $('otBadge').classList.remove('active');
     $('ballSpeed').textContent = '0';
-    $('blueRoster').innerHTML = '';
-    $('orangeRoster').innerHTML = '';
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    $('blueRoster').replaceChildren();
+    $('orangeRoster').replaceChildren();
   }
 
   parseConfig();
-  connect();
 })();
 </script>
 </body>

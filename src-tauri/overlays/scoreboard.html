@@ -216,38 +216,29 @@
   <div class="disconnected" id="disconnected">Connecting...</div>
 </div>
 
+<script src="/sdk/rl-overlay.js"></script>
 <script>
 (function() {
-  var WS_URL = 'ws://127.0.0.1:9528/ws';
-  var ws;
+  var overlay = RLOverlay.connect();
   var prevBlue = -1;
   var prevOrange = -1;
 
   function $(id) { return document.getElementById(id); }
 
-  function connect() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = function() {
-      console.log('[Scoreboard] Connected');
-      $('disconnected').classList.remove('visible');
-    };
-    ws.onmessage = function(e) {
-      var msg = JSON.parse(e.data);
-      if (msg.type === 'connected') {
-        $('disconnected').classList.remove('visible');
-      }
-      if (msg.type === 'state' && msg.data) {
-        $('disconnected').classList.remove('visible');
-        render(msg.data);
-      }
-    };
-    ws.onclose = function() {
-      console.log('[Scoreboard] Disconnected, reconnecting...');
-      $('disconnected').classList.add('visible');
-      setTimeout(connect, 2000);
-    };
-    ws.onerror = function() { ws.close(); };
-  }
+  overlay.on('connected', function() {
+    console.log('[Scoreboard] Connected');
+    $('disconnected').classList.remove('visible');
+  });
+
+  overlay.on('disconnected', function() {
+    console.log('[Scoreboard] Disconnected, reconnecting...');
+    $('disconnected').classList.add('visible');
+  });
+
+  overlay.on('state', function(d) {
+    $('disconnected').classList.remove('visible');
+    render(d);
+  });
 
   function fmtTime(seconds) {
     seconds = Math.max(0, Math.floor(seconds || 0));
@@ -298,8 +289,6 @@
       partidaEl.classList.remove('visible');
     }
   }
-
-  connect();
 })();
 </script>
 </body>

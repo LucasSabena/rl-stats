@@ -32,6 +32,7 @@ export function OverlayDisplayPanel({ watched, register, setValue, handlePreview
           <button
             type="button"
             onClick={() => setValue("clickthrough", !watched.clickthrough)}
+            aria-label={t("overlay:config.clickThrough")}
             className={cn(
               "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
               watched.clickthrough ? "bg-accent-success" : "bg-border-highlight"

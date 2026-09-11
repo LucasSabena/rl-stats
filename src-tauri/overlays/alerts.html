@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RL Alerts Overlay</title>
+<style>
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/overlays/fonts/geist-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/overlays/fonts/geist-mono-latin.woff2') format('woff2');
+}
+
+:root {
+  --blue: oklch(0.66 0.16 250);
+  --orange: oklch(0.74 0.16 58);
+  --text: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.6);
+  --bg-panel: rgba(8, 12, 20, 0.82);
+  --font: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--text);
+  background: transparent;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.pos-top { align-items: flex-start; padding-top: 8vh; }
+body.pos-center { align-items: center; }
+body.pos-bottom { align-items: flex-end; padding-bottom: 8vh; }
+
+.alert-layer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(720px, 90vw);
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 22px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-left: 4px solid var(--accent, var(--text-muted));
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  animation: alert-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.alert.leaving { animation: alert-out 0.25s ease forwards; }
+
+.alert.blue { --accent: var(--blue); }
+.alert.orange { --accent: var(--orange); }
+.alert.neutral { --accent: oklch(0.79 0.16 75); }
+
+.alert-icon {
+  font-size: 26px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.alert-body { flex: 1; min-width: 0; }
+
+.alert-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, var(--text));
+}
+
+.alert-detail {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alert-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+@keyframes alert-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes alert-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-10px) scale(0.97); }
+}
+
+.disconnected {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #ff4444;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+  display: none;
+}
+.disconnected.visible { display: block; }
+</style>
+</head>
+<body class="pos-center">
+
+<div class="alert-layer" id="layer"></div>
+<div class="disconnected" id="disconnected">Sin conexion</div>
+
+<script src="/sdk/rl-overlay.js"></script>
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+
+  var enabledTypes = (params.get('types') || 'Goal,Save,Demo,HatTrick,EpicSave,AerialGoal')
+    .split(',')
+    .map(function(s) { return s.trim().toLowerCase(); })
+    .filter(Boolean);
+
+  var durationMs = parseInt(params.get('duration')) || 3200;
+  var maxAlerts = Math.max(1, Math.min(5, parseInt(params.get('max')) || 3));
+
+  var position = (params.get('position') || 'center').toLowerCase();
+  if (position === 'top' || position === 'bottom' || position === 'center') {
+    document.body.className = 'pos-' + position;
+  }
+
+  var overlay = RLOverlay.connect();
+  var layer = document.getElementById('layer');
+  var active = [];
+
+  function isEnabled(type) {
+    return enabledTypes.indexOf(String(type).toLowerCase()) !== -1;
+  }
+
+  function fmtTime(seconds) {
+    seconds = Math.max(0, Math.floor(seconds || 0));
+    var m = Math.floor(seconds / 60);
+    var s = seconds % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function iconFor(type) {
+    switch (String(type).toLowerCase()) {
+      case 'goal': return '\u26BD';
+      case 'assist': return '\uD83D\uDC50';
+      case 'save': return '\uD83D\uDEE1\uFE0F';
+      case 'epicsave': return '\uD83E\uDDE1';
+      case 'demo':
+      case 'demolition': return '\uD83D\uDCA5';
+      case 'hattrick': return '\uD83C\uDFA9';
+      case 'aerialgoal': return '\u2708\uFE0F';
+      default: return '\u2B50';
+    }
+  }
+
+  function titleFor(type) {
+    switch (String(type).toLowerCase()) {
+      case 'goal': return 'GOL';
+      case 'assist': return 'ASISTENCIA';
+      case 'save': return 'ATAJADA';
+      case 'epicsave': return 'ATAJADON';
+      case 'demo':
+      case 'demolition': return 'DEMOLICION';
+      case 'hattrick': return 'HAT TRICK';
+      case 'aerialgoal': return 'GOL AEREO';
+      default: return String(type).toUpperCase();
+    }
+  }
+
+  function teamClass(teamNum) {
+    if (teamNum === 0) return 'blue';
+    if (teamNum === 1) return 'orange';
+    return 'neutral';
+  }
+
+  function pushAlert(teamNum, title, detail, icon) {
+    var el = document.createElement('div');
+    el.className = 'alert ' + teamClass(teamNum);
+
+    var iconEl = document.createElement('div');
+    iconEl.className = 'alert-icon';
+    iconEl.textContent = icon || '\u2B50';
+
+    var body = document.createElement('div');
+    body.className = 'alert-body';
+
+    var titleEl = document.createElement('div');
+    titleEl.className = 'alert-title';
+    titleEl.textContent = title;
+
+    var detailEl = document.createElement('div');
+    detailEl.className = 'alert-detail';
+    detailEl.textContent = detail || '';
+
+    body.appendChild(titleEl);
+    body.appendChild(detailEl);
+
+    var timeEl = document.createElement('div');
+    timeEl.className = 'alert-time';
+    var state = overlay.getState();
+    timeEl.textContent = state ? fmtTime(state.timeRemaining) : '';
+
+    el.appendChild(iconEl);
+    el.appendChild(body);
+    el.appendChild(timeEl);
+
+    layer.appendChild(el);
+    active.push(el);
+    while (active.length > maxAlerts) {
+      removeAlert(active[0]);
+    }
+
+    setTimeout(function() { removeAlert(el); }, durationMs);
+  }
+
+  function removeAlert(el) {
+    var idx = active.indexOf(el);
+    if (idx !== -1) active.splice(idx, 1);
+    if (!el || !el.parentNode) return;
+    el.classList.add('leaving');
+    setTimeout(function() {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 260);
+  }
+
+  overlay.on('connected', function() {
+    document.getElementById('disconnected').classList.remove('visible');
+  });
+
+  overlay.on('disconnected', function() {
+    document.getElementById('disconnected').classList.add('visible');
+  });
+
+  overlay.on('goal', function(data) {
+    if (!isEnabled('Goal')) return;
+    var scorer = (data && data.scorerName) || 'Jugador';
+    pushAlert((data && data.teamNum) || 0, titleFor('Goal'), scorer, iconFor('Goal'));
+  });
+
+  overlay.on('statfeed', function(data) {
+    if (!data || !data.eventName) return;
+    if (!isEnabled(data.eventName)) return;
+
+    var main = data.mainTarget || {};
+    var detail = main.name || '';
+    if (data.secondaryTarget && data.secondaryTarget.name) {
+      detail += '  \u2192  ' + data.secondaryTarget.name;
+    }
+    pushAlert(main.teamNum, titleFor(data.eventName), detail, iconFor(data.eventName));
+  });
+
+  overlay.on('ball_hit', function() {
+    // Ball touches are only useful as a possession flash; intentionally
+    // not rendered as text alerts (too noisy at 20+ per second).
+  });
+})();
+</script>
+</body>
+</html>

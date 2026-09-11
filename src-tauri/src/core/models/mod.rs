@@ -80,6 +80,11 @@ pub struct LivePlayer {
 pub struct BallState {
     pub location: Option<Vec<f64>>,
     pub speed: f64,
+    /// Team that last touched the ball (`0` blue, `1` orange), when the
+    /// stream reports `Ball.TeamNum`. Drives the possession indicator on
+    /// overlays. `None` when absent.
+    #[serde(default)]
+    pub team_num: Option<i32>,
 }
 
 /// Game state from UpdateState.

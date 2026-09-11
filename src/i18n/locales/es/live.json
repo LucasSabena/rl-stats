@@ -44,13 +44,13 @@
     "refresh": "Actualizar"
   },
   "teams": {
-    "blue": "Equipo Azul",
-    "orange": "Equipo Naranja",
+    "blue": "Equipo azul",
+    "orange": "Equipo naranja",
     "blueShort": "Azul",
     "orangeShort": "Naranja"
   },
   "mmr": {
-    "average": "MMR promedio",
+    "average": "Prom. {{mmr}}",
     "searching": "Buscando...",
     "unavailable": "Sin dato",
     "infoLabel": "Info",
@@ -100,7 +100,10 @@
     "MatchPaused": "Partida pausada",
     "MatchUnpaused": "Partida reanudada",
     "ClockUpdatedSeconds": "Reloj actualizado",
-    "RoundStarted": "Ronda iniciada"
+    "RoundStarted": "Ronda iniciada",
+    "detail": {
+      "goalWithAssist": "{{scorer}} (asist. {{assister}})"
+    }
   },
   "scoreboard": {
     "live": "En vivo"
@@ -128,5 +131,24 @@
     "title": "Entrenando",
     "hint": "El tiempo se guarda al salir de Free Play.",
     "aria": "Tiempo de entrenamiento"
+  },
+  "statfeed": {
+    "Goal": "Gol",
+    "Assist": "Asistencia",
+    "Save": "Atajada",
+    "EpicSave": "Atajada épica",
+    "Demo": "Demolición",
+    "Demolition": "Demolición",
+    "HatTrick": "Hat trick",
+    "AerialGoal": "Gol aéreo",
+    "Shot": "Tiro",
+    "Center": "Centro",
+    "Clear": "Despeje",
+    "FirstTouch": "Primer toque",
+    "Bicycle": "Chilena",
+    "LongGoal": "Gol lejano",
+    "PoolShot": "Gol de piscina",
+    "Turtle": "Tortuga",
+    "Hoops": "Basket"
   }
 }

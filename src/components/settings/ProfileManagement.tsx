@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useActiveProfile, useProfiles, useProfileMutations } from "@/hooks/useProfiles";
-import { restartApp } from "@/lib/api";
-import { User, Trash2, Edit3, Plus, AlertCircle } from "lucide-react";
+import { getProfileComparison, restartApp } from "@/lib/api";
+import { formatDateTime } from "@/lib/utils";
+import { User, Trash2, Edit3, Plus, AlertCircle, Crown } from "lucide-react";
 import {
   CreateProfileModal,
   DeleteProfileModal,
@@ -214,6 +216,8 @@ export function ProfileManagement() {
         </div>
       )}
 
+      {profiles.length > 1 && <ProfileComparison />}
+
       <CreateProfileModal
         isOpen={isCreateOpen}
         onClose={() => {
@@ -250,5 +254,84 @@ export function ProfileManagement() {
         error={renameError}
       />
     </div>
+  );
+}
+
+/** Side-by-side stats for all profiles ("my accounts"). */
+function ProfileComparison() {
+  const { t } = useTranslation(["profiles", "common"]);
+  const { data, isLoading } = useQuery({
+    queryKey: ["profileComparison"],
+    queryFn: getProfileComparison,
+    staleTime: 60_000,
+  });
+
+  const rows = data ?? [];
+  if (isLoading && rows.length === 0) return null;
+
+  const formatRate = (rate: number | null) =>
+    rate == null ? "—" : `${Math.round(rate * 100)}%`;
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b border-border-subtle px-4 py-3">
+        <p className="text-sm font-semibold text-text-primary">
+          {t("profiles:comparison.title")}
+        </p>
+        <p className="text-xs text-text-secondary">
+          {t("profiles:comparison.description")}
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="border-b border-border-subtle text-text-muted">
+              <th scope="col" className="px-4 py-2 font-medium">
+                {t("profiles:comparison.profile")}
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                {t("profiles:comparison.matches")}
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                {t("profiles:comparison.winRate")}
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                {t("profiles:comparison.training")}
+              </th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">
+                {t("profiles:comparison.lastMatch")}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border-subtle/60">
+            {rows.map((row) => (
+              <tr key={row.id} className="text-text-secondary">
+                <td className="px-4 py-2">
+                  <span className="flex items-center gap-1.5">
+                    {row.isActive && (
+                      <Crown size={12} className="text-accent-primary" aria-hidden="true" />
+                    )}
+                    <span className="font-medium text-text-primary">{row.name}</span>
+                    {row.playerName && (
+                      <span className="truncate text-text-tertiary">· {row.playerName}</span>
+                    )}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-right font-mono">{row.matches}</td>
+                <td className="px-4 py-2 text-right font-mono">
+                  {formatRate(row.winRate)}
+                </td>
+                <td className="px-4 py-2 text-right font-mono">{row.trainingSessions}</td>
+                <td className="px-4 py-2 text-right">
+                  {row.lastMatchAt
+                    ? formatDateTime(Date.parse(row.lastMatchAt))
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

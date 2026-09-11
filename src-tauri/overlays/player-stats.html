@@ -210,81 +210,83 @@
 
 <div class="disconnected" id="disconnected">Sin conexion</div>
 
+<script src="/sdk/rl-overlay.js"></script>
 <script>
 (function() {
-  var WS_URL = 'ws://127.0.0.1:9528/ws';
-  var ws;
+  var overlay = RLOverlay.connect();
 
   function $(id) { return document.getElementById(id); }
 
-  function connect() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = function() {
-      console.log('[PlayerStats] Connected');
-      $('disconnected').classList.remove('visible');
-    };
-    ws.onmessage = function(e) {
-      var msg = JSON.parse(e.data);
-      if (msg.type === 'connected') {
-        $('disconnected').classList.remove('visible');
-      }
-      if (msg.type === 'state' && msg.data) {
-        $('disconnected').classList.remove('visible');
-        render(msg.data);
-      }
-    };
-    ws.onclose = function() {
-      $('disconnected').classList.add('visible');
-      setTimeout(connect, 2000);
-    };
-    ws.onerror = function() { ws.close(); };
-  }
+  overlay.on('connected', function() {
+    console.log('[PlayerStats] Connected');
+    $('disconnected').classList.remove('visible');
+  });
+
+  overlay.on('disconnected', function() {
+    $('disconnected').classList.add('visible');
+  });
+
+  overlay.on('state', function(d) {
+    $('disconnected').classList.remove('visible');
+    render(d);
+  });
 
   function truncateName(name, max) {
     if (!name) return '---';
     return name.length > max ? name.slice(0, max - 1) + '\u2026' : name;
   }
 
-  function playerRow(p, isBlue) {
-    return (
-      '<div class="player-row">' +
-        '<span class="player-name" title="' + (p.name || '') + '">' + truncateName(p.name, 16) + '</span>' +
-        '<span class="stat-val score">' + (p.score || 0) + '</span>' +
-        '<span class="stat-val highlight">' + (p.goals || 0) + '</span>' +
-        '<span class="stat-val highlight">' + (p.assists || 0) + '</span>' +
-        '<span class="stat-val highlight">' + (p.saves || 0) + '</span>' +
-        '<span class="stat-val highlight">' + (p.shots || 0) + '</span>' +
-      '</div>'
-    );
+  function statCell(value, className) {
+    var span = document.createElement('span');
+    span.className = 'stat-val' + (className ? ' ' + className : '');
+    span.textContent = String(value || 0);
+    return span;
+  }
+
+  function playerRow(p) {
+    var row = document.createElement('div');
+    row.className = 'player-row';
+
+    var name = document.createElement('span');
+    name.className = 'player-name';
+    name.title = p.name || '';
+    // textContent, never innerHTML: gamertags are untrusted input.
+    name.textContent = truncateName(p.name, 16);
+    row.appendChild(name);
+
+    row.appendChild(statCell(p.score, 'score'));
+    row.appendChild(statCell(p.goals, 'highlight'));
+    row.appendChild(statCell(p.assists, 'highlight'));
+    row.appendChild(statCell(p.saves, 'highlight'));
+    row.appendChild(statCell(p.shots, 'highlight'));
+    return row;
+  }
+
+  function renderTeam(container, players) {
+    container.replaceChildren();
+    if (!players.length) {
+      var empty = document.createElement('div');
+      empty.className = 'no-players';
+      empty.textContent = 'Sin jugadores';
+      container.appendChild(empty);
+      return;
+    }
+    players
+      .sort(function(a, b) { return (b.score || 0) - (a.score || 0); })
+      .forEach(function(p) { container.appendChild(playerRow(p)); });
   }
 
   function render(d) {
     var players = d.players || [];
-
-    var blue = players
-      .filter(function(p) { return p.team === 0; })
-      .sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
-
-    var orange = players
-      .filter(function(p) { return p.team === 1; })
-      .sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+    var blue = players.filter(function(p) { return p.team === 0; });
+    var orange = players.filter(function(p) { return p.team === 1; });
 
     $('blueCount').textContent = blue.length;
     $('orangeCount').textContent = orange.length;
 
-    var blueHTML = blue.length
-      ? blue.map(function(p) { return playerRow(p, true); }).join('')
-      : '<div class="no-players">Sin jugadores</div>';
-
-    var orangeHTML = orange.length
-      ? orange.map(function(p) { return playerRow(p, false); }).join('')
-      : '<div class="no-players">Sin jugadores</div>';
-
-    $('bluePlayers').innerHTML = blueHTML;
-    $('orangePlayers').innerHTML = orangeHTML;
+    renderTeam($('bluePlayers'), blue);
+    renderTeam($('orangePlayers'), orange);
   }
-
-  connect();
 })();
 </script>
 </body>

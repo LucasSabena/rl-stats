@@ -128,7 +128,7 @@ export function OnboardingSetup({
             )}
 
             <div className="mt-3 flex gap-2">
-              <input value={manualPath} onChange={(event) => setManualPath(event.target.value)} placeholder={t("setup.pathPlaceholder")} className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary" />
+              <input value={manualPath} onChange={(event) => setManualPath(event.target.value)} placeholder={t("setup.pathPlaceholder")} aria-label={t("setup.pathLabel")} className="min-w-0 flex-1 rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary" />
               <Button variant="secondary" size="sm" onClick={validateManualPath} disabled={!manualPath.trim() || detecting} aria-label={t("setup.validatePath")}>
                 <Search size={15} />
               </Button>

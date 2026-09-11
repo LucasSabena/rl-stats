@@ -1,6 +1,7 @@
 {
   "search": {
     "placeholder": "Buscar jugador o equipo...",
+    "label": "Buscar jugador o equipo",
     "noResults": "No se encontraron resultados"
   },
   "emptyState": {

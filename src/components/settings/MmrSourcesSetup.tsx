@@ -6,6 +6,8 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { getMmrProviderHealth, testMmrProvider } from "@/lib/api";
 import { useSettings, useUpdateSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/Button";
@@ -14,26 +16,33 @@ import type { AppSettings, MmrProviderTestResult } from "@/lib/types";
 
 const PRIMARY_PROVIDER = "rlstats-webview";
 
-function formatTimestamp(value: string | null | undefined): string {
-  if (!value) return "nunca";
+function formatTimestamp(
+  value: string | null | undefined,
+  neverLabel: string,
+): string {
+  if (!value) return neverLabel;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
 }
 
-function statusBadge(health: { lastStatus: string } | undefined) {
-  if (!health) return { label: "Sin datos", variant: "default" as const };
+function statusBadge(
+  health: { lastStatus: string } | undefined,
+  t: TFunction,
+) {
+  if (!health) return { label: t("mmrSources.noData"), variant: "default" as const };
   switch (health.lastStatus) {
     case "ok":
-      return { label: "Funcionando", variant: "live" as const };
+      return { label: t("mmrSources.ok"), variant: "live" as const };
     case "error":
-      return { label: "Con errores", variant: "default" as const };
+      return { label: t("mmrSources.error"), variant: "default" as const };
     default:
       return { label: health.lastStatus, variant: "default" as const };
   }
 }
 
 export function MmrSourcesSetup() {
+  const { t } = useTranslation("settings");
   const healthQuery = useQuery({
     queryKey: ["mmr-provider-health"],
     queryFn: getMmrProviderHealth,
@@ -53,8 +62,8 @@ export function MmrSourcesSetup() {
   );
   const result = testMutation.data;
   const badge = scraperEnabled
-    ? statusBadge(health)
-    : { label: "Desactivado", variant: "default" as const };
+    ? statusBadge(health, t)
+    : { label: t("mmrSources.disabled"), variant: "default" as const };
   const lastTestOk = result?.ok ?? (health?.lastStatus === "ok");
 
   async function toggleScraper() {
@@ -73,11 +82,10 @@ export function MmrSourcesSetup() {
           </div>
           <div>
             <h4 className="text-sm font-semibold text-text-primary">
-              Fuentes de MMR
+              {t("mmrSources.title")}
             </h4>
             <p className="text-xs text-text-muted">
-              Scraper local con navegador integrado (sin cuenta, sin API key, sin
-              riesgo de ban).
+              {t("mmrSources.description")}
             </p>
           </div>
         </div>
@@ -95,27 +103,42 @@ export function MmrSourcesSetup() {
             disabled={updateSettings.isPending}
             className="h-4 w-4 rounded border-border-default"
           />
-          <span>Usar el scraper local como proveedor primario de MMR</span>
+          <span>{t("mmrSources.enableLabel")}</span>
         </label>
 
         <div className="rounded-lg border border-border-subtle bg-bg-base px-3.5 py-3">
           <div className="flex items-center gap-2 text-sm text-text-primary">
             <Globe size={14} className="text-accent-primary" />
-            <span className="font-medium">RLStats.net (WebView integrado)</span>
-            <span className="text-[11px] text-text-muted">proveedor primario</span>
+            <span className="font-medium">{t("mmrSources.providerTitle")}</span>
+            <span className="text-[11px] text-text-muted">
+              {t("mmrSources.primaryProvider")}
+            </span>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-text-tertiary sm:grid-cols-4">
             <span>
-              Ultimo intento: {formatTimestamp(health?.lastAttemptAt)}
+              {t("mmrSources.lastAttempt", {
+                timestamp: formatTimestamp(
+                  health?.lastAttemptAt,
+                  t("mmrSources.never"),
+                ),
+              })}
             </span>
-            <span>Ultimo OK: {formatTimestamp(health?.lastOkAt)}</span>
             <span>
-              Latencia:{" "}
-              {health?.latencyMs != null ? `${health.latencyMs} ms` : "—"}
+              {t("mmrSources.lastOk", {
+                timestamp: formatTimestamp(health?.lastOkAt, t("mmrSources.never")),
+              })}
             </span>
             <span>
-              OK / fallos: {health?.successCount ?? 0} /{" "}
-              {health?.failureCount ?? 0}
+              {t("mmrSources.latency", {
+                latency:
+                  health?.latencyMs != null ? `${health.latencyMs} ms` : "—",
+              })}
+            </span>
+            <span>
+              {t("mmrSources.okFailures", {
+                ok: health?.successCount ?? 0,
+                failures: health?.failureCount ?? 0,
+              })}
             </span>
           </div>
           {health?.lastError ? (
@@ -136,7 +159,9 @@ export function MmrSourcesSetup() {
               size={14}
               className={`mr-1.5 ${testMutation.isPending ? "animate-spin" : ""}`}
             />
-            {testMutation.isPending ? "Consultando..." : "Probar ahora"}
+            {testMutation.isPending
+              ? t("mmrSources.testing")
+              : t("mmrSources.testNow")}
           </Button>
         </div>
 
@@ -169,19 +194,10 @@ export function MmrSourcesSetup() {
 
         <div className="rounded-lg border border-accent-info/20 bg-accent-info/5 px-4 py-3 text-[11px] leading-relaxed text-text-tertiary">
           <p className="mb-1 font-semibold text-text-secondary">
-            Como funciona
+            {t("mmrSources.howItWorks.title")}
           </p>
-          <p>
-            El scraper navega rlstats.net en una ventana oculta, resuelve el
-            challenge de Cloudflare como un navegador real y extrae los MMR de
-            todos los playlists. Se cachea por 30 minutos y se hace una sola
-            consulta por jugador y partida.
-          </p>
-          <p className="mt-1.5">
-            RapidAPI y Parse.bot siguen disponibles como proveedores opcionales
-            si configuras credenciales; Tracker Network quedo deshabilitado
-            porque ya no emite API keys para Rocket League.
-          </p>
+          <p>{t("mmrSources.howItWorks.description1")}</p>
+          <p className="mt-1.5">{t("mmrSources.howItWorks.description2")}</p>
         </div>
       </div>
     </div>

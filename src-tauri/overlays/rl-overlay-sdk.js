@@ -1,9 +1,9 @@
 /*!
- * RL Overlay SDK v1.0.0
+ * RL Overlay SDK v1.1.0
  * Minimal JavaScript SDK for building custom OBS overlays that connect to
- * the RL Stats overlay server (ws://127.0.0.1:9528/ws).
+ * the RL Stats overlay server.
  *
- * Dependency-free, vanilla JS (ES5 compatible), ~5 KB gzipped.
+ * Dependency-free, vanilla JS (ES5 compatible).
  *
  * Usage:
  *   <script src="http://127.0.0.1:9528/sdk/rl-overlay.js"></script>
@@ -12,10 +12,36 @@
  *     overlay.on('state', function(s) { console.log(s.scoreBlue); });
  *   </script>
  *
+ * The SDK auto-detects the port from the page URL, picks up the `token`
+ * query parameter (required for overlays loaded from `file://`), and
+ * normalizes the legacy `snapshot` event to `state`.
+ *
  * @license MIT
  */
 (function () {
   'use strict';
+
+  // =========================================================================
+  //  Helpers
+  // =========================================================================
+
+  function queryParam(name) {
+    try {
+      if (typeof URLSearchParams === 'function') {
+        return new URLSearchParams(window.location.search).get(name) || '';
+      }
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   // =========================================================================
   //  Event emitter helpers
@@ -65,11 +91,10 @@
     opts = opts || {};
 
     var host = opts.host || '127.0.0.1';
-    var port = opts.port || (location.port || 9528);
-    var reconnectDelay = (typeof opts.reconnectDelay === 'number')
-      ? opts.reconnectDelay
-      : 2000;
-    var url = 'ws://' + host + ':' + port + '/ws';
+    var port = opts.port || (window.location.port ? Number(window.location.port) : 9528);
+    var token = opts.token || queryParam('token') || window.__RL_TOKEN__ || '';
+    var initialDelay = (typeof opts.reconnectDelay === 'number') ? opts.reconnectDelay : 1000;
+    var url = 'ws://' + host + ':' + port + '/ws' + (token ? '?token=' + encodeURIComponent(token) : '');
 
     var emitter = createEmitter();
     var ws = null;
@@ -77,6 +102,7 @@
     var manualClose = false;
     var lastState = null;
     var reconnectTimer = null;
+    var reconnectDelay = initialDelay;
 
     // -- Internal helpers ---------------------------------------------------
 
@@ -97,6 +123,7 @@
 
       ws.onopen = function () {
         connected = true;
+        reconnectDelay = initialDelay;
         emitter.emit('connected');
       };
 
@@ -113,7 +140,10 @@
             connected = true;
             emitter.emit('connected');
             break;
+          // `snapshot` is the legacy name for the full-state event; the
+          // server emits `state`, but third-party servers may still send it.
           case 'state':
+          case 'snapshot':
             lastState = data;
             emitter.emit('state', data);
             break;
@@ -124,7 +154,7 @@
             emitter.emit('statfeed', data);
             break;
           case 'ball_hit':
-            emitter.emit('ball_hit');
+            emitter.emit('ball_hit', data);
             break;
           case 'clock':
             emitter.emit('clock', data);
@@ -146,6 +176,9 @@
             break;
           case 'replay_end':
             emitter.emit('replay_end');
+            break;
+          case 'countdown_begin':
+            emitter.emit('countdown_begin');
             break;
           default:
             // Unknown event types are silently ignored
@@ -171,6 +204,8 @@
         reconnectTimer = null;
         connect();
       }, reconnectDelay);
+      // Gentle exponential backoff, capped so scene switches recover fast.
+      reconnectDelay = Math.min(reconnectDelay * 2, 10000);
     }
 
     function cancelReconnect() {
@@ -234,14 +269,23 @@
     };
 
     /**
+     * Players on a given team from cached state, sorted by score desc.
+     * @param {number} team 0 = blue, 1 = orange
+     * @returns {Array}
+     */
+    api.getPlayers = function (team) {
+      if (!lastState || !lastState.players) { return []; }
+      return lastState.players
+        .filter(function (p) { return p.team === team; })
+        .sort(function (a, b) { return (b.score || 0) - (a.score || 0); });
+    };
+
+    /**
      * Blue-team players from cached state, sorted by score desc.
      * @returns {Array}
      */
     api.getBluePlayers = function () {
-      if (!lastState || !lastState.players) { return []; }
-      return lastState.players
-        .filter(function (p) { return p.team === 0; })
-        .sort(function (a, b) { return b.score - a.score; });
+      return api.getPlayers(0);
     };
 
     /**
@@ -249,10 +293,7 @@
      * @returns {Array}
      */
     api.getOrangePlayers = function () {
-      if (!lastState || !lastState.players) { return []; }
-      return lastState.players
-        .filter(function (p) { return p.team === 1; })
-        .sort(function (a, b) { return b.score - a.score; });
+      return api.getPlayers(1);
     };
 
     /**
@@ -266,6 +307,14 @@
       var secs = Math.floor(seconds % 60);
       return mins + ':' + (secs < 10 ? '0' + secs : secs);
     };
+
+    /**
+     * Escape a string for safe use in innerHTML. Prefer textContent; use
+     * this only when building markup strings.
+     * @param {*} value
+     * @returns {string}
+     */
+    api.escapeHtml = escapeHtml;
 
     // -- Auto-connect on creation -------------------------------------------
     connect();
@@ -282,13 +331,16 @@
      * Create and connect a new overlay instance.
      * @param {Object} [opts]            Configuration
      * @param {string} [opts.host]       Server host (default '127.0.0.1')
-     * @param {number} [opts.port]       Server port (default 9528)
-     * @param {number} [opts.reconnectDelay]  ms between reconnect attempts (default 2000)
+     * @param {number} [opts.port]       Server port (default from page URL)
+     * @param {string} [opts.token]      Bearer token (default from page URL)
+     * @param {number} [opts.reconnectDelay]  ms before the first reconnect (default 1000)
      * @returns {Object} Connection instance with .on(), .off(), .getState(), etc.
      */
     connect: function (opts) {
       return createConnection(opts);
-    }
-  };
+    },
 
+    /** Escape helper exposed for overlays that build markup strings. */
+    escapeHtml: escapeHtml
+  };
 })();

@@ -1,4 +1,5 @@
 import {
+  type OverlaySceneConfig,
   type OverlayServerStatus,
   type OverlayUrl,
   type OverlayWindowState,
@@ -21,8 +22,11 @@ export async function getOverlayServerStatus(): Promise<OverlayServerStatus> {
   return invokeCommand<OverlayServerStatus>("get_overlay_server_status");
 }
 
-export async function getOverlayUrls(): Promise<OverlayUrl[]> {
-  return invokeCommand<OverlayUrl[]>("get_overlay_urls");
+export async function getOverlayUrls(
+  config?: OverlaySceneConfig,
+): Promise<OverlayUrl[]> {
+  // `null` keeps the argument present so Tauri maps it to `Option::None`.
+  return invokeCommand<OverlayUrl[]>("get_overlay_urls", { config: config ?? null });
 }
 
 export async function getOverlayState(): Promise<Record<string, unknown>> {

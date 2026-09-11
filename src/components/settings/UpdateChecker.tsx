@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { check, type Update, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/Button";
 import { useUIStore } from "@/stores/uiStore";
-import { RefreshCw, Download, AlertCircle } from "lucide-react";
+import { RefreshCw, Download, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function UpdateChecker() {
@@ -13,9 +13,11 @@ export function UpdateChecker() {
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [installing, setInstalling] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<string>("");
+  const cancelledRef = useRef(false);
   const addToast = useUIStore((state) => state.addToast);
 
   useEffect(() => {
@@ -29,13 +31,24 @@ export function UpdateChecker() {
     })();
   }, [t]);
 
+  function handleCancel() {
+    cancelledRef.current = true;
+    // Closing the resource aborts the in-flight download; the promise rejects
+    // and the catch below recognizes the cancellation flag.
+    void update?.close();
+  }
+
   async function downloadAndInstall(updateObj: Update) {
+    cancelledRef.current = false;
     setDownloading(true);
+    setInstalling(false);
     setDownloadProgress(0);
     try {
       let contentLength = 0;
       let downloaded = 0;
-      await updateObj.downloadAndInstall((event: DownloadEvent) => {
+      // Separate download from install: a failed install can be retried
+      // without re-downloading the package.
+      await updateObj.download((event: DownloadEvent) => {
         switch (event.event) {
           case "Started":
             contentLength = event.data.contentLength ?? 0;
@@ -54,9 +67,22 @@ export function UpdateChecker() {
             break;
         }
       });
+
+      if (cancelledRef.current) {
+        addToast({ type: "info", title: t("settings:update.toasts.downloadCancelled") });
+        return;
+      }
+
+      setDownloading(false);
+      setInstalling(true);
+      await updateObj.install();
       addToast({ type: "success", title: t("settings:update.toasts.installed") });
       await relaunch();
     } catch (e) {
+      if (cancelledRef.current) {
+        addToast({ type: "info", title: t("settings:update.toasts.downloadCancelled") });
+        return;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       const friendly = msg.includes("signature")
         ? t("settings:update.errors.invalidSignature")
@@ -69,6 +95,7 @@ export function UpdateChecker() {
       setError(friendly);
     } finally {
       setDownloading(false);
+      setInstalling(false);
     }
   }
 
@@ -107,12 +134,14 @@ export function UpdateChecker() {
     }
   }
 
-  const isBusy = checking || downloading;
-  const buttonLabel = downloading
-    ? t("settings:update.downloading", { progress: downloadProgress })
-    : checking
-      ? t("settings:update.searching")
-      : t("settings:update.checkButton");
+  const isBusy = checking || downloading || installing;
+  const buttonLabel = installing
+    ? t("settings:update.installing")
+    : downloading
+      ? t("settings:update.downloading", { progress: downloadProgress })
+      : checking
+        ? t("settings:update.searching")
+        : t("settings:update.checkButton");
 
   return (
     <div className="group rounded-xl border border-border-subtle bg-bg-surface/60 p-5 transition-all duration-200 hover:border-border-default hover:bg-bg-surface/80">
@@ -128,16 +157,28 @@ export function UpdateChecker() {
             </p>
           </div>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          leftIcon={downloading ? Download : undefined}
-          isLoading={isBusy}
-          onClick={handleCheck}
-          disabled={isBusy}
-        >
-          {buttonLabel}
-        </Button>
+        <div className="flex items-center gap-2">
+          {downloading && (
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={X}
+              onClick={handleCancel}
+            >
+              {t("common:buttons.cancel")}
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={downloading ? Download : undefined}
+            isLoading={isBusy}
+            onClick={handleCheck}
+            disabled={isBusy}
+          >
+            {buttonLabel}
+          </Button>
+        </div>
       </div>
 
       {error && !isBusy && (

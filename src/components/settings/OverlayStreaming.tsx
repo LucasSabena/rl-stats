@@ -5,7 +5,18 @@ import { Button } from "@/components/ui/Button";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
-import { RadioTower, Wifi, WifiOff, Copy, Check, Monitor, ExternalLink } from "lucide-react";
+import {
+  RadioTower,
+  Wifi,
+  WifiOff,
+  Copy,
+  Check,
+  Monitor,
+  ExternalLink,
+  ChevronDown,
+  Eye,
+  Bot,
+} from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,12 +26,49 @@ interface OverlayServerStatus {
   running: boolean;
   port: number;
   connected_clients: number;
+  token?: string;
 }
 
 interface OverlayUrl {
+  id: string;
   name: string;
+  description: string;
   url: string;
 }
+
+interface SceneConfig {
+  title: string;
+  blueName: string;
+  orangeName: string;
+  series: number | null;
+  hide: string[];
+  alertTypes: string[];
+}
+
+const HIDE_MODULES = ["scorebug", "rosters", "ball", "series"] as const;
+const ALERT_TYPES = [
+  "Goal",
+  "Save",
+  "Demo",
+  "HatTrick",
+  "EpicSave",
+  "AerialGoal",
+] as const;
+
+const STREAMERBOT_EVENTS = [
+  "state",
+  "goal",
+  "statfeed",
+  "ball_hit",
+  "clock",
+  "match_started",
+  "match_ended",
+  "countdown_begin",
+  "replay_start",
+  "replay_end",
+  "match_paused",
+  "match_unpaused",
+];
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -36,6 +84,30 @@ const inputClass = cn(
   "hover:border-border-highlight"
 );
 
+function defaultScene(): SceneConfig {
+  return {
+    title: "",
+    blueName: "",
+    orangeName: "",
+    series: null,
+    hide: [],
+    alertTypes: [...ALERT_TYPES],
+  };
+}
+
+function toScenePayload(scene: SceneConfig) {
+  return {
+    title: scene.title,
+    blueName: scene.blueName,
+    orangeName: scene.orangeName,
+    blueLogo: "",
+    orangeLogo: "",
+    series: scene.series,
+    hide: scene.hide.join(","),
+    alertTypes: scene.alertTypes.join(","),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -47,12 +119,18 @@ export function OverlayStreaming() {
   const [status, setStatus] = useState<OverlayServerStatus | null>(null);
   const [urls, setUrls] = useState<OverlayUrl[]>([]);
   const [port, setPort] = useState<number>(DEFAULT_PORT);
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isToggling, setIsToggling] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [scene, setScene] = useState<SceneConfig>(defaultScene);
+  const [showScene, setShowScene] = useState(false);
+  const [showStreamerbot, setShowStreamerbot] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
 
   const isRunning = status?.running ?? false;
 
@@ -66,28 +144,44 @@ export function OverlayStreaming() {
       setStatus(current);
       return current;
     } catch {
-      // Server may not be responding — not an error worth surfacing as a toast
       return null;
     }
   }, []);
 
-  const fetchUrls = useCallback(async () => {
+  const fetchUrls = useCallback(async (sceneOverride?: SceneConfig) => {
     try {
-      const list = await invoke<OverlayUrl[]>("get_overlay_urls");
+      const list = await invoke<OverlayUrl[]>("get_overlay_urls", {
+        config: toScenePayload(sceneOverride ?? sceneRef.current),
+      });
       setUrls(list);
     } catch {
       // Silently ignore — overlay URLs aren't critical
     }
   }, []);
 
+  const refreshUrls = useCallback(async () => {
+    await fetchUrls();
+  }, [fetchUrls]);
+
   // -----------------------------------------------------------------------
   // Polling
   // -----------------------------------------------------------------------
 
   useEffect(() => {
-    // Initial fetch
     const init = async () => {
       const current = await fetchStatus();
+      // Use the persisted port when the server is stopped so the setting
+      // survives app restarts.
+      try {
+        const settings = await invoke<{ overlay_server_port?: number }>(
+          "get_settings_cmd"
+        );
+        if (settings.overlay_server_port) {
+          setPort(settings.overlay_server_port);
+        }
+      } catch {
+        // Defaults are fine.
+      }
       if (current?.running) {
         await fetchUrls();
       }
@@ -121,7 +215,6 @@ export function OverlayStreaming() {
 
       void poll();
     } else {
-      // Stop polling when server is stopped
       if (pollTimeoutRef.current) {
         clearTimeout(pollTimeoutRef.current);
         pollTimeoutRef.current = null;
@@ -137,7 +230,6 @@ export function OverlayStreaming() {
     };
   }, [isRunning, initialLoadDone, fetchStatus, fetchUrls]);
 
-  // Clean up copy timer on unmount
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
@@ -170,6 +262,7 @@ export function OverlayStreaming() {
       await invoke("stop_overlay_server");
       setStatus(null);
       setUrls([]);
+      setPreviewId(null);
       addToast({ type: "success", title: t("overlay:streaming.toasts.stopped"), message: t("overlay:streaming.toasts.stoppedMessage") });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : typeof err === "string" ? err : t("overlay:streaming.toasts.unknownError");
@@ -179,13 +272,13 @@ export function OverlayStreaming() {
     }
   }, [addToast, t]);
 
-  const handleCopy = useCallback(async (url: string) => {
+  const handleCopy = useCallback(async (key: string, value: string) => {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopiedUrl(url);
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
 
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => setCopiedUrl(null), COPY_FEEDBACK_MS);
+      copyTimerRef.current = setTimeout(() => setCopiedKey(null), COPY_FEEDBACK_MS);
     } catch {
       addToast({ type: "error", title: t("overlay:streaming.toasts.copyError"), message: t("overlay:streaming.toasts.copyErrorMessage") });
     }
@@ -194,9 +287,28 @@ export function OverlayStreaming() {
   const handlePortChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "");
     const parsed = raw === "" ? DEFAULT_PORT : Number(raw);
-    // Clamp to valid port range
     setPort(Math.max(1, Math.min(65535, parsed)));
   }, []);
+
+  const updateScene = useCallback((patch: Partial<SceneConfig>) => {
+    setScene((prev) => {
+      const next = { ...prev, ...patch };
+      return next;
+    });
+  }, []);
+
+  const toggleListValue = useCallback(
+    (field: "hide" | "alertTypes", value: string) => {
+      setScene((prev) => {
+        const current = prev[field];
+        const next = current.includes(value)
+          ? current.filter((item) => item !== value)
+          : [...current, value];
+        return { ...prev, [field]: next };
+      });
+    },
+    []
+  );
 
   // -----------------------------------------------------------------------
   // Derived state
@@ -204,6 +316,22 @@ export function OverlayStreaming() {
 
   const connectedClients = status?.connected_clients ?? 0;
   const activePort = status?.port ?? port;
+  const token = status?.token ?? "";
+  const wsUrl = isRunning
+    ? `ws://127.0.0.1:${activePort}/ws${token ? `?token=${token}` : ""}`
+    : "";
+  const streamerbotJson = isRunning
+    ? JSON.stringify(
+        {
+          url: wsUrl,
+          events: STREAMERBOT_EVENTS,
+          sample: { type: "state", data: { scoreBlue: 0, scoreOrange: 0, timeRemaining: 300 } },
+        },
+        null,
+        2
+      )
+    : "";
+  const previewUrl = urls.find((item) => item.id === previewId)?.url ?? null;
 
   // -----------------------------------------------------------------------
   // Render
@@ -215,7 +343,6 @@ export function OverlayStreaming() {
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-2.5">
-            {/* Status dot */}
             <span className="relative flex h-2.5 w-2.5 shrink-0">
               <span
                 className={cn(
@@ -239,7 +366,6 @@ export function OverlayStreaming() {
                 {isRunning ? t("overlay:streaming.activeTitle") : t("overlay:streaming.title")}
               </h4>
 
-              {/* Tooltip */}
               <Tooltip content={t("overlay:streaming.tooltip")}>
                 <Monitor size={13} className="mt-0.5 cursor-help text-text-muted hover:text-text-secondary transition-colors" />
               </Tooltip>
@@ -251,9 +377,13 @@ export function OverlayStreaming() {
               ? `${t("overlay:streaming.serverRunning", { port: activePort })} ${connectedClients > 0 ? t("overlay:streaming.clientsConnected", { count: connectedClients }) : t("overlay:streaming.waitingConnections")}`
               : t("overlay:streaming.description")}
           </p>
+          {isRunning && (
+            <p className="mt-1 text-[11px] text-text-tertiary">
+              {t("overlay:streaming.autostartHint")}
+            </p>
+          )}
         </div>
 
-        {/* Toggle button */}
         <Button
           variant={isRunning ? "secondary" : "primary"}
           size="sm"
@@ -287,7 +417,7 @@ export function OverlayStreaming() {
         </div>
       )}
 
-      {/* ── Connected clients + URLs (shown when running) ── */}
+      {/* ── Running content ── */}
       {isRunning && (
         <div className="mt-5 space-y-4">
           {/* Client count */}
@@ -304,38 +434,168 @@ export function OverlayStreaming() {
             </span>
           </div>
 
+          {/* ── Scene customization ── */}
+          <div className="rounded-lg border border-border-subtle bg-bg-base/40">
+            <button
+              type="button"
+              onClick={() => setShowScene((v) => !v)}
+              className="flex w-full items-center justify-between px-3.5 py-2.5 text-left"
+            >
+              <span className="text-xs font-semibold tracking-wide text-text-secondary">
+                {t("overlay:streaming.scene.title")}
+              </span>
+              <ChevronDown
+                size={14}
+                className={cn("text-text-muted transition-transform", showScene && "rotate-180")}
+              />
+            </button>
+
+            {showScene && (
+              <div className="space-y-3 border-t border-border-subtle px-3.5 py-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1 text-[11px] text-text-muted">
+                    {t("overlay:streaming.scene.matchTitle")}
+                    <input
+                      className={cn(inputClass, "w-full")}
+                      value={scene.title}
+                      onChange={(e) => updateScene({ title: e.target.value })}
+                      placeholder={t("overlay:streaming.scene.matchTitlePlaceholder")}
+                    />
+                  </label>
+                  <label className="space-y-1 text-[11px] text-text-muted">
+                    {t("overlay:streaming.scene.series")}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className={cn(inputClass, "w-full")}
+                      value={scene.series ?? ""}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, "");
+                        updateScene({ series: raw === "" ? null : Math.min(9, Number(raw)) });
+                      }}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="space-y-1 text-[11px] text-text-muted">
+                    {t("overlay:streaming.scene.blueName")}
+                    <input
+                      className={cn(inputClass, "w-full")}
+                      value={scene.blueName}
+                      onChange={(e) => updateScene({ blueName: e.target.value })}
+                      placeholder="BLUE"
+                    />
+                  </label>
+                  <label className="space-y-1 text-[11px] text-text-muted">
+                    {t("overlay:streaming.scene.orangeName")}
+                    <input
+                      className={cn(inputClass, "w-full")}
+                      value={scene.orangeName}
+                      onChange={(e) => updateScene({ orangeName: e.target.value })}
+                      placeholder="ORANGE"
+                    />
+                  </label>
+                </div>
+
+                <div>
+                  <p className="mb-1.5 text-[11px] font-medium text-text-muted">
+                    {t("overlay:streaming.scene.hideModules")}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {HIDE_MODULES.map((module) => (
+                      <button
+                        key={module}
+                        type="button"
+                        onClick={() => toggleListValue("hide", module)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                          scene.hide.includes(module)
+                            ? "border-accent-primary/40 bg-accent-primary/10 text-accent-primary"
+                            : "border-border-subtle text-text-muted hover:text-text-secondary"
+                        )}
+                      >
+                        {t(`overlay:streaming.scene.modules.${module}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-1.5 text-[11px] font-medium text-text-muted">
+                    {t("overlay:streaming.scene.alertTypes")}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ALERT_TYPES.map((alert) => (
+                      <button
+                        key={alert}
+                        type="button"
+                        onClick={() => toggleListValue("alertTypes", alert)}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                          scene.alertTypes.includes(alert)
+                            ? "border-accent-primary/40 bg-accent-primary/10 text-accent-primary"
+                            : "border-border-subtle text-text-muted hover:text-text-secondary"
+                        )}
+                      >
+                        {t(`overlay:streaming.alerts.${alert}`)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button size="sm" variant="secondary" onClick={() => void refreshUrls()}>
+                  {t("overlay:streaming.scene.apply")}
+                </Button>
+              </div>
+            )}
+          </div>
+
           {/* URL list */}
           {urls.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold tracking-wide text-text-secondary">{t("overlay:streaming.overlayUrls")}</p>
               <div className="space-y-2">
                 {urls.map((item) => {
-                  const isCopied = copiedUrl === item.url;
+                  const isCopied = copiedKey === item.id;
                   return (
                     <div
-                      key={item.url}
-                      className="group/url flex items-center gap-3 rounded-lg border border-border-subtle bg-bg-base px-3.5 py-2.5 transition-all duration-200 hover:border-border-default"
+                      key={item.id}
+                      className="group/url rounded-lg border border-border-subtle bg-bg-base px-3.5 py-2.5 transition-all duration-200 hover:border-border-default"
                     >
-                      <span className="flex-1 min-w-0 text-xs font-semibold text-text-secondary truncate">
-                        {item.name}
-                      </span>
-                      <code className="max-w-[200px] truncate text-[11px] font-mono text-text-tertiary select-all">
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-text-secondary">
+                            {item.name}
+                          </p>
+                          <p className="truncate text-[11px] text-text-tertiary">
+                            {item.description}
+                          </p>
+                        </div>
+                        <Tooltip content={t("overlay:streaming.preview")}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPreviewId((id) => (id === item.id ? null : item.id))}
+                            leftIcon={Eye}
+                            className={cn("h-7 px-2 shrink-0", previewId === item.id && "text-accent-primary")}
+                          >
+                            {""}
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content={isCopied ? t("overlay:streaming.copiedTooltipDone") : t("overlay:streaming.copyTooltip")}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleCopy(item.id, item.url)}
+                            leftIcon={isCopied ? Check : Copy}
+                            className={cn("h-7 px-2 shrink-0", isCopied && "text-accent-primary")}
+                          >
+                            {isCopied ? t("overlay:streaming.copied") : t("overlay:streaming.copy")}
+                          </Button>
+                        </Tooltip>
+                      </div>
+                      <code className="mt-1.5 block truncate text-[10px] font-mono text-text-tertiary select-all">
                         {item.url}
                       </code>
-                      <Tooltip content={isCopied ? t("overlay:streaming.copiedTooltipDone") : t("overlay:streaming.copyTooltip")}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleCopy(item.url)}
-                          leftIcon={isCopied ? Check : Copy}
-                          className={cn(
-                            "h-7 px-2 shrink-0",
-                            isCopied && "text-accent-primary"
-                          )}
-                        >
-                          {isCopied ? t("overlay:streaming.copied") : t("overlay:streaming.copy")}
-                        </Button>
-                      </Tooltip>
                     </div>
                   );
                 })}
@@ -343,10 +603,67 @@ export function OverlayStreaming() {
             </div>
           )}
 
-          {/* Fallback when no URLs yet */}
           {urls.length === 0 && (
             <p className="text-xs text-text-muted italic">{t("overlay:streaming.loadingUrls")}</p>
           )}
+
+          {/* Preview */}
+          {previewUrl && (
+            <div className="overflow-hidden rounded-lg border border-border-subtle bg-black">
+              <div className="flex items-center justify-between border-b border-border-subtle bg-bg-base px-3 py-1.5">
+                <span className="text-[11px] font-semibold text-text-secondary">
+                  {t("overlay:streaming.previewTitle")}
+                </span>
+                <span className="text-[10px] text-text-muted">
+                  {t("overlay:streaming.previewHint")}
+                </span>
+              </div>
+              <iframe
+                key={previewUrl}
+                src={previewUrl}
+                title={t("overlay:streaming.previewTitle")}
+                className="h-40 w-full bg-black/60"
+              />
+            </div>
+          )}
+
+          {/* Streamer.bot */}
+          <div className="rounded-lg border border-border-subtle bg-bg-base/40">
+            <button
+              type="button"
+              onClick={() => setShowStreamerbot((v) => !v)}
+              className="flex w-full items-center justify-between px-3.5 py-2.5 text-left"
+            >
+              <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-text-secondary">
+                <Bot size={13} />
+                {t("overlay:streaming.streamerbot.title")}
+              </span>
+              <ChevronDown
+                size={14}
+                className={cn("text-text-muted transition-transform", showStreamerbot && "rotate-180")}
+              />
+            </button>
+            {showStreamerbot && (
+              <div className="space-y-2 border-t border-border-subtle px-3.5 py-3">
+                <p className="text-[11px] text-text-muted">
+                  {t("overlay:streaming.streamerbot.description")}
+                </p>
+                <pre className="max-h-48 overflow-auto rounded-md bg-bg-base p-2.5 text-[10px] leading-relaxed text-text-secondary">
+                  {streamerbotJson}
+                </pre>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void handleCopy("streamerbot", streamerbotJson)}
+                  leftIcon={copiedKey === "streamerbot" ? Check : Copy}
+                >
+                  {copiedKey === "streamerbot"
+                    ? t("overlay:streaming.copied")
+                    : t("overlay:streaming.streamerbot.copyJson")}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

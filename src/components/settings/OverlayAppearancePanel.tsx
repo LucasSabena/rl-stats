@@ -29,6 +29,7 @@ export function OverlayAppearancePanel({ watched, setValue, t }: OverlayAppearan
             min={10} max={100}
             value={Math.round(watched.opacity * 100)}
             onChange={(e) => setValue("opacity", Number(e.target.value) / 100)}
+            aria-label={t("overlay:config.transparency")}
             className="w-full h-2 rounded-full appearance-none bg-border-highlight accent-accent-secondary outline-none"
           />
         </div>

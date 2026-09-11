@@ -279,6 +279,7 @@ export function ProfilePage() {
                       ref={fileInputRef}
                       type="file"
                       accept="application/json"
+                      aria-label={t("presets:import")}
                       className="hidden"
                       onChange={handleFileChange}
                     />

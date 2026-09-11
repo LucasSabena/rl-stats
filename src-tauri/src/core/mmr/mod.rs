@@ -56,6 +56,9 @@ pub struct LiveMmrSnapshot {
     pub historical_count: usize,
     pub estimated_count: usize,
     pub unavailable_count: usize,
+    /// Mean of the resolved MMRs (exact, historical and estimated), used as a
+    /// quick "how strong is this lobby" read.
+    pub average_mmr: Option<i32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -225,6 +228,12 @@ pub async fn resolve_lobby_mmr(
         .iter()
         .filter(|player| player.mmr.is_none())
         .count();
+    let known: Vec<i32> = resolved.iter().filter_map(|player| player.mmr).collect();
+    let average_mmr = if known.is_empty() {
+        None
+    } else {
+        Some(known.iter().sum::<i32>() / known.len() as i32)
+    };
     Ok(LiveMmrSnapshot {
         playlist: inference.primary,
         playlist_candidates: inference.candidates,
@@ -235,6 +244,7 @@ pub async fn resolve_lobby_mmr(
         historical_count,
         estimated_count,
         unavailable_count,
+        average_mmr,
     })
 }
 
@@ -978,9 +988,23 @@ async fn resolve_with_rlstats_webview(
     identity: &ProviderIdentity,
     playlist_key: &str,
 ) -> AppResult<ResolvedMmrEntry> {
+    // Circuit breaker: when recent scrapes failed, skip instead of blocking
+    // this player (and the lobby) for another 30s timeout.
+    if scraper.is_circuit_open() {
+        return Err(AppError::ConnectionError(format!(
+            "RLStats esta en enfriamiento ({}s).",
+            scraper.circuit_remaining_secs()
+        )));
+    }
+
     // Hold the scrape lock across the cache read so a whole lobby shares one
     // navigation instead of one scrape per player.
     let _guard = scraper.lock_scrape().await;
+    if scraper.is_circuit_open() {
+        return Err(AppError::ConnectionError(
+            "RLStats esta en enfriamiento.".into(),
+        ));
+    }
 
     if let Some(cached) = read_cached_profile(
         db_pool,
@@ -989,16 +1013,22 @@ async fn resolve_with_rlstats_webview(
         &identity.identifier,
         RLSTATS_CACHE_TTL_MINUTES,
     )? {
-        if let Some(entry) = cached.playlists.get(playlist_key) {
-            return Ok(ResolvedMmrEntry {
-                source: RLSTATS_WEBVIEW_PROVIDER.into(),
-                cached: true,
-                mmr: entry.mmr,
-                rank_name: entry.rank_name.clone(),
-                division: entry.division.clone(),
-                matches_played: entry.matches_played,
-            });
-        }
+        // A fresh profile that lacks this playlist means the page genuinely
+        // has no row for it. Re-navigating cannot produce it and used to burn
+        // one extra scrape per player.
+        let entry = cached
+            .playlists
+            .get(playlist_key)
+            .cloned()
+            .unwrap_or_default();
+        return Ok(ResolvedMmrEntry {
+            source: RLSTATS_WEBVIEW_PROVIDER.into(),
+            cached: true,
+            mmr: entry.mmr,
+            rank_name: entry.rank_name.clone(),
+            division: entry.division.clone(),
+            matches_played: entry.matches_played,
+        });
     }
 
     let extracted = scraper
@@ -1023,6 +1053,21 @@ async fn resolve_with_rlstats_webview(
         division: entry.division,
         matches_played: entry.matches_played,
     })
+}
+
+/// Normalizes a platform string to the key used by every provider cache.
+///
+/// The live player id uses game-side names (`xbox`, `ps4`) while cached
+/// profiles are stored under provider names (`xbl`, `psn`); using one without
+/// the other made force-refresh miss the cache rows it meant to clear.
+pub fn normalize_provider_platform(platform: &str) -> &'static str {
+    match platform.to_ascii_lowercase().as_str() {
+        "xbox" | "xbl" => "xbl",
+        "ps4" | "psn" | "playstation" => "psn",
+        "steam" => "steam",
+        "epic" => "epic",
+        _ => "unknown",
+    }
 }
 
 /// Converts the webview payload into the cached profile shape used by every
@@ -1281,8 +1326,12 @@ async fn resolve_with_parsebot(
         )));
     }
 
-    let cached_profile =
+    let mut cached_profile =
         parse_rapidapi_profile(&body, &identity.tracker_platform, &identity.identifier)?;
+    // Parse.bot responses share the RapidAPI shape, but the cache row belongs
+    // to Parse.bot: storing it under the RapidAPI key made RapidAPI reads serve
+    // Parse.bot data and re-fetched Parse.bot on every lookup.
+    cached_profile.provider = PARSEBOT_PROVIDER.into();
     store_cached_profile(db_pool, &cached_profile)?;
 
     let entry = cached_profile

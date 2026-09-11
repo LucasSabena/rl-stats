@@ -1,5 +1,117 @@
 # Changelog
 
+## [2.16.0] - 2026-09-11
+
+A full-app audit round: the OBS overlay contract (broken since the first
+release), local-server and secret security, profiles/cloud data integrity,
+MMR provider resilience, accessibility, i18n coverage and several new
+streaming/profile/analytics features.
+
+### Fixed — OBS overlays now actually work
+- **The wire contract never matched.** The server emitted `type: "snapshot"`
+  with snake_case fields while every bundled overlay (and the SDK, and the
+  README) listened for `type: "state"` and read camelCase (`scoreBlue`,
+  `timeRemaining`, `players[]`). The server now emits a canonical camelCase
+  `state` event; the SDK and assets also accept the legacy `snapshot` alias.
+- Overlays hardcoded port `9528`, so a custom port produced a dead browser
+  source. They now derive host/port from the page URL.
+- Late-joining WebSocket clients (OBS reloads a scene's browser source on
+  every switch) now receive the cached match state immediately after the
+  handshake instead of staring at 0-0.
+- `match_ended` carries the winner, `ball_hit` carries the touching team
+  (parsed from `Ball.TeamNum`), and the previously unused `countdown_begin`
+  event is broadcast on kickoff.
+- Overlay assets no longer load Google Fonts; Geist is served locally.
+
+### Security
+- **XSS in overlay assets removed.** Player names (attacker-controlled) were
+  interpolated into `innerHTML` in four overlays. All rendering now goes
+  through `textContent`/DOM nodes, and an integration test enforces it.
+- **Overlay server hardened**: `Origin` validation blocks foreign web pages
+  from subscribing to the live match, a per-run bearer token authorizes
+  `file://`/external overlays, and every response carries CSP, `nosniff`,
+  `Referrer-Policy`, `X-Frame-Options` and `no-store` headers.
+- **API keys no longer leave the device**: Tracker/RapidAPI/ParseBot keys are
+  stripped from cloud-sync payloads, from queued outbox rows (scrubbed on
+  startup) and from data exports. Import and cloud pull preserve local
+  secrets and device-local paths.
+- The unused `raw.githubusercontent.com` CSP source was removed; the app CSP
+  now allows only the local overlay preview (`frame-src`).
+- `clear_all_data` now wipes friends, presets, training packs and all sync
+  bookkeeping, VACUUMs the file, and offers a server-side wipe
+  (`sync_wipe_profile`, migration 0006) so a pull cannot resurrect deleted
+  rows.
+
+### Fixed — data loss and profiles
+- **Quitting mid-match or mid-training no longer drops the session**: the app
+  intercepts the exit request, persists the in-flight session and checkpoints
+  the WAL before exiting.
+- **Port settings survive**: saving general settings or finishing onboarding
+  used to rewrite the Rocket League INI files back to port 49123, ignoring
+  `settings.port`.
+- Profile manifest writes are serialized (no more lost updates), names are
+  validated and unique, deleting a profile removes its `-wal`/`-shm`
+  sidecars, a primary id can belong to a single profile, and the manifest is
+  reconciled against each profile database on startup.
+- MMR provider force-refresh now normalizes `xbox`/`ps4` to the provider
+  cache keys (`xbl`/`psn`), so it actually clears the cache; Parse.bot
+  results are stored under the Parse.bot cache key instead of polluting
+  RapidAPI; a cached profile missing a playlist no longer triggers a
+  re-scrape.
+
+### Added
+- **Cloud pull/apply**: `sync_pull` results are applied locally (matches,
+  players, events, sessions, caches, friends, presets, packs, settings) with
+  natural-key upserts, a first-pull database backup, an automatic 24-hour
+  rotating backup, and a "Download changes" action in Settings → Data.
+- **Push is verified**: the server response is checked before marking rows
+  synced, the real server revision is recorded, failures back off
+  exponentially, and flushed outbox rows are pruned after 30 days.
+- **Data retention is enforced** (`data_retention_days`, 0 = keep forever)
+  with a settings field; expired matches are tombstoned for the cloud.
+- **RLStats scraper circuit breaker**: after three consecutive failures the
+  provider cools down for five minutes instead of hanging every lobby member
+  for 30 seconds.
+- **Overlay scene URLs**: match title, team names, series length, hidden
+  modules and active alert types are applied from Settings, with a live
+  preview and a copyable Streamer.bot/WebSocket configuration.
+- **New `alerts` overlay** for scene-switch goal/save/demo alerts.
+- **Profile comparison table** (matches, win rate, training, last match) and
+  **weekly goals** with progress bars in Analytics.
+- **Diagnostics panel**: open the log folder, copy or download recent logs
+  (rolling files capped at one week), and report an issue.
+- **Keyboard shortcuts**: `Ctrl+1..5`, `Ctrl+,`, and `?` for a cheat sheet.
+- The tray menu is localized and follows the app language.
+- Updater: download and install are separate phases (install retries without
+  re-downloading) and an in-progress download can be cancelled.
+- i18n: 125 missing keys added in all three languages, three settings
+  components localized, and a parity test that fails when a locale drifts.
+- Accessibility: AA contrast for subtle text, aria labels on every raw form
+  control and icon-only button.
+- Docs: README updated with the real overlay contract; new `sync_wipe_profile`
+  Supabase migration.
+
+### Tests
+- 3 overlay-server integration tests (real TCP server): security headers and
+  asset hygiene, Origin/token enforcement, and "no innerHTML with player
+  names". Plus the i18n parity test and the accessibility pass.
+
+### Known gaps
+- Cloud sync applies remote changes on demand ("Download changes"); there is
+  no background pull loop yet.
+- The MmrProvider chain still has provider-specific code paths that could be
+  unified behind a trait.
+- A shot heatmap and PDF export were evaluated and deferred: shots carry no
+  stored coordinates today, and PDF would add a heavy dependency for a
+  feature the share cards already approximate.
+- Beta update channel requires a second published endpoint; only the stable
+  channel is wired today.
+- The arbitrary-path `export_data`/`import_data` commands were removed; the
+  JSON string variants (used by the UI) remain.
+- Windows installers remain unsigned until a code-signing certificate is
+  provided via the `WINDOWS_CERTIFICATE`/`WINDOWS_CERTIFICATE_PASSWORD`
+  secrets.
+
 ## [2.15.0] - 2026-09-11
 
 ### Added

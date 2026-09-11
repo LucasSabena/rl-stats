@@ -46,7 +46,26 @@
     "close": "Close",
     "reload": "Reload app",
     "confirm": "Confirm",
-    "share": "Share"
+    "share": "Share",
+    "edit": "Edit"
+  },
+  "commandPalette": {
+    "title": "Command palette",
+    "searchLabel": "Search",
+    "placeholder": "Search players, matches, or go to…",
+    "clear": "Clear search",
+    "searching": "Searching…",
+    "empty": "No results",
+    "analytics": "Analytics",
+    "history": "History",
+    "players": "Players",
+    "settings": "Settings",
+    "live": "Live",
+    "playersSection": "Players",
+    "matchesSection": "Matches",
+    "hintNavigate": "Navigate",
+    "hintOpen": "Open",
+    "hintClose": "Close"
   },
   "status": {
     "live": "Live",
@@ -68,6 +87,9 @@
   "select": {
     "placeholder": "Select..."
   },
+  "labels": {
+    "metric": "Metric"
+  },
   "dataTable": {
     "noData": "No data available"
   },
@@ -83,5 +105,18 @@
   "actions": {
     "close": "Close"
   },
-  "self": "Me"
+  "self": "Me",
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Shortcuts are disabled while typing in a field.",
+    "commandPalette": "Open the command palette",
+    "live": "Go to Live",
+    "history": "Go to History",
+    "analytics": "Go to Analytics",
+    "players": "Go to Players",
+    "settings": "Open Settings",
+    "historyNavigate": "Move through the history list",
+    "help": "Show this help",
+    "close": "Close windows and modals"
+  }
 }

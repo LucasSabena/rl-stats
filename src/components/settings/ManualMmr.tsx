@@ -100,6 +100,7 @@ export function ManualMmr() {
               value={mmr}
               onChange={(e) => setMmr(e.target.value)}
               placeholder="1363"
+              aria-label={t("settings:manualMmr.mmr")}
               className={cn(
                 "h-9 w-28 rounded-md border border-border-default bg-bg-surface px-2.5 text-sm text-text-primary",
                 "placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20",

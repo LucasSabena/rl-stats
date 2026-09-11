@@ -15,9 +15,17 @@
     "searchingGame": "Searching Steam, Epic and known locations…", "searchingAccount": "Reading local Steam accounts…", "alreadyConfigured": "API already configured",
     "noGame": "No valid installation was found. Paste the Rocket League folder to validate it, or continue and configure it later.",
     "noAccount": "No local account was found. You can continue: the app will identify your exact PrimaryId when you join a match.",
-    "pathPlaceholder": "Rocket League folder…", "validatePath": "Validate folder", "active": "Active", "detectAgain": "Detect again",
+    "pathLabel": "Rocket League folder", "pathPlaceholder": "Rocket League folder…", "validatePath": "Validate folder", "active": "Active", "detectAgain": "Detect again",
     "detectError": "Automatic detection could not be completed.", "invalidPath": "That folder is not a valid Rocket League installation.", "saveError": "The configuration could not be saved.",
-    "later": "Configure later", "configure": "Configure and tour"
+    "later": "Configure later", "configure": "Configure and tour",
+    "connectionTitle": "Rocket League connection",
+    "checked": "Verified",
+    "connectionDescription": "Open Rocket League (you can stay in the menu) and test the connection: the app reads the stats stream on the configured port.",
+    "testConnection": "Test connection",
+    "connectionConnected": "Connected: receiving data",
+    "connectionNoGame": "Rocket League is not open",
+    "connectionConnecting": "Connecting…",
+    "connectionDisconnected": "No connection yet. Check the port or restart the game."
   },
   "tour": {
     "progress": "Step {{current}} of {{total}}", "finish": "Finish",

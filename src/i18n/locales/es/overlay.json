@@ -115,6 +115,40 @@
       "copyError": "Error al copiar",
       "copyErrorMessage": "No se pudo copiar al portapapeles.",
       "unknownError": "Error desconocido"
+    },
+    "autostartHint": "El servidor se reinicia automáticamente con la app.",
+    "preview": "Previsualizar",
+    "previewTitle": "Vista previa del overlay",
+    "previewHint": "Sin datos en vivo hasta que empiece una partida",
+    "scene": {
+      "title": "Personalización de escena",
+      "matchTitle": "Título del partido",
+      "matchTitlePlaceholder": "GRAND FINAL",
+      "series": "Serie (BO)",
+      "blueName": "Nombre equipo azul",
+      "orangeName": "Nombre equipo naranja",
+      "hideModules": "Ocultar módulos",
+      "alertTypes": "Alertas activas",
+      "apply": "Actualizar URLs",
+      "modules": {
+        "scorebug": "Marcador",
+        "rosters": "Jugadores",
+        "ball": "Balón",
+        "series": "Serie"
+      }
+    },
+    "alerts": {
+      "Goal": "Goles",
+      "Save": "Atajadas",
+      "Demo": "Demoliciones",
+      "HatTrick": "Hat tricks",
+      "EpicSave": "Atajadas épicas",
+      "AerialGoal": "Goles aéreos"
+    },
+    "streamerbot": {
+      "title": "Streamer.bot / integraciones",
+      "description": "Conectá Streamer.bot u otra herramienta a este WebSocket para disparar acciones.",
+      "copyJson": "Copiar configuración"
     }
   }
 }

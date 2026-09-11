@@ -6,7 +6,6 @@ use crate::core::settings::{
 };
 use crate::core::storage::{self, clear_all_data, MatchPlayerRow, MatchQuery, MatchUpsert};
 use crate::AppState;
-use std::fs;
 use tauri::State;
 use tracing::{error, info, warn};
 
@@ -24,18 +23,38 @@ pub async fn get_settings_cmd(state: State<'_, AppState>) -> Result<AppSettings,
 
 #[tauri::command]
 pub async fn set_settings_cmd(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     settings: AppSettings,
 ) -> Result<(), String> {
     let pool = &state.db_pool;
-    let auto_start_changed = match get_settings(pool) {
-        Ok(existing) => existing.auto_start != settings.auto_start,
-        Err(_) => false,
-    };
+    let existing = get_settings(pool).ok();
+    let auto_start_changed = existing
+        .as_ref()
+        .map(|s| s.auto_start != settings.auto_start)
+        .unwrap_or(false);
+    let retention_changed = existing
+        .as_ref()
+        .map(|s| s.data_retention_days != settings.data_retention_days)
+        .unwrap_or(false);
+    let language_changed = existing
+        .as_ref()
+        .map(|s| s.language != settings.language)
+        .unwrap_or(false);
     match set_settings(pool, &settings) {
         Ok(()) => {
             if auto_start_changed {
                 configure_autostart(settings.auto_start);
+            }
+            if language_changed {
+                crate::apply_tray_language(&app, &settings.language);
+            }
+            if retention_changed {
+                if let Err(e) =
+                    storage::apply_data_retention(pool, settings.data_retention_days.into())
+                {
+                    error!(error = %e, "Failed to apply data retention");
+                }
             }
             // Push the kickoff window to the live session manager: it used to
             // be read once at startup, so changing it here did nothing until
@@ -124,14 +143,6 @@ pub async fn sync_rl_installations_cmd(
 }
 
 #[tauri::command]
-pub async fn export_data(state: State<'_, AppState>, path: String) -> Result<(), String> {
-    let export_json = export_data_json_internal(&state.db_pool)?;
-    fs::write(&path, export_json).map_err(|e| e.to_string())?;
-    info!(path = %path, "Data exported successfully");
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn export_data_json(state: State<'_, AppState>) -> Result<String, String> {
     export_data_json_internal(&state.db_pool)
 }
@@ -161,7 +172,9 @@ fn export_data_json_internal(pool: &storage::DbPool) -> Result<String, String> {
     let match_events = storage::get_all_match_events(pool).map_err(|e| e.to_string())?;
     let sessions = storage::get_all_sessions(pool).map_err(|e| e.to_string())?;
     let daily_rollups = storage::get_all_daily_rollups_all(pool).map_err(|e| e.to_string())?;
-    let app_settings = get_settings(pool).map_err(|e| e.to_string())?;
+    let app_settings = get_settings(pool)
+        .map(|settings| settings.for_sync())
+        .map_err(|e| e.to_string())?;
     let user_presets = storage::list_user_presets(pool).map_err(|e| e.to_string())?;
 
     let export = serde_json::json!({
@@ -178,12 +191,6 @@ fn export_data_json_internal(pool: &storage::DbPool) -> Result<String, String> {
     });
 
     serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn import_data(state: State<'_, AppState>, path: String) -> Result<(), String> {
-    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    import_data_json_internal(&state.db_pool, &content, Some(&path))
 }
 
 #[tauri::command]
@@ -510,11 +517,16 @@ fn import_data_json_internal(
         Ok(()) => {
             conn.execute("COMMIT", []).map_err(|e| e.to_string())?;
             if let Some(settings) = imported_settings {
-                set_settings(pool, &settings).map_err(|e| e.to_string())?;
-                let player_names = identity_candidate_names(&settings);
+                // Exports redact secrets and carry device-local paths from
+                // another machine; merge_remote keeps this machine's values
+                // and imports everything else.
+                let mut merged = get_settings(pool).map_err(|e| e.to_string())?;
+                merged.merge_remote(&settings);
+                set_settings(pool, &merged).map_err(|e| e.to_string())?;
+                let player_names = identity_candidate_names(&merged);
                 storage::rebuild_daily_rollups_for_identity(
                     pool,
-                    settings.local_primary_id.as_deref(),
+                    merged.local_primary_id.as_deref(),
                     &player_names,
                 )
                 .map_err(|e| e.to_string())?;

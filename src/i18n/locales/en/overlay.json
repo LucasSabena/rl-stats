@@ -115,6 +115,40 @@
       "copyError": "Error copying",
       "copyErrorMessage": "Could not copy to clipboard.",
       "unknownError": "Unknown error"
+    },
+    "autostartHint": "The server restarts automatically with the app.",
+    "preview": "Preview",
+    "previewTitle": "Overlay preview",
+    "previewHint": "No live data until a match starts",
+    "scene": {
+      "title": "Scene customization",
+      "matchTitle": "Match title",
+      "matchTitlePlaceholder": "GRAND FINAL",
+      "series": "Series (BO)",
+      "blueName": "Blue team name",
+      "orangeName": "Orange team name",
+      "hideModules": "Hide modules",
+      "alertTypes": "Active alerts",
+      "apply": "Refresh URLs",
+      "modules": {
+        "scorebug": "Scorebug",
+        "rosters": "Rosters",
+        "ball": "Ball",
+        "series": "Series"
+      }
+    },
+    "alerts": {
+      "Goal": "Goals",
+      "Save": "Saves",
+      "Demo": "Demos",
+      "HatTrick": "Hat tricks",
+      "EpicSave": "Epic saves",
+      "AerialGoal": "Aerial goals"
+    },
+    "streamerbot": {
+      "title": "Streamer.bot / integrations",
+      "description": "Connect Streamer.bot or any other tool to this WebSocket to trigger actions.",
+      "copyJson": "Copy configuration"
     }
   }
 }

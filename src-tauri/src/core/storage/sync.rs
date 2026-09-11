@@ -738,11 +738,19 @@ pub fn mark_change_synced(pool: &DbPool, outbox_id: i64, server_revision: i64) -
 
 pub fn mark_change_failed(pool: &DbPool, outbox_id: i64, error: &str) -> AppResult<()> {
     let conn = get_conn(pool)?;
-    // The outbox query compares `available_at <= now` as text, and every
-    // other timestamp in this table is RFC3339. `datetime('now','+5 minutes')`
-    // produced `YYYY-MM-DD HH:MM:SS`, which sorts *before* the RFC3339 now for
-    // the same day — the backoff never delayed a retry.
-    let available_at = (Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
+    // Exponential backoff: 1, 2, 4, 8 ... capped at 60 minutes. The previous
+    // fixed 5-minute retry re-hammered a flaky backend on every match end.
+    let attempts: i64 = conn
+        .query_row(
+            "SELECT attempts FROM sync_outbox WHERE id = ?1",
+            params![outbox_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::StorageError(e.to_string()))?
+        .unwrap_or(0);
+    let backoff_minutes = (1_i64 << attempts.clamp(0, 6)).min(60);
+    let available_at = (Utc::now() + chrono::Duration::minutes(backoff_minutes)).to_rfc3339();
     conn.execute(
         "UPDATE sync_outbox
          SET attempts = attempts + 1, last_error = ?1, available_at = ?2
@@ -751,6 +759,78 @@ pub fn mark_change_failed(pool: &DbPool, outbox_id: i64, error: &str) -> AppResu
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     Ok(())
+}
+
+/// Reads the last server revision this device applied.
+pub fn get_last_pulled_revision(pool: &DbPool) -> AppResult<i64> {
+    let conn = get_conn(pool)?;
+    ensure_local_sync_identity_conn(&conn)?;
+    Ok(get_metadata_conn(&conn, LAST_PULLED_REVISION_KEY)?
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0))
+}
+
+/// Deletes outbox rows that were synced more than `older_than_days` ago.
+///
+/// The outbox used to grow forever: every match ever recorded left its row
+/// behind after a successful push.
+pub fn prune_synced_outbox(pool: &DbPool, older_than_days: i64) -> AppResult<u64> {
+    let conn = get_conn(pool)?;
+    let cutoff = (Utc::now() - chrono::Duration::days(older_than_days.max(1))).to_rfc3339();
+    let deleted = conn
+        .execute(
+            "DELETE FROM sync_outbox WHERE synced_at IS NOT NULL AND synced_at < ?1",
+            params![cutoff],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    Ok(deleted as u64)
+}
+
+/// Removes queued `app_settings` payloads that still carry API keys.
+///
+/// Older versions enqueued the full settings object, secrets included; this
+/// scrubs anything already sitting in the outbox. The next settings save
+/// re-enqueues a redacted copy.
+pub fn scrub_settings_secrets(pool: &DbPool) -> AppResult<u64> {
+    let conn = get_conn(pool)?;
+    let mut stmt = conn
+        .prepare("SELECT id, payload_json FROM sync_outbox WHERE entity_type = 'app_settings' AND synced_at IS NULL")
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    let rows: Vec<(i64, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|e| AppError::StorageError(e.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    drop(stmt);
+
+    let mut scrubbed = 0u64;
+    for (id, payload) in rows {
+        let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&payload) else {
+            continue;
+        };
+        let has_secret = ["tracker_api_key", "rapidapi_key", "parsebot_api_key"]
+            .iter()
+            .any(|key| {
+                value
+                    .get(key)
+                    .is_some_and(|v| !v.is_null() && v.as_str() != Some(""))
+            });
+        if !has_secret {
+            continue;
+        }
+        for key in ["tracker_api_key", "rapidapi_key", "parsebot_api_key"] {
+            if let Some(map) = value.as_object_mut() {
+                map.remove(key);
+            }
+        }
+        conn.execute(
+            "UPDATE sync_outbox SET payload_json = ?1 WHERE id = ?2",
+            params![value.to_string(), id],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+        scrubbed += 1;
+    }
+    Ok(scrubbed)
 }
 
 pub fn set_last_pulled_revision(pool: &DbPool, revision: i64) -> AppResult<()> {

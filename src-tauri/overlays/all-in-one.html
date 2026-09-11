@@ -278,10 +278,10 @@
   </div>
 </div>
 
+<script src="/sdk/rl-overlay.js"></script>
 <script>
 (function() {
-  var WS_URL = 'ws://127.0.0.1:9528/ws';
-  var ws;
+  var overlay = RLOverlay.connect();
   var MAX_EVENTS = 8;
   var prevBlue = -1;
   var prevOrange = -1;
@@ -291,6 +291,20 @@
   var prevMatchGuid = null;
 
   function q(id) { return document.getElementById(id); }
+
+  overlay.on('connected', function() {
+    console.log('[AllInOne] Connected');
+    q('discTop').classList.remove('visible');
+  });
+
+  overlay.on('disconnected', function() {
+    q('discTop').classList.add('visible');
+  });
+
+  overlay.on('state', function(d) {
+    q('discTop').classList.remove('visible');
+    process(d);
+  });
 
   function fmtTime(s) {
     s = Math.max(0, Math.floor(s||0));
@@ -302,29 +316,6 @@
   function truncate(n, max) {
     if (!n) return '---';
     return n.length > max ? n.slice(0,max-1)+'...' : n;
-  }
-
-  function connect() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = function() {
-      console.log('[AllInOne] Connected');
-      q('discTop').classList.remove('visible');
-    };
-    ws.onmessage = function(e) {
-      var msg = JSON.parse(e.data);
-      if (msg.type === 'connected') {
-        q('discTop').classList.remove('visible');
-      }
-      if (msg.type === 'state' && msg.data) {
-        q('discTop').classList.remove('visible');
-        process(msg.data);
-      }
-    };
-    ws.onclose = function() {
-      q('discTop').classList.add('visible');
-      setTimeout(connect, 2000);
-    };
-    ws.onerror = function() { ws.close(); };
   }
 
   // ---- Scoreboard ----
@@ -350,33 +341,57 @@
   }
 
   // ---- Player Stats ----
+  function statCell(value) {
+    var span = document.createElement('span');
+    span.className = 'stat-val';
+    span.textContent = String(value || 0);
+    return span;
+  }
+
   function playerRow(p) {
-    return (
-      '<div class="player-row">'+
-        '<span class="player-name" title="'+ (p.name||'') +'">'+ truncate(p.name,14) +'</span>'+
-        '<span class="stat-val pts">'+ (p.score||0) +'</span>'+
-        '<span class="stat-val">'+ (p.goals||0) +'</span>'+
-        '<span class="stat-val">'+ (p.assists||0) +'</span>'+
-        '<span class="stat-val">'+ (p.saves||0) +'</span>'+
-        '<span class="stat-val">'+ (p.shots||0) +'</span>'+
-      '</div>'
-    );
+    var row = document.createElement('div');
+    row.className = 'player-row';
+
+    var name = document.createElement('span');
+    name.className = 'player-name';
+    name.title = p.name || '';
+    name.textContent = truncate(p.name, 14);
+    row.appendChild(name);
+
+    var pts = statCell(p.score);
+    pts.classList.add('pts');
+    row.appendChild(pts);
+    row.appendChild(statCell(p.goals));
+    row.appendChild(statCell(p.assists));
+    row.appendChild(statCell(p.saves));
+    row.appendChild(statCell(p.shots));
+    return row;
+  }
+
+  function renderTeam(container, players) {
+    container.replaceChildren();
+    if (!players.length) {
+      var empty = document.createElement('div');
+      empty.className = 'no-players';
+      empty.textContent = 'Sin jugadores';
+      container.appendChild(empty);
+      return;
+    }
+    players
+      .sort(function(a,b){ return (b.score||0)-(a.score||0); })
+      .forEach(function(p){ container.appendChild(playerRow(p)); });
   }
 
   function renderPlayerStats(d) {
     var all = d.players || [];
-    var blue = all.filter(function(p){return p.team===0}).sort(function(a,b){return (b.score||0)-(a.score||0);});
-    var orange = all.filter(function(p){return p.team===1}).sort(function(a,b){return (b.score||0)-(a.score||0);});
+    var blue = all.filter(function(p){return p.team===0});
+    var orange = all.filter(function(p){return p.team===1});
 
     q('blueCount').textContent = blue.length;
     q('orangeCount').textContent = orange.length;
 
-    q('bluePlayers').innerHTML = blue.length
-      ? blue.map(playerRow).join('')
-      : '<div class="no-players">Sin jugadores</div>';
-    q('orangePlayers').innerHTML = orange.length
-      ? orange.map(playerRow).join('')
-      : '<div class="no-players">Sin jugadores</div>';
+    renderTeam(q('bluePlayers'), blue);
+    renderTeam(q('orangePlayers'), orange);
   }
 
   // ---- Event Feed ----
@@ -389,24 +404,44 @@
   function renderFeed() {
     var f = q('feed');
     var ef = q('emptyFeed');
+
+    var rendered = f.querySelectorAll('.event');
+    for (var k = 0; k < rendered.length; k++) { rendered[k].remove(); }
+
     if (events.length === 0) {
       ef.style.display = '';
-      f.querySelectorAll('.event').forEach(function(el){el.remove();});
       return;
     }
     ef.style.display = 'none';
-    var h = '';
+
+    var fragment = document.createDocumentFragment();
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
-      h += '<div class="event '+ev.t+'">'+
-        '<span class="event-icon">'+ev.i+'</span>'+
-        '<span class="event-body"><span class="event-text">'+ev.x+'</span></span>'+
-        '<span class="event-time">'+ev.tm+'</span></div>';
+      var row = document.createElement('div');
+      row.className = 'event ' + ev.t;
+      if (i >= 3) row.classList.add('fading');
+
+      var icon = document.createElement('span');
+      icon.className = 'event-icon';
+      icon.textContent = ev.i;
+
+      var body = document.createElement('span');
+      body.className = 'event-body';
+      var text = document.createElement('span');
+      text.className = 'event-text';
+      text.textContent = ev.x;
+      body.appendChild(text);
+
+      var time = document.createElement('span');
+      time.className = 'event-time';
+      time.textContent = ev.tm;
+
+      row.appendChild(icon);
+      row.appendChild(body);
+      row.appendChild(time);
+      fragment.appendChild(row);
     }
-    f.innerHTML = h + '<div class="empty-feed" id="emptyFeed2" style="display:none">Esperando eventos...</div>';
-    f.querySelectorAll('.event').forEach(function(el,i){
-      if (i >= 3) el.classList.add('fading');
-    });
+    f.appendChild(fragment);
   }
 
   function detectMatchStart(guid) {
@@ -421,7 +456,7 @@
     var t = fmtTime(d.timeRemaining);
     if (d.isOnline && d.matchGuid) detectMatchStart(d.matchGuid);
     if (!d.isOnline && prevOnline && prevMatchGuid) {
-      addEvent('banner','PARTIDO FINALIZADA','',t);
+      addEvent('banner','PARTIDO FINALIZADO','',t);
       prevMatchGuid = null;
     }
     prevOnline = d.isOnline;
@@ -467,8 +502,6 @@
     renderPlayerStats(d);
     detectEvents(d);
   }
-
-  connect();
 })();
 </script>
 </body>

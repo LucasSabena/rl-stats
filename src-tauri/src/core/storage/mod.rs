@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tracing::{debug, info};
 
+pub mod cloud_pull;
 pub mod migrations;
 pub mod sync;
 pub mod training_packs;
@@ -50,6 +51,14 @@ impl DbPool {
     pub(crate) fn store_settings(&self, settings: crate::core::settings::AppSettings) {
         if let Ok(mut guard) = self.settings_cache.lock() {
             *guard = Some(settings);
+        }
+    }
+
+    /// Drops the cached settings so the next read hits the database. Used
+    /// after a cloud pull writes settings rows from another device.
+    pub(crate) fn invalidate_settings_cache(&self) {
+        if let Ok(mut guard) = self.settings_cache.lock() {
+            *guard = None;
         }
     }
 }
@@ -959,6 +968,127 @@ pub fn delete_match(pool: &DbPool, match_id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// Creates a consistent database snapshot if the newest backup is older than
+/// `min_age_hours`. Returns the created file path, if any.
+pub fn ensure_daily_backup(
+    pool: &DbPool,
+    app_dir: &Path,
+    min_age_hours: i64,
+) -> AppResult<Option<std::path::PathBuf>> {
+    let dir = app_dir.join("backups");
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::IoError(e.to_string()))?;
+
+    let newest = std::fs::read_dir(&dir)
+        .map_err(|e| AppError::IoError(e.to_string()))?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "sqlite"))
+        .filter_map(|path| {
+            let modified = std::fs::metadata(&path).ok()?.modified().ok()?;
+            Some((modified, path))
+        })
+        .max_by_key(|(modified, _)| *modified);
+
+    if let Some((modified, _)) = &newest {
+        let age = std::time::SystemTime::now()
+            .duration_since(*modified)
+            .unwrap_or_default();
+        if age < std::time::Duration::from_secs((min_age_hours.max(1) as u64) * 3600) {
+            return Ok(None);
+        }
+    }
+
+    let file = dir.join(format!(
+        "auto-{}.sqlite",
+        Utc::now().format("%Y%m%d-%H%M%S")
+    ));
+    let conn = get_conn(pool)?;
+    conn.execute("VACUUM INTO ?1", params![file.to_string_lossy()])
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    // Keep the five most recent backups.
+    let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| AppError::IoError(e.to_string()))?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "sqlite"))
+        .collect();
+    backups.sort();
+    while backups.len() > 5 {
+        let oldest = backups.remove(0);
+        let _ = std::fs::remove_file(oldest);
+    }
+
+    info!(path = %file.display(), "Daily database backup created");
+    Ok(Some(file))
+}
+
+/// Deletes matches older than `retention_days` and their orphan players.
+///
+/// `0` (or negative) keeps everything. The setting existed since the first
+/// release but was never enforced. Deletions are tombstoned for the cloud so
+/// the pruned history does not come back on the next pull.
+pub fn apply_data_retention(pool: &DbPool, retention_days: i64) -> AppResult<usize> {
+    if retention_days <= 0 {
+        return Ok(0);
+    }
+
+    let conn = get_conn(pool)?;
+    let cutoff = (Utc::now() - chrono::Duration::days(retention_days)).to_rfc3339();
+
+    let expired: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT guid FROM matches WHERE start_time < ?1")
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![cutoff], |row| row.get::<_, String>(0))
+            .map_err(|e| AppError::StorageError(e.to_string()))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::StorageError(e.to_string()))?
+    };
+    if expired.is_empty() {
+        return Ok(0);
+    }
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    for guid in &expired {
+        sync::enqueue_delete_conn(
+            &tx,
+            "match",
+            guid,
+            serde_json::json!({ "guid": guid, "retention": retention_days }),
+        )?;
+    }
+    tx.execute("DELETE FROM matches WHERE start_time < ?1", params![cutoff])
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    // Players with no remaining matches are dead weight; friends keep theirs.
+    tx.execute(
+        "DELETE FROM players
+         WHERE id NOT IN (SELECT DISTINCT player_id FROM match_players)
+           AND id NOT IN (SELECT player_id FROM friends)",
+        [],
+    )
+    .map_err(|e| AppError::StorageError(e.to_string()))?;
+    tx.commit()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    let settings = crate::core::settings::get_settings(pool).unwrap_or_default();
+    let names = identity_candidate_names(&settings);
+    if let Err(e) =
+        rebuild_daily_rollups_for_identity(pool, settings.local_primary_id.as_deref(), &names)
+    {
+        tracing::warn!(error = %e, "Failed to rebuild rollups after retention prune");
+    }
+
+    info!(
+        deleted = expired.len(),
+        retention_days, "Applied data retention"
+    );
+    Ok(expired.len())
+}
+
 /// Remove training rows that were persisted twice by the old
 /// persist-on-every-MatchCreated bug.
 ///
@@ -1750,6 +1880,9 @@ pub fn clear_all_data(pool: &DbPool) -> AppResult<()> {
         "*",
         serde_json::json!({ "scope": "all_local_profile_data" }),
     )?;
+    // Everything the user created, plus every sync bookkeeping row: keeping
+    // queued upserts after a wipe would re-upload the deleted data, and
+    // keeping tombstones would delete it again on the next device.
     tx.execute_batch(
         "DELETE FROM match_events;
          DELETE FROM match_players;
@@ -1758,15 +1891,24 @@ pub fn clear_all_data(pool: &DbPool) -> AppResult<()> {
          DELETE FROM daily_rollups;
          DELETE FROM matches;
          DELETE FROM players;
+         DELETE FROM friends;
+         DELETE FROM user_presets;
+         DELETE FROM training_packs;
          DELETE FROM tracker_cache;
          DELETE FROM rlstats_cache;
          DELETE FROM mmr_cache;
          DELETE FROM mmr_provider_health;
+         DELETE FROM sync_outbox;
+         DELETE FROM sync_tombstones;
+         DELETE FROM sync_entity_state;
         ",
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     tx.commit()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    // Reclaim the freed pages; without this the file keeps its old size.
+    let _ = conn.execute_batch("VACUUM;");
     Ok(())
 }
 

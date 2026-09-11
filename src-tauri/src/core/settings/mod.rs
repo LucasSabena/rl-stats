@@ -41,6 +41,10 @@ pub struct AppSettings {
     pub kickoff_goal_threshold_seconds: i32,
     // ─── Training tracking ────────────────────────────────────────────────
     pub training_tracking_enabled: bool,
+    /// Weekly goal: matches to play (0 = no goal).
+    pub weekly_goal_matches: u32,
+    /// Weekly goal: matches to win (0 = no goal).
+    pub weekly_goal_wins: u32,
     // ─── Overlay window settings ─────────────────────────────────────────
     pub overlay_enabled: bool,
     pub overlay_opacity: f64,
@@ -60,6 +64,10 @@ pub struct AppSettings {
     pub overlay_show_boost: bool,
     pub overlay_show_mmr: bool,
     pub overlay_show_speed: bool,
+    /// Whether the OBS overlay HTTP server auto-starts with the app.
+    pub overlay_server_enabled: bool,
+    /// TCP port for the OBS overlay server (default 9528).
+    pub overlay_server_port: u16,
     pub game_running: bool,
     pub warn_on_profile_mismatch: bool,
     pub auto_switch_profile_on_exact_match: bool,
@@ -93,12 +101,16 @@ impl Default for AppSettings {
             parsebot_scraper_id: None,
             parsebot_endpoint: None,
             parsebot_enabled: false,
-            mmr_scraper_enabled: true,
+            // Opt-in: the rlstats.net scrape sends every lobby member's
+            // primary id to a third party, so the user must consent first.
+            mmr_scraper_enabled: false,
             tracker_auto_refresh: true,
             tracker_refresh_interval_min: 5,
             session_gap_minutes: 30,
             kickoff_goal_threshold_seconds: 7,
             training_tracking_enabled: true,
+            weekly_goal_matches: 0,
+            weekly_goal_wins: 0,
             overlay_enabled: false,
             overlay_opacity: 0.75,
             overlay_position_x: 40,
@@ -117,6 +129,8 @@ impl Default for AppSettings {
             overlay_show_boost: false,
             overlay_show_mmr: false,
             overlay_show_speed: false,
+            overlay_server_enabled: false,
+            overlay_server_port: 9528,
             game_running: false,
             warn_on_profile_mismatch: true,
             auto_switch_profile_on_exact_match: false,
@@ -203,6 +217,8 @@ impl AppSettings {
                 "training_tracking_enabled",
                 self.training_tracking_enabled.to_string(),
             ),
+            ("weekly_goal_matches", self.weekly_goal_matches.to_string()),
+            ("weekly_goal_wins", self.weekly_goal_wins.to_string()),
             ("overlay_enabled", self.overlay_enabled.to_string()),
             ("overlay_opacity", self.overlay_opacity.to_string()),
             ("overlay_position_x", self.overlay_position_x.to_string()),
@@ -230,6 +246,11 @@ impl AppSettings {
             ("overlay_show_boost", self.overlay_show_boost.to_string()),
             ("overlay_show_mmr", self.overlay_show_mmr.to_string()),
             ("overlay_show_speed", self.overlay_show_speed.to_string()),
+            (
+                "overlay_server_enabled",
+                self.overlay_server_enabled.to_string(),
+            ),
+            ("overlay_server_port", self.overlay_server_port.to_string()),
             ("game_running", self.game_running.to_string()),
             (
                 "warn_on_profile_mismatch",
@@ -253,6 +274,39 @@ impl AppSettings {
                 self.prompt_only_when_game_running.to_string(),
             ),
         ]
+    }
+
+    /// Settings payload safe to send to the cloud: API keys stripped.
+    pub fn for_sync(&self) -> AppSettings {
+        let mut settings = self.clone();
+        settings.tracker_api_key = None;
+        settings.rapidapi_key = None;
+        settings.parsebot_api_key = None;
+        settings
+    }
+
+    /// Overlays settings pulled from another device.
+    ///
+    /// Device-local values (install paths, active platform, overlay window
+    /// geometry and server state, autostart) and secrets always stay as they
+    /// are on this machine; everything else follows the remote copy.
+    pub fn merge_remote(&mut self, remote: &AppSettings) {
+        let mut merged = remote.clone();
+        merged.rl_path = self.rl_path.clone();
+        merged.rl_paths = self.rl_paths.clone();
+        merged.platform = self.platform.clone();
+        merged.active_platform = self.active_platform.clone();
+        merged.game_running = self.game_running;
+        merged.auto_start = self.auto_start;
+        merged.overlay_enabled = self.overlay_enabled;
+        merged.overlay_position_x = self.overlay_position_x;
+        merged.overlay_position_y = self.overlay_position_y;
+        merged.overlay_server_enabled = self.overlay_server_enabled;
+        merged.overlay_server_port = self.overlay_server_port;
+        merged.tracker_api_key = self.tracker_api_key.clone();
+        merged.rapidapi_key = self.rapidapi_key.clone();
+        merged.parsebot_api_key = self.parsebot_api_key.clone();
+        *self = merged;
     }
 }
 
@@ -353,7 +407,9 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
                 settings.parsebot_endpoint = if value.is_empty() { None } else { Some(value) };
             }
             "parsebot_enabled" => settings.parsebot_enabled = value.parse().unwrap_or(false),
-            "mmr_scraper_enabled" => settings.mmr_scraper_enabled = value.parse().unwrap_or(true),
+            // Opt-in scrape: absent or unparsable values must not silently
+            // re-enable sharing lobby ids with a third party.
+            "mmr_scraper_enabled" => settings.mmr_scraper_enabled = value.parse().unwrap_or(false),
             "tracker_auto_refresh" => settings.tracker_auto_refresh = value.parse().unwrap_or(true),
             "tracker_refresh_interval_min" => {
                 settings.tracker_refresh_interval_min = value.parse().unwrap_or(5)
@@ -365,6 +421,8 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             "training_tracking_enabled" => {
                 settings.training_tracking_enabled = value.parse().unwrap_or(true)
             }
+            "weekly_goal_matches" => settings.weekly_goal_matches = value.parse().unwrap_or(0),
+            "weekly_goal_wins" => settings.weekly_goal_wins = value.parse().unwrap_or(0),
             "overlay_enabled" => settings.overlay_enabled = value.parse().unwrap_or(false),
             "overlay_opacity" => settings.overlay_opacity = value.parse::<f64>().unwrap_or(0.75),
             "overlay_position_x" => settings.overlay_position_x = value.parse().unwrap_or(40),
@@ -385,6 +443,10 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             "overlay_show_boost" => settings.overlay_show_boost = value.parse().unwrap_or(false),
             "overlay_show_mmr" => settings.overlay_show_mmr = value.parse().unwrap_or(false),
             "overlay_show_speed" => settings.overlay_show_speed = value.parse().unwrap_or(false),
+            "overlay_server_enabled" => {
+                settings.overlay_server_enabled = value.parse().unwrap_or(false)
+            }
+            "overlay_server_port" => settings.overlay_server_port = value.parse().unwrap_or(9528),
             "game_running" => settings.game_running = value.parse().unwrap_or(false),
             "warn_on_profile_mismatch" => {
                 settings.warn_on_profile_mismatch = value.parse().unwrap_or(true)
@@ -456,20 +518,16 @@ pub fn set_settings(pool: &DbPool, settings: &AppSettings) -> AppResult<()> {
         .unchecked_transaction()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
 
-    for (key, value) in settings.to_kv() {
-        tx.execute(
-            "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, value],
-        )
-        .map_err(|e| AppError::StorageError(e.to_string()))?;
-    }
+    write_settings_kv(&tx, settings)?;
 
+    // Secrets (Tracker / RapidAPI / ParseBot keys) must never leave the
+    // device: the sync payload strips them. The local DB keeps the real
+    // values.
     crate::core::storage::sync::enqueue_upsert_conn(
         &tx,
         "app_settings",
         "all",
-        serde_json::to_value(settings)
+        serde_json::to_value(settings.for_sync())
             .map_err(|e| AppError::ParseError(format!("Failed to serialize settings: {e}")))?,
     )?;
 
@@ -481,6 +539,45 @@ pub fn set_settings(pool: &DbPool, settings: &AppSettings) -> AppResult<()> {
 
     info!("Settings saved");
     Ok(())
+}
+
+/// Writes every key/value pair without opening a transaction or enqueueing
+/// a sync change. Callers own atomicity.
+fn write_settings_kv(conn: &rusqlite::Connection, settings: &AppSettings) -> AppResult<()> {
+    for (key, value) in settings.to_kv() {
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    }
+    Ok(())
+}
+
+/// Applies settings pulled from another device without re-enqueueing them.
+///
+/// Device-local fields (paths, overlay window geometry, server state) and
+/// secrets stay exactly as they are on this machine.
+pub(crate) fn set_settings_conn_no_sync(
+    conn: &rusqlite::Connection,
+    remote: &AppSettings,
+) -> AppResult<()> {
+    let mut merged = get_settings_conn(conn)?;
+    merged.merge_remote(remote);
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    write_settings_kv(&tx, &merged)?;
+    tx.commit()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    Ok(())
+}
+
+/// Reads settings straight from an open connection.
+pub(crate) fn get_settings_conn(conn: &rusqlite::Connection) -> AppResult<AppSettings> {
+    settings_from_connection(conn)
 }
 
 pub fn configure_rl_ini(game_root: &str, port: u16) -> AppResult<()> {

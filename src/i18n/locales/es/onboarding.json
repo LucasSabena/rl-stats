@@ -22,6 +22,7 @@
     "alreadyConfigured": "API ya configurada",
     "noGame": "No encontramos una instalación válida. Pegá la carpeta de Rocket League para validarla o continuá y configurala después.",
     "noAccount": "No encontramos cuentas locales. Podés continuar: la app identificará tu PrimaryId exacto al entrar a una partida.",
+    "pathLabel": "Carpeta de Rocket League",
     "pathPlaceholder": "Carpeta de Rocket League…",
     "validatePath": "Validar carpeta",
     "active": "Activa",
@@ -30,7 +31,15 @@
     "invalidPath": "Esa carpeta no contiene una instalación válida de Rocket League.",
     "saveError": "No pudimos guardar la configuración.",
     "later": "Configurar después",
-    "configure": "Configurar y recorrer"
+    "configure": "Configurar y recorrer",
+    "connectionTitle": "Conexión con Rocket League",
+    "checked": "Verificado",
+    "connectionDescription": "Abrí Rocket League (podés estar en el menú) y probá la conexión: la app lee el stream de estadísticas en el puerto configurado.",
+    "testConnection": "Probar conexión",
+    "connectionConnected": "Conectado: recibiendo datos",
+    "connectionNoGame": "Rocket League no está abierto",
+    "connectionConnecting": "Conectando…",
+    "connectionDisconnected": "Sin conexión todavía. Revisá el puerto o reiniciá el juego."
   },
   "tour": {
     "progress": "Paso {{current}} de {{total}}",

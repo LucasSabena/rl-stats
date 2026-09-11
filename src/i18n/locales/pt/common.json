@@ -46,7 +46,26 @@
     "close": "Fechar",
     "reload": "Recarregar app",
     "confirm": "Confirmar",
-    "share": "Compartilhar"
+    "share": "Compartilhar",
+    "edit": "Editar"
+  },
+  "commandPalette": {
+    "title": "Paleta de comandos",
+    "searchLabel": "Buscar",
+    "placeholder": "Buscar jogadores, partidas ou ir para…",
+    "clear": "Limpar busca",
+    "searching": "Buscando…",
+    "empty": "Sem resultados",
+    "analytics": "Análises",
+    "history": "Histórico",
+    "players": "Jogadores",
+    "settings": "Configurações",
+    "live": "Ao vivo",
+    "playersSection": "Jogadores",
+    "matchesSection": "Partidas",
+    "hintNavigate": "Navegar",
+    "hintOpen": "Abrir",
+    "hintClose": "Fechar"
   },
   "status": {
     "live": "Ao vivo",
@@ -68,6 +87,9 @@
   "select": {
     "placeholder": "Selecionar..."
   },
+  "labels": {
+    "metric": "Métrica"
+  },
   "dataTable": {
     "noData": "Nenhum dado disponível"
   },
@@ -83,5 +105,18 @@
   "actions": {
     "close": "Fechar"
   },
-  "self": "Eu"
+  "self": "Eu",
+  "shortcuts": {
+    "title": "Atalhos de teclado",
+    "description": "Os atalhos ficam desativados enquanto você digita em um campo.",
+    "commandPalette": "Abrir a paleta de comandos",
+    "live": "Ir para Ao vivo",
+    "history": "Ir para Histórico",
+    "analytics": "Ir para Análises",
+    "players": "Ir para Jogadores",
+    "settings": "Abrir Ajustes",
+    "historyNavigate": "Navegar pela lista do histórico",
+    "help": "Mostrar esta ajuda",
+    "close": "Fechar janelas e modais"
+  }
 }

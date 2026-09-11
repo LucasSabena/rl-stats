@@ -115,6 +115,7 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={label}
         className="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent-primary focus:ring-1 focus:ring-accent-primary"
       />
     </div>
@@ -135,6 +136,7 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
         className="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent-primary focus:ring-1 focus:ring-accent-primary"
       />
     </div>
@@ -150,6 +152,7 @@ export function UserPresetEditor({ preset, onSave, onCancel }: UserPresetEditorP
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
+            aria-label={t("description")}
             className="w-full resize-none rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-accent-primary focus:ring-1 focus:ring-accent-primary"
           />
         </div>

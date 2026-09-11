@@ -9,21 +9,50 @@
 //! - Static overlay HTML files served via `rust-embed` at `/overlays/{*path}`
 //! - `tokio::sync::broadcast` channel for event fan-out to all connected clients
 //! - `tokio::sync::watch` for graceful shutdown signaling
+//!
+//! # Wire contract
+//!
+//! Every message is a JSON object with a `type` and an optional `data`
+//! payload. The canonical full-state event is `state` (camelCase payload);
+//! the SDK also accepts the legacy `snapshot` alias so overlays written
+//! against the old server keep working:
+//!
+//! ```json
+//! { "type": "state", "data": { "scoreBlue": 2, "timeRemaining": 143, ... } }
+//! ```
+//!
+//! # Security
+//!
+//! The server is loopback-only, but a malicious page could still open a
+//! WebSocket to `127.0.0.1`. Browsers always send an `Origin` header on
+//! WebSocket handshakes, so:
+//! - requests from one of our own overlay origins are accepted;
+//! - browser requests from any other origin are rejected;
+//! - non-browser clients (no `Origin`) are accepted, and
+//! - a per-run bearer token (`?token=...`) is accepted from any origin and
+//!   is required for `file://` overlays, whose origin is sent as `null`.
+//!
+//! Responses served to browser sources carry a strict CSP plus `nosniff`
+//! and `frame-ancestors 'none'`.
 
 use axum::{
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    response::IntoResponse,
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Query, State,
+    },
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use rust_embed::RustEmbed;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, watch, RwLock};
 use tracing::{error, info, warn};
 
-use crate::core::models::LiveMatchState;
+use crate::core::models::{LiveMatchState, LivePlayer};
 
 // ---------------------------------------------------------------------------
 // Embedded overlay assets
@@ -45,6 +74,7 @@ struct OverlayAssets;
 ///
 /// Returned by Tauri commands so the frontend can display server state.
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OverlayServerStatus {
     /// Whether the HTTP server is currently accepting connections.
     pub running: bool,
@@ -52,6 +82,51 @@ pub struct OverlayServerStatus {
     pub port: u16,
     /// Number of WebSocket clients currently connected.
     pub connected_clients: usize,
+    /// Bearer token for custom (`file://`) overlays. Empty when stopped.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub token: String,
+}
+
+/// Canonical overlay payload. Mirrors [`LiveMatchState`] but serializes to
+/// camelCase, matching the documented SDK contract and every bundled asset.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OverlayState<'a> {
+    match_guid: &'a Option<String>,
+    arena: &'a Option<String>,
+    is_online: bool,
+    is_overtime: bool,
+    time_remaining: i32,
+    score_blue: i32,
+    score_orange: i32,
+    players: Vec<&'a LivePlayer>,
+    ball_speed: f64,
+    player_count: usize,
+    match_type: &'a Option<String>,
+    last_touch_team: Option<i32>,
+    playlist_id: Option<i32>,
+    training_elapsed_seconds: Option<i64>,
+}
+
+impl<'a> From<&'a LiveMatchState> for OverlayState<'a> {
+    fn from(state: &'a LiveMatchState) -> Self {
+        Self {
+            match_guid: &state.match_guid,
+            arena: &state.arena,
+            is_online: state.is_online,
+            is_overtime: state.is_overtime,
+            time_remaining: state.time_remaining,
+            score_blue: state.score_blue,
+            score_orange: state.score_orange,
+            players: state.players.iter().collect(),
+            ball_speed: state.ball_speed,
+            player_count: state.player_count,
+            match_type: &state.match_type,
+            last_touch_team: state.last_touch_team,
+            playlist_id: state.playlist_id,
+            training_elapsed_seconds: state.training_elapsed_seconds,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +160,12 @@ pub struct OverlayServer {
     /// decremented on disconnect).
     client_count: Arc<AtomicUsize>,
 
-    /// Cached latest match state as JSON (updated by broadcast_event).
+    /// Cached latest match state as JSON (updated by broadcast_state).
     latest_state: Arc<RwLock<Option<String>>>,
+
+    /// Per-run bearer token accepted by `/ws` and `/api/state`. Required for
+    /// overlays loaded from `file://` (their browser origin is `null`).
+    token: Arc<String>,
 
     /// Cached status that mirrors the shutdown signal + port.
     running: bool,
@@ -104,6 +183,7 @@ impl OverlayServer {
             event_tx,
             client_count: Arc::new(AtomicUsize::new(0)),
             latest_state: Arc::new(RwLock::new(None)),
+            token: Arc::new(uuid::Uuid::new_v4().simple().to_string()),
             running: false,
         }
     }
@@ -135,6 +215,8 @@ impl OverlayServer {
             event_tx: event_tx.clone(),
             client_count: client_count.clone(),
             latest_state: self.latest_state_handle(),
+            token: Arc::clone(&self.token),
+            port,
         });
 
         let app = Router::new()
@@ -200,25 +282,14 @@ impl OverlayServer {
     /// The event is serialized to a string and pushed onto the internal
     /// broadcast channel. Lagged clients see a warning but stay connected.
     pub fn broadcast_event(&self, event: serde_json::Value) {
-        // Auto-cache the latest match state for `GET /api/state`. This used to
-        // spawn a task per event (20/s) and only matched the "state" type,
-        // which nothing sends — the endpoint always returned {}.
-        match event.get("type").and_then(|v| v.as_str()) {
-            Some("state") => {
-                if let Ok(json) = serde_json::to_string(&event) {
-                    if let Ok(mut guard) = self.latest_state.try_write() {
-                        *guard = Some(json);
-                    }
+        // Cache full-state events so late joiners and `GET /api/state`
+        // consumers get the current match immediately.
+        if event.get("type").and_then(|v| v.as_str()) == Some("state") {
+            if let Ok(json) = serde_json::to_string(&event["data"]) {
+                if let Ok(mut guard) = self.latest_state.try_write() {
+                    *guard = Some(json);
                 }
             }
-            Some("snapshot") => {
-                if let Ok(json) = serde_json::to_string(&event["data"]) {
-                    if let Ok(mut guard) = self.latest_state.try_write() {
-                        *guard = Some(json);
-                    }
-                }
-            }
-            _ => {}
         }
 
         match serde_json::to_string(&event) {
@@ -235,11 +306,11 @@ impl OverlayServer {
 
     /// Convenience wrapper that broadcasts a full `LiveMatchState` snapshot.
     ///
-    /// The payload sent on the wire is `{ "type": "snapshot", "data": <state> }`.
+    /// The payload sent on the wire is `{ "type": "state", "data": <camelCase state> }`.
     pub fn broadcast_state(&self, state: &LiveMatchState) {
         let event = serde_json::json!({
-            "type": "snapshot",
-            "data": state
+            "type": "state",
+            "data": OverlayState::from(state)
         });
         self.broadcast_event(event);
     }
@@ -274,6 +345,8 @@ impl OverlayServer {
         self.broadcast_event(event);
     }
 
+    /// Broadcasts a ball touch. `team_num` is the team that made the touch
+    /// (`-1` when the stream did not report one).
     pub fn broadcast_ball_hit(&self, team_num: i32) {
         let event = serde_json::json!({
             "type": "ball_hit",
@@ -323,6 +396,12 @@ impl OverlayServer {
         self.broadcast_event(event);
     }
 
+    /// Signals a kickoff countdown so overlays can play their intro.
+    pub fn broadcast_countdown_begin(&self) {
+        let event = serde_json::json!({ "type": "countdown_begin" });
+        self.broadcast_event(event);
+    }
+
     /// Returns a clone of the cached state handle for REST API access.
     pub fn latest_state_handle(&self) -> Arc<RwLock<Option<String>>> {
         Arc::clone(&self.latest_state)
@@ -333,11 +412,20 @@ impl OverlayServer {
             running: self.running,
             port: self.port,
             connected_clients: self.client_count.load(Ordering::SeqCst),
+            token: if self.running {
+                (*self.token).clone()
+            } else {
+                String::new()
+            },
         }
     }
 
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
     }
 }
 
@@ -353,6 +441,85 @@ struct AppContext {
     client_count: Arc<AtomicUsize>,
     /// Cached latest match state for REST API consumers.
     latest_state: Arc<RwLock<Option<String>>>,
+    /// Bearer token accepted by protected endpoints.
+    token: Arc<String>,
+    /// Bound port, used to build the same-origin allowlist.
+    port: u16,
+}
+
+/// Optional `?token=` query parameter.
+#[derive(Debug, Default, Deserialize)]
+struct AuthQuery {
+    #[serde(default)]
+    token: Option<String>,
+}
+
+/// Whether `origin` is one of our own overlay origins.
+fn is_self_origin(origin: &str, port: u16) -> bool {
+    matches!(
+        origin,
+        o if o == format!("http://127.0.0.1:{port}")
+            || o == format!("http://localhost:{port}")
+            || o == format!("http://[::1]:{port}")
+    )
+}
+
+/// Authorizes a request against the token + origin allowlist.
+///
+/// - A valid `?token=` always authorizes (needed for `file://` overlays).
+/// - A browser `Origin` header must be one of our own origins.
+/// - Requests without an `Origin` header are non-browser clients (OBS API
+///   sources, curl, the SDK from a local process) and are allowed.
+/// - `Origin: null` (sandboxed iframes, data: URLs, `file://`) is rejected
+///   unless the token matches.
+fn authorize(headers: &HeaderMap, query: &AuthQuery, ctx: &AppContext) -> bool {
+    if let Some(token) = &query.token {
+        return token == &*ctx.token;
+    }
+    match headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        Some(origin) => is_self_origin(origin, ctx.port),
+        None => true,
+    }
+}
+
+/// Attaches hardening headers to an HTML/JS response.
+fn with_security_headers(mut response: Response, content_type: &str) -> Response {
+    let headers = response.headers_mut();
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, max-age=0"),
+    );
+    if content_type.starts_with("text/html") {
+        // Overlays are self-contained and inline their scripts/styles, so
+        // inline execution is allowed; everything remote is not. The
+        // `ws://127.0.0.1:*` source keeps WebSocket connections working
+        // across ports even when a custom port is configured.
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(
+                "default-src 'self'; \
+                 script-src 'self' 'unsafe-inline'; \
+                 style-src 'self' 'unsafe-inline'; \
+                 img-src 'self' data:; \
+                 font-src 'self'; \
+                 connect-src 'self' ws://127.0.0.1:* ws://localhost:*; \
+                 media-src 'self'; \
+                 object-src 'none'; \
+                 base-uri 'none'; \
+                 frame-ancestors 'none'",
+            ),
+        );
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    }
+    response
 }
 
 // ---------------------------------------------------------------------------
@@ -362,16 +529,24 @@ struct AppContext {
 /// Upgrades an HTTP request to a WebSocket connection at `/ws`.
 async fn ws_handler(
     ws: WebSocketUpgrade,
-    axum::extract::State(state): axum::extract::State<Arc<AppContext>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
 ) -> impl IntoResponse {
+    if !authorize(&headers, &query, &state) {
+        warn!("Rejected overlay WebSocket connection (origin/token mismatch)");
+        return StatusCode::FORBIDDEN.into_response();
+    }
     ws.on_upgrade(move |socket| handle_ws(socket, state))
+        .into_response()
 }
 
 /// Manages the lifecycle of a single WebSocket client.
 ///
-/// On connect the client receives a `{"type":"connected"}` handshake message,
-/// then all subsequent broadcast events are streamed to it. The connection
-/// stays open until the client disconnects or the broadcast channel closes.
+/// On connect the client receives a `{"type":"connected"}` handshake message
+/// followed by the cached `state` (if any), then all subsequent broadcast
+/// events are streamed to it. The connection stays open until the client
+/// disconnects or the broadcast channel closes.
 async fn handle_ws(mut socket: WebSocket, state: Arc<AppContext>) {
     state.client_count.fetch_add(1, Ordering::SeqCst);
     info!(
@@ -385,6 +560,24 @@ async fn handle_ws(mut socket: WebSocket, state: Arc<AppContext>) {
         if socket.send(Message::Text(msg.into())).await.is_err() {
             state.client_count.fetch_sub(1, Ordering::SeqCst);
             return;
+        }
+    }
+
+    // Late joiners get the current match immediately instead of waiting for
+    // the next snapshot (OBS scenes re-load browser sources on every switch).
+    {
+        let cached = state.latest_state.read().await;
+        if let Some(data) = &*cached {
+            let event = serde_json::json!({
+                "type": "state",
+                "data": serde_json::from_str::<serde_json::Value>(data).unwrap_or_default()
+            });
+            if let Ok(msg) = serde_json::to_string(&event) {
+                if socket.send(Message::Text(msg.into())).await.is_err() {
+                    state.client_count.fetch_sub(1, Ordering::SeqCst);
+                    return;
+                }
+            }
         }
     }
 
@@ -440,62 +633,85 @@ async fn serve_overlay(
     // Direct match first.
     if let Some(content) = OverlayAssets::get(path) {
         let mime = mime_guess::from_path(path).first_or_octet_stream();
-        return (
-            [(axum::http::header::CONTENT_TYPE, mime.as_ref())],
+        let response = (
+            [(header::CONTENT_TYPE, mime.as_ref())],
             content.data.to_vec(),
         )
             .into_response();
+        return with_security_headers(response, mime.as_ref());
     }
 
     // Fallback: try appending .html for clean URLs.
     let html_path = format!("{}.html", path);
     if let Some(content) = OverlayAssets::get(&html_path) {
-        return (
-            [(axum::http::header::CONTENT_TYPE, "text/html")],
-            content.data.to_vec(),
-        )
-            .into_response();
+        let response =
+            ([(header::CONTENT_TYPE, "text/html")], content.data.to_vec()).into_response();
+        return with_security_headers(response, "text/html");
     }
 
-    (axum::http::StatusCode::NOT_FOUND, "Overlay not found").into_response()
+    (StatusCode::NOT_FOUND, "Overlay not found").into_response()
 }
 
 /// Returns the latest cached match state as JSON at `GET /api/state`.
 async fn get_state_handler(
-    axum::extract::State(state): axum::extract::State<Arc<AppContext>>,
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
 ) -> impl IntoResponse {
-    let guard = state.latest_state.read().await;
-    match &*guard {
-        Some(json) => (
-            axum::http::StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            json.clone(),
-        )
-            .into_response(),
-        None => (
-            axum::http::StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "application/json")],
-            "{}",
-        )
-            .into_response(),
+    if !authorize(&headers, &query, &state) {
+        return StatusCode::FORBIDDEN.into_response();
     }
+    let guard = state.latest_state.read().await;
+    let body = guard.clone().unwrap_or_else(|| "{}".to_string());
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "no-store, max-age=0"),
+        ],
+        body,
+    )
+        .into_response()
 }
 
 /// Serves the overlay SDK JavaScript file at `GET /sdk/rl-overlay.js`.
 async fn serve_sdk() -> impl IntoResponse {
     match OverlayAssets::get("rl-overlay-sdk.js") {
-        Some(content) => (
-            [(axum::http::header::CONTENT_TYPE, "application/javascript")],
-            content.data.to_vec(),
-        )
-            .into_response(),
-        None => (axum::http::StatusCode::NOT_FOUND, "SDK not found").into_response(),
+        Some(content) => {
+            let response = (
+                [(header::CONTENT_TYPE, "application/javascript")],
+                content.data.to_vec(),
+            )
+                .into_response();
+            with_security_headers(response, "application/javascript")
+        }
+        None => (StatusCode::NOT_FOUND, "SDK not found").into_response(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::models::LivePlayer;
+
+    fn context(port: u16, token: &str) -> AppContext {
+        let (event_tx, _) = broadcast::channel::<String>(16);
+        AppContext {
+            event_tx,
+            client_count: Arc::new(AtomicUsize::new(0)),
+            latest_state: Arc::new(RwLock::new(None)),
+            token: Arc::new(token.to_string()),
+            port,
+        }
+    }
+
+    fn headers(origin: Option<&str>) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        if let Some(origin) = origin {
+            map.insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());
+        }
+        map
+    }
 
     #[test]
     fn new_server_starts_stopped_with_empty_state() {
@@ -505,6 +721,16 @@ mod tests {
         assert_eq!(status.port, 9528);
         assert_eq!(status.connected_clients, 0);
         assert_eq!(server.port(), 9528);
+        assert!(status.token.is_empty());
+    }
+
+    #[test]
+    fn token_is_generated_and_exposed_while_running() {
+        let mut server = OverlayServer::new(9528);
+        server.running = true;
+        let status = server.status();
+        assert!(!status.token.is_empty());
+        assert_eq!(status.token, server.token());
     }
 
     #[test]
@@ -528,6 +754,46 @@ mod tests {
         server.running = true;
         let error = server.start().await.unwrap_err();
         assert_eq!(error, "Overlay server is already running");
+    }
+
+    #[test]
+    fn authorize_allows_token_and_self_origin_and_bare_clients() {
+        let ctx = context(9528, "secret");
+        let token = AuthQuery {
+            token: Some("secret".into()),
+        };
+        assert!(authorize(&headers(Some("https://evil.com")), &token, &ctx));
+
+        let none = AuthQuery::default();
+        assert!(authorize(
+            &headers(Some("http://127.0.0.1:9528")),
+            &none,
+            &ctx
+        ));
+        assert!(authorize(
+            &headers(Some("http://localhost:9528")),
+            &none,
+            &ctx
+        ));
+        assert!(authorize(&headers(None), &none, &ctx));
+    }
+
+    #[test]
+    fn authorize_rejects_foreign_origin_and_null_origin_without_token() {
+        let ctx = context(9528, "secret");
+        let none = AuthQuery::default();
+        assert!(!authorize(&headers(Some("https://evil.com")), &none, &ctx));
+        assert!(!authorize(
+            &headers(Some("http://127.0.0.1:9999")),
+            &none,
+            &ctx
+        ));
+        assert!(!authorize(&headers(Some("null")), &none, &ctx));
+
+        let wrong = AuthQuery {
+            token: Some("nope".into()),
+        };
+        assert!(!authorize(&headers(Some("null")), &wrong, &ctx));
     }
 
     #[test]
@@ -564,36 +830,59 @@ mod tests {
         assert_eq!(with_secondary["data"]["secondaryTarget"]["teamNum"], 1);
     }
 
-    #[tokio::test]
-    async fn broadcast_state_caches_snapshot_for_api() {
+    #[test]
+    fn broadcast_ball_hit_carries_team() {
         let server = OverlayServer::new(0);
+        let mut rx = server.event_tx.subscribe();
+        server.broadcast_ball_hit(1);
+        let value: serde_json::Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(value["type"], "ball_hit");
+        assert_eq!(value["data"]["teamNum"], 1);
+    }
+
+    #[test]
+    fn broadcast_countdown_begin_emits_type() {
+        let server = OverlayServer::new(0);
+        let mut rx = server.event_tx.subscribe();
+        server.broadcast_countdown_begin();
+        let value: serde_json::Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(value["type"], "countdown_begin");
+    }
+
+    #[tokio::test]
+    async fn broadcast_state_emits_camel_case_state_event() {
+        let server = OverlayServer::new(0);
+        let mut rx = server.event_tx.subscribe();
         let state = LiveMatchState {
             match_guid: Some("guid-1".into()),
             score_blue: 2,
             score_orange: 1,
+            is_online: true,
+            time_remaining: 143,
+            players: vec![LivePlayer {
+                name: "Alice".into(),
+                ..Default::default()
+            }],
             ..Default::default()
         };
-        let expected: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&state).unwrap()).unwrap();
 
         server.broadcast_state(&state);
 
+        let event: serde_json::Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
+        assert_eq!(event["type"], "state");
+        assert_eq!(event["data"]["scoreBlue"], 2);
+        assert_eq!(event["data"]["scoreOrange"], 1);
+        assert_eq!(event["data"]["timeRemaining"], 143);
+        assert_eq!(event["data"]["isOnline"], true);
+        assert_eq!(event["data"]["matchGuid"], "guid-1");
+        assert_eq!(event["data"]["players"][0]["name"], "Alice");
+
+        // The cached payload is exactly the `data` object (REST consumer shape).
         let handle = server.latest_state_handle();
         let cached = handle.read().await;
         let cached: serde_json::Value = serde_json::from_str(cached.as_deref().unwrap()).unwrap();
-        assert_eq!(cached, expected);
-    }
-
-    #[tokio::test]
-    async fn state_event_caches_full_event_payload() {
-        let server = OverlayServer::new(0);
-        server.broadcast_event(serde_json::json!({"type": "state", "foo": 1}));
-
-        let handle = server.latest_state_handle();
-        let cached = handle.read().await;
-        let value: serde_json::Value = serde_json::from_str(cached.as_deref().unwrap()).unwrap();
-        assert_eq!(value["type"], "state");
-        assert_eq!(value["foo"], 1);
+        assert_eq!(cached["scoreBlue"], 2);
+        assert!(cached.get("type").is_none());
     }
 
     #[tokio::test]

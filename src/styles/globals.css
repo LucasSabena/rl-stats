@@ -29,7 +29,8 @@
   --fg: oklch(0.22 0.012 265);
   --fg-secondary: oklch(0.44 0.014 265);
   --fg-muted: oklch(0.56 0.014 265);
-  --fg-subtle: oklch(0.68 0.012 265);
+  /* AA-safe: the previous 0.68 sat around 2.3:1 on the light canvas. */
+  --fg-subtle: oklch(0.5 0.012 265);
 
   /* Hairlines */
   --line-subtle: oklch(0 0 0 / 0.07);
@@ -83,7 +84,8 @@
   --fg: oklch(0.98 0.003 265);
   --fg-secondary: oklch(0.76 0.012 265);
   --fg-muted: oklch(0.62 0.014 265);
-  --fg-subtle: oklch(0.5 0.014 265);
+  /* AA-safe: the previous 0.5 sat around 3.3:1 on the canvas. */
+  --fg-subtle: oklch(0.62 0.014 265);
 
   --line-subtle: oklch(1 0 0 / 0.06);
   --line: oklch(1 0 0 / 0.1);

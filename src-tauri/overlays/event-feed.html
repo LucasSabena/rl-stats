@@ -166,10 +166,10 @@
 
 <div class="disconnected" id="disconnected">Sin conexion</div>
 
+<script src="/sdk/rl-overlay.js"></script>
 <script>
 (function() {
-  var WS_URL = 'ws://127.0.0.1:9528/ws';
-  var ws;
+  var overlay = RLOverlay.connect();
   var MAX_EVENTS = 10;
   var prevPlayers = {}; // keyed by player id: {goals, assists, saves, demos}
   var events = []; // {type, text, icon, time}
@@ -178,29 +178,20 @@
 
   function $(id) { return document.getElementById(id); }
 
-  function connect() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = function() {
-      console.log('[EventFeed] Connected');
-      $('disconnected').classList.remove('visible');
-    };
-    ws.onmessage = function(e) {
-      var msg = JSON.parse(e.data);
-      if (msg.type === 'connected') {
-        $('disconnected').classList.remove('visible');
-      }
-      if (msg.type === 'state' && msg.data) {
-        $('disconnected').classList.remove('visible');
-        process(msg.data);
-      }
-    };
-    ws.onclose = function() {
-      console.log('[EventFeed] Disconnected, reconnecting...');
-      $('disconnected').classList.add('visible');
-      setTimeout(connect, 2000);
-    };
-    ws.onerror = function() { ws.close(); };
-  }
+  overlay.on('connected', function() {
+    console.log('[EventFeed] Connected');
+    $('disconnected').classList.remove('visible');
+  });
+
+  overlay.on('disconnected', function() {
+    console.log('[EventFeed] Disconnected, reconnecting...');
+    $('disconnected').classList.add('visible');
+  });
+
+  overlay.on('state', function(d) {
+    $('disconnected').classList.remove('visible');
+    process(d);
+  });
 
   function fmtTime(seconds) {
     seconds = Math.max(0, Math.floor(seconds || 0));
@@ -234,7 +225,7 @@
 
     // Detect match end (online went from true to false while we had a guid)
     if (!d.isOnline && prevOnline && prevMatchGuid) {
-      addEvent('banner', 'PARTIDO FINALIZADA', '', timeStr);
+      addEvent('banner', 'PARTIDO FINALIZADO', '', timeStr);
       prevMatchGuid = null;
     }
     prevOnline = d.isOnline;
@@ -317,42 +308,49 @@
     var feedEl = $('feed');
     var emptyEl = $('emptyFeed');
 
+    // Remove every rendered event (they are rebuilt below).
+    var rendered = feedEl.querySelectorAll('.event');
+    for (var k = 0; k < rendered.length; k++) {
+      rendered[k].remove();
+    }
+
     if (events.length === 0) {
       emptyEl.style.display = '';
-      // Remove event elements except empty span
-      var children = feedEl.children;
-      for (var i = children.length - 1; i >= 0; i--) {
-        if (children[i] !== emptyEl) {
-          feedEl.removeChild(children[i]);
-        }
-      }
       return;
     }
-
     emptyEl.style.display = 'none';
 
-    // Build all events
-    var html = '';
+    // Build all events with DOM APIs: names are untrusted, so no innerHTML.
+    var fragment = document.createDocumentFragment();
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
-      html +=
-        '<div class="event ' + ev.type + '" style="animation-delay:0s">' +
-          '<span class="event-icon">' + ev.icon + '</span>' +
-          '<span class="event-body"><span class="event-text">' + ev.text + '</span></span>' +
-          '<span class="event-time">' + ev.time + '</span>' +
-        '</div>';
-    }
-    html += '<div class="empty-feed" id="emptyFeedPlaceholder" style="display:none">Esperando eventos...</div>';
-    feedEl.innerHTML = html;
 
-    // Fade older events
-    var eventEls = feedEl.querySelectorAll('.event');
-    for (var j = 3; j < eventEls.length; j++) {
-      eventEls[j].classList.add('fading');
+      var row = document.createElement('div');
+      row.className = 'event ' + ev.type;
+      if (i >= 3) row.classList.add('fading');
+
+      var icon = document.createElement('span');
+      icon.className = 'event-icon';
+      icon.textContent = ev.icon;
+
+      var body = document.createElement('span');
+      body.className = 'event-body';
+      var text = document.createElement('span');
+      text.className = 'event-text';
+      text.textContent = ev.text;
+      body.appendChild(text);
+
+      var time = document.createElement('span');
+      time.className = 'event-time';
+      time.textContent = ev.time;
+
+      row.appendChild(icon);
+      row.appendChild(body);
+      row.appendChild(time);
+      fragment.appendChild(row);
     }
+    feedEl.appendChild(fragment);
   }
-
-  connect();
 })();
 </script>
 </body>

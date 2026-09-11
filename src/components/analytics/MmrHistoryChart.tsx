@@ -83,6 +83,7 @@ export function MmrHistoryChart({
           <select
             value={playlist}
             onChange={(event) => setPlaylist(event.target.value)}
+            aria-label={t("analytics:mmrHistory.playlistLabel", { defaultValue: "Playlist" })}
             className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-xs text-text-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
           >
             <option value={ALL_PLAYLISTS}>

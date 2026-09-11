@@ -146,7 +146,29 @@
     "dataDeleted": "Dados excluídos",
     "deleteError": "Falha ao excluir dados",
     "cancel": "Cancelar",
-    "importSuccessMessage": "Arquivo: {{file}}"
+    "importSuccessMessage": "Arquivo: {{file}}",
+    "retention": "Retenção de dados",
+    "retentionHint": "As partidas mais antigas que este limite são excluídas automaticamente.",
+    "retentionUnit": "dias",
+    "retentionZero": "Use 0 para manter todo o histórico.",
+    "retentionSaved": "Retenção atualizada",
+    "retentionSavedMessage": "Partidas com mais de {{days}} dias serão excluídas.",
+    "retentionUnlimited": "O histórico completo será mantido.",
+    "retentionError": "Não foi possível salvar a retenção",
+    "pull": "Baixar alterações",
+    "pullSuccess": "Alterações baixadas",
+    "pullSuccessMessage": "{{applied}} alterações aplicadas, {{skipped}} ignoradas.",
+    "pullUpToDate": "Tudo atualizado",
+    "pullUpToDateMessage": "Não há novas alterações na nuvem.",
+    "pullSkipped": "Download ignorado",
+    "pullSkippedReasons": {
+      "missing_config": "A sincronização na nuvem não está configurada.",
+      "signed_out": "Entre na nuvem para baixar alterações.",
+      "inactive_plan": "É necessário um plano de nuvem ativo."
+    },
+    "pullError": "Não foi possível baixar as alterações",
+    "dataDeletedCloud": "As cópias na nuvem também foram excluídas.",
+    "dataDeletedLocalOnly": "Os dados locais foram excluídos; a cópia na nuvem não pôde ser removida."
   },
   "update": {
     "title": "Atualizações",
@@ -172,7 +194,8 @@
       },
       "checkError": {
         "title": "Erro ao verificar atualizações"
-      }
+      },
+      "downloadCancelled": "Download cancelado"
     },
     "errors": {
       "invalidSignature": "Assinatura inválida. Verifique se TAURI_SIGNING_PRIVATE_KEY está configurado no CI.",
@@ -182,7 +205,8 @@
       "latestJsonNotFound": "latest.json não encontrado. Certifique-se de que o release do CI foi executado.",
       "connectionWithDetail": "Erro de conexão. Verifique seu acesso à internet.\nDetalhe: {{detail}}"
     },
-    "download": "Baixar e instalar"
+    "download": "Baixar e instalar",
+    "installing": "Instalando…"
   },
   "prompt": {
     "title": "Pergunta sobre o jogo",
@@ -246,12 +270,16 @@
     },
     "never": "Nunca",
     "connection": "Conexão",
+    "supabaseUrlLabel": "URL do Supabase",
     "supabaseUrlPlaceholder": "URL do Supabase",
+    "supabaseAnonKeyLabel": "Chave anon do Supabase",
     "supabaseAnonKeyPlaceholder": "Chave anon do Supabase",
     "saveConfig": "Salvar configuração",
     "refreshStatus": "Atualizar status",
     "account": "Conta do Cloud",
+    "emailLabel": "E-mail",
     "emailPlaceholder": "email@exemplo.com",
+    "passwordLabel": "Senha",
     "passwordPlaceholder": "Senha",
     "signIn": "Entrar",
     "createAccount": "Criar conta",
@@ -299,5 +327,84 @@
       "autoSyncUploaded": "{{uploaded}} alterações enviadas após a partida.",
       "autoSyncFailed": "Não foi possível enviar os dados da partida."
     }
+  },
+  "mmrSources": {
+    "title": "Fontes de MMR",
+    "description": "Scraper local com navegador integrado (sem conta, sem API key, sem risco de ban).",
+    "never": "nunca",
+    "noData": "Sem dados",
+    "ok": "Funcionando",
+    "error": "Com erros",
+    "disabled": "Desativado",
+    "enableLabel": "Usar o scraper local como provedor primário de MMR",
+    "providerTitle": "RLStats.net (WebView integrado)",
+    "primaryProvider": "provedor primário",
+    "lastAttempt": "Última tentativa: {{timestamp}}",
+    "lastOk": "Último OK: {{timestamp}}",
+    "latency": "Latência: {{latency}}",
+    "okFailures": "OK / falhas: {{ok}} / {{failures}}",
+    "testing": "Consultando…",
+    "testNow": "Testar agora",
+    "howItWorks": {
+      "title": "Como funciona",
+      "description1": "O scraper navega no rlstats.net em uma janela oculta, resolve o desafio do Cloudflare como um navegador real e extrai o MMR de todas as playlists. Fica em cache por 30 minutos e consulta uma vez por jogador e partida.",
+      "description2": "RapidAPI e Parse.bot continuam disponíveis como provedores opcionais se você configurar credenciais; o Tracker Network foi desativado porque não emite mais API keys para Rocket League."
+    }
+  },
+  "rapidApi": {
+    "title": "RapidAPI Rocket League",
+    "description": "Provedor comercial recomendado para ranks/MMR quando o cache local não é suficiente.",
+    "active": "Ativo",
+    "disabled": "Desativado",
+    "enableLabel": "Usar a RapidAPI como provedor primário de MMR",
+    "apiKeyLabel": "API Key da RapidAPI",
+    "apiKeyPlaceholder": "Cole sua X-RapidAPI-Key",
+    "showKey": "Mostrar key",
+    "hideKey": "Ocultar key",
+    "notes": {
+      "title": "Notas de integração",
+      "freePlan": "Plano free detectado: 5 player endpoints por dia. Não serve para uso real do MMR ao vivo.",
+      "proPlan": "Plano Pro detectado: 1000 player endpoints por dia e 10 req/s.",
+      "priority": "O app usa antes do Tracker/RLStats, mas continua priorizando a estimativa local para o seu próprio jogador."
+    },
+    "saving": "Salvando…",
+    "save": "Salvar RapidAPI"
+  },
+  "parseBot": {
+    "title": "Parse.bot",
+    "description": "Scraper configurável com bypass anti-bot. Ideal quando o RLStats ou o Tracker estão atrás do Cloudflare.",
+    "active": "Ativo",
+    "disabled": "Desativado",
+    "enableLabel": "Usar o Parse.bot como provedor de MMR (entre Tracker e RLStats)",
+    "apiKeyLabel": "API Key do Parse.bot",
+    "apiKeyPlaceholder": "pmx_sua_api_key_aqui",
+    "showKey": "Mostrar key",
+    "hideKey": "Ocultar key",
+    "scraperIdLabel": "Scraper ID",
+    "scraperIdPlaceholder": "scraper-abc123",
+    "endpointLabel": "Endpoint",
+    "endpointPlaceholder": "get_profile",
+    "howTo": {
+      "title": "Como configurar o Parse.bot",
+      "step1": "1. Crie uma conta no parse.bot (plano free: 200 créditos, sem cartão).",
+      "step2": "2. Crie um scraper novo apontando para rlstats.net ou tracker.network com a tarefa \"get player MMR by platform and identifier\".",
+      "step3": "3. Copie o Scraper ID e o nome do endpoint do dashboard do parse.bot.",
+      "step4": "4. Gere uma API key em Settings > API Keys e cole aqui.",
+      "note": "Cada usuário usa sua própria conta e créditos. O app envia platform e identifier para o scraper."
+    },
+    "saving": "Salvando…",
+    "save": "Salvar Parse.bot"
+  },
+  "diagnostics": {
+    "title": "Diagnóstico",
+    "description": "Logs locais para relatar problemas. Os últimos 7 dias são mantidos.",
+    "openFolder": "Abrir pasta de logs",
+    "copy": "Copiar diagnóstico",
+    "copied": "Diagnóstico copiado",
+    "download": "Baixar logs",
+    "reportIssue": "Relatar problema",
+    "openError": "Não foi possível abrir a pasta de logs",
+    "copyError": "Não foi possível copiar o diagnóstico",
+    "downloadError": "Não foi possível baixar os logs"
   }
 }

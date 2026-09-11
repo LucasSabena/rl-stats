@@ -114,6 +114,34 @@ pub fn try_migrate_from_legacy(app_dir: &Path) -> AppResult<bool> {
     Ok(false)
 }
 
+/// Serializes manifest read-modify-write sequences.
+///
+/// The manifest is a plain JSON file: two concurrent commands (e.g. a rename
+/// while an auto-detected identity update lands) used to interleave and lose
+/// one of the writes. All mutating operations take this lock.
+static MANIFEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Validates a user-provided profile name.
+fn validate_profile_name(name: &str) -> AppResult<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::ConfigError(
+            "El nombre del perfil no puede estar vacío.".into(),
+        ));
+    }
+    if trimmed.chars().count() > 48 {
+        return Err(AppError::ConfigError(
+            "El nombre del perfil no puede superar los 48 caracteres.".into(),
+        ));
+    }
+    if trimmed.chars().any(|c| c.is_control()) {
+        return Err(AppError::ConfigError(
+            "El nombre del perfil contiene caracteres inválidos.".into(),
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
 /// Reads the manifest from disk.
 fn read_manifest(path: &Path) -> AppResult<ProfilesManifest> {
     let content = fs::read_to_string(path)?;
@@ -135,6 +163,52 @@ fn write_manifest(path: &Path, manifest: &ProfilesManifest) -> AppResult<()> {
     Ok(())
 }
 
+/// Copies identity data that only exists in a profile database back into the
+/// manifest, and flags duplicate primary ids.
+///
+/// The manifest and `app_settings` each store the player identity; they can
+/// drift (e.g. a crash between the two writes, or an older build). The
+/// settings DB is the source of truth for identity.
+fn reconcile_manifest_from_databases(app_dir: &Path, manifest: &mut ProfilesManifest) -> bool {
+    let mut changed = false;
+    let mut seen_primary_ids: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    for profile in &mut manifest.profiles {
+        let db_path = get_db_path_for_profile(app_dir, &profile.id);
+        if !db_path.exists() {
+            continue;
+        }
+        let Ok(settings) = crate::core::settings::get_settings_from_path(&db_path) else {
+            continue;
+        };
+
+        if profile.local_primary_id.is_none() {
+            if let Some(pid) = settings.local_primary_id.clone().filter(|p| !p.is_empty()) {
+                profile.local_primary_id = Some(pid);
+                changed = true;
+            }
+        }
+        if profile.player_name.is_none() && !settings.player_name.trim().is_empty() {
+            profile.player_name = Some(settings.player_name.clone());
+            changed = true;
+        }
+
+        if let Some(pid) = profile.local_primary_id.clone().filter(|p| !p.is_empty()) {
+            if let Some(owner) = seen_primary_ids.insert(pid.clone(), profile.id.clone()) {
+                warn!(
+                    primary_id = %pid,
+                    first_profile = %owner,
+                    second_profile = %profile.id,
+                    "Two profiles share the same local primary id"
+                );
+            }
+        }
+    }
+
+    changed
+}
+
 /// Initializes the profile system.
 ///
 /// - If `profiles.json` exists, reads it and returns the active profile ID.
@@ -144,7 +218,12 @@ pub fn init_profiles(app_dir: &Path) -> AppResult<String> {
     let manifest_path = get_profiles_manifest_path(app_dir);
 
     if manifest_path.exists() {
-        let manifest = read_manifest(&manifest_path)?;
+        let mut manifest = read_manifest(&manifest_path)?;
+        if reconcile_manifest_from_databases(app_dir, &mut manifest) {
+            if let Err(e) = write_manifest(&manifest_path, &manifest) {
+                warn!(error = %e, "Could not persist reconciled profiles manifest");
+            }
+        }
         let active_id = manifest.active_profile_id.clone();
         crate::core::app_sync::enqueue_profiles_manifest_snapshot_best_effort(app_dir, &manifest);
 
@@ -232,10 +311,25 @@ fn sanitize_profile_id(name: &str) -> String {
 
 /// Creates a new profile with the given name.
 pub fn create_profile(app_dir: &Path, name: &str) -> AppResult<Profile> {
+    let name = validate_profile_name(name)?;
+    let _guard = MANIFEST_LOCK
+        .lock()
+        .map_err(|_| AppError::ConfigError("Profile manifest lock is poisoned".into()))?;
     let manifest_path = get_profiles_manifest_path(app_dir);
     let mut manifest = read_manifest(&manifest_path)?;
 
-    let mut id = sanitize_profile_id(name);
+    if manifest
+        .profiles
+        .iter()
+        .any(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        return Err(AppError::ConfigError(format!(
+            "Ya existe un perfil llamado '{}'.",
+            name
+        )));
+    }
+
+    let mut id = sanitize_profile_id(&name);
     if id.is_empty() {
         id = "profile".to_string();
     }
@@ -272,6 +366,9 @@ pub fn create_profile(app_dir: &Path, name: &str) -> AppResult<Profile> {
 ///
 /// Prevents deleting the last profile or the currently active profile.
 pub fn delete_profile(app_dir: &Path, id: &str) -> AppResult<()> {
+    let _guard = MANIFEST_LOCK
+        .lock()
+        .map_err(|_| AppError::ConfigError("Profile manifest lock is poisoned".into()))?;
     let manifest_path = get_profiles_manifest_path(app_dir);
     let mut manifest = read_manifest(&manifest_path)?;
 
@@ -298,6 +395,14 @@ pub fn delete_profile(app_dir: &Path, id: &str) -> AppResult<()> {
     let db_path = get_db_path_for_profile(app_dir, id);
     if db_path.exists() {
         fs::remove_file(&db_path)?;
+        // WAL and SHM sidecars hold committed-but-uncheckpointed pages; the
+        // next profile created with the same id used to inherit them.
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = PathBuf::from(format!("{}{}", db_path.display(), suffix));
+            if sidecar.exists() {
+                let _ = fs::remove_file(sidecar);
+            }
+        }
         debug!(profile_id = %id, db_path = %db_path.display(), "Deleted profile database");
     } else {
         warn!(profile_id = %id, db_path = %db_path.display(), "Profile database not found for deletion");
@@ -311,6 +416,9 @@ pub fn delete_profile(app_dir: &Path, id: &str) -> AppResult<()> {
 
 /// Switches the active profile to the given ID.
 pub fn switch_profile(app_dir: &Path, id: &str) -> AppResult<()> {
+    let _guard = MANIFEST_LOCK
+        .lock()
+        .map_err(|_| AppError::ConfigError("Profile manifest lock is poisoned".into()))?;
     let manifest_path = get_profiles_manifest_path(app_dir);
     let mut manifest = read_manifest(&manifest_path)?;
 
@@ -327,8 +435,23 @@ pub fn switch_profile(app_dir: &Path, id: &str) -> AppResult<()> {
 
 /// Renames an existing profile.
 pub fn rename_profile(app_dir: &Path, id: &str, new_name: &str) -> AppResult<()> {
+    let new_name = validate_profile_name(new_name)?;
+    let _guard = MANIFEST_LOCK
+        .lock()
+        .map_err(|_| AppError::ConfigError("Profile manifest lock is poisoned".into()))?;
     let manifest_path = get_profiles_manifest_path(app_dir);
     let mut manifest = read_manifest(&manifest_path)?;
+
+    if manifest
+        .profiles
+        .iter()
+        .any(|p| p.id != id && p.name.eq_ignore_ascii_case(&new_name))
+    {
+        return Err(AppError::ConfigError(format!(
+            "Ya existe un perfil llamado '{}'.",
+            new_name
+        )));
+    }
 
     let profile = manifest
         .profiles
@@ -336,7 +459,7 @@ pub fn rename_profile(app_dir: &Path, id: &str, new_name: &str) -> AppResult<()>
         .find(|p| p.id == id)
         .ok_or_else(|| AppError::ConfigError(format!("Profile '{}' not found", id)))?;
 
-    profile.name = new_name.to_string();
+    profile.name = new_name.clone();
     write_manifest(&manifest_path, &manifest)?;
 
     info!(profile_id = %id, new_name = %new_name, "Renamed profile");
@@ -420,8 +543,25 @@ pub fn update_profile_player_identity(
     primary_id: &str,
     player_name: &str,
 ) -> AppResult<()> {
+    let _guard = MANIFEST_LOCK
+        .lock()
+        .map_err(|_| AppError::ConfigError("Profile manifest lock is poisoned".into()))?;
     let manifest_path = get_profiles_manifest_path(app_dir);
     let mut manifest = read_manifest(&manifest_path)?;
+
+    // One Rocket League account belongs to exactly one profile. Without this
+    // check a mis-detected match could silently reassign an identity that is
+    // already configured elsewhere.
+    if let Some(owner) = manifest.profiles.iter().find(|p| {
+        p.id != profile_id
+            && p.local_primary_id.as_deref() == Some(primary_id)
+            && !primary_id.is_empty()
+    }) {
+        return Err(AppError::ConfigError(format!(
+            "La cuenta ya está asignada al perfil '{}'.",
+            owner.name
+        )));
+    }
 
     let profile = manifest
         .profiles

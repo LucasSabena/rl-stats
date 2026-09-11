@@ -170,6 +170,7 @@ export function ComparisonPanel({
             <select
               value={rivalId ?? ""}
               onChange={(event) => setRivalId(event.target.value || null)}
+              aria-label={t("analytics:comparison.pickRival", { defaultValue: "Elegí un jugador" })}
               className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-xs text-text-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
             >
               <option value="">

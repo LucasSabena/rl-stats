@@ -142,6 +142,7 @@ export function RocketLeagueSection({
             {...register("playerName")}
             className={inputClass}
             placeholder={t("settings:fields.playerNamePlaceholder")}
+            aria-label={t("settings:fields.playerName")}
           />
           {errors.playerName && (
             <p className="text-xs text-accent-danger">
@@ -241,6 +242,7 @@ export function RocketLeagueSection({
               onChange={(event) => setManualPath(event.target.value)}
               className={cn(inputClass, "flex-1")}
               placeholder={t("settings:fields.installPathPlaceholder")}
+              aria-label={t("settings:fields.installPath")}
             />
             <Button
               type="button"

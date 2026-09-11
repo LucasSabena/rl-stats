@@ -146,7 +146,29 @@
     "dataDeleted": "Data deleted",
     "deleteError": "Failed to delete data",
     "cancel": "Cancel",
-    "importSuccessMessage": "File: {{file}}"
+    "importSuccessMessage": "File: {{file}}",
+    "retention": "Data retention",
+    "retentionHint": "Matches older than this limit are deleted automatically.",
+    "retentionUnit": "days",
+    "retentionZero": "Use 0 to keep the full history.",
+    "retentionSaved": "Retention updated",
+    "retentionSavedMessage": "Matches older than {{days}} days will be deleted.",
+    "retentionUnlimited": "The full history will be kept.",
+    "retentionError": "Could not save retention",
+    "pull": "Download changes",
+    "pullSuccess": "Changes downloaded",
+    "pullSuccessMessage": "{{applied}} changes applied, {{skipped}} skipped.",
+    "pullUpToDate": "Up to date",
+    "pullUpToDateMessage": "There are no new cloud changes.",
+    "pullSkipped": "Download skipped",
+    "pullSkippedReasons": {
+      "missing_config": "Cloud sync is not configured.",
+      "signed_out": "Sign in to the cloud to download changes.",
+      "inactive_plan": "An active cloud plan is required."
+    },
+    "pullError": "Could not download changes",
+    "dataDeletedCloud": "Cloud copies were deleted too.",
+    "dataDeletedLocalOnly": "Local data was deleted; the cloud copy could not be removed."
   },
   "update": {
     "title": "Updates",
@@ -172,7 +194,8 @@
       },
       "checkError": {
         "title": "Error checking for updates"
-      }
+      },
+      "downloadCancelled": "Download cancelled"
     },
     "errors": {
       "invalidSignature": "Invalid signature. Verify that TAURI_SIGNING_PRIVATE_KEY is configured in CI.",
@@ -182,7 +205,8 @@
       "latestJsonNotFound": "latest.json not found. Make sure the CI release has been run.",
       "connectionWithDetail": "Connection error. Check your internet access.\nDetail: {{detail}}"
     },
-    "download": "Download & install"
+    "download": "Download & install",
+    "installing": "Installing…"
   },
   "prompt": {
     "title": "In-game prompt",
@@ -246,12 +270,16 @@
     },
     "never": "Never",
     "connection": "Connection",
+    "supabaseUrlLabel": "Supabase URL",
     "supabaseUrlPlaceholder": "Supabase URL",
+    "supabaseAnonKeyLabel": "Supabase anon key",
     "supabaseAnonKeyPlaceholder": "Supabase anon key",
-    "saveConfig": "Save cloud config",
+    "saveConfig": "Save configuration",
     "refreshStatus": "Refresh status",
     "account": "Cloud account",
+    "emailLabel": "Email",
     "emailPlaceholder": "email@example.com",
+    "passwordLabel": "Password",
     "passwordPlaceholder": "Password",
     "signIn": "Sign in",
     "createAccount": "Create account",
@@ -299,5 +327,84 @@
       "autoSyncUploaded": "{{uploaded}} changes uploaded after the match.",
       "autoSyncFailed": "Could not upload match data."
     }
+  },
+  "mmrSources": {
+    "title": "MMR sources",
+    "description": "Local scraper with a built-in browser (no account, no API key, no ban risk).",
+    "never": "never",
+    "noData": "No data",
+    "ok": "Working",
+    "error": "With errors",
+    "disabled": "Disabled",
+    "enableLabel": "Use the local scraper as the primary MMR provider",
+    "providerTitle": "RLStats.net (built-in WebView)",
+    "primaryProvider": "primary provider",
+    "lastAttempt": "Last attempt: {{timestamp}}",
+    "lastOk": "Last OK: {{timestamp}}",
+    "latency": "Latency: {{latency}}",
+    "okFailures": "OK / failures: {{ok}} / {{failures}}",
+    "testing": "Checking…",
+    "testNow": "Test now",
+    "howItWorks": {
+      "title": "How it works",
+      "description1": "The scraper browses rlstats.net in a hidden window, solves the Cloudflare challenge like a real browser, and extracts MMR for every playlist. It is cached for 30 minutes and queries once per player and match.",
+      "description2": "RapidAPI and Parse.bot remain available as optional providers if you configure credentials; Tracker Network was disabled because it no longer issues API keys for Rocket League."
+    }
+  },
+  "rapidApi": {
+    "title": "RapidAPI Rocket League",
+    "description": "Recommended commercial provider for ranks/MMR when the local cache is not enough.",
+    "active": "Active",
+    "disabled": "Disabled",
+    "enableLabel": "Use RapidAPI as the primary MMR provider",
+    "apiKeyLabel": "RapidAPI API Key",
+    "apiKeyPlaceholder": "Paste your X-RapidAPI-Key",
+    "showKey": "Show key",
+    "hideKey": "Hide key",
+    "notes": {
+      "title": "Integration notes",
+      "freePlan": "Free plan detected: 5 player endpoints per day. Not enough for real live MMR use.",
+      "proPlan": "Pro plan detected: 1000 player endpoints per day and 10 req/s.",
+      "priority": "The app uses it before Tracker/RLStats, but still prioritizes local estimation for your own player."
+    },
+    "saving": "Saving…",
+    "save": "Save RapidAPI"
+  },
+  "parseBot": {
+    "title": "Parse.bot",
+    "description": "Configurable scraper with anti-bot bypass. Ideal when RLStats or Tracker are behind Cloudflare.",
+    "active": "Active",
+    "disabled": "Disabled",
+    "enableLabel": "Use Parse.bot as an MMR provider (between Tracker and RLStats)",
+    "apiKeyLabel": "Parse.bot API Key",
+    "apiKeyPlaceholder": "pmx_your_api_key_here",
+    "showKey": "Show key",
+    "hideKey": "Hide key",
+    "scraperIdLabel": "Scraper ID",
+    "scraperIdPlaceholder": "scraper-abc123",
+    "endpointLabel": "Endpoint",
+    "endpointPlaceholder": "get_profile",
+    "howTo": {
+      "title": "How to configure Parse.bot",
+      "step1": "1. Create an account at parse.bot (free plan: 200 credits, no card required).",
+      "step2": "2. Create a new scraper pointing at rlstats.net or tracker.network with the task \"get player MMR by platform and identifier\".",
+      "step3": "3. Copy the Scraper ID and endpoint name from the parse.bot dashboard.",
+      "step4": "4. Generate an API key in Settings > API Keys and paste it here.",
+      "note": "Each user uses their own account and credits. The app sends platform and identifier to the scraper."
+    },
+    "saving": "Saving…",
+    "save": "Save Parse.bot"
+  },
+  "diagnostics": {
+    "title": "Diagnostics",
+    "description": "Local logs for bug reports. The last 7 days are kept.",
+    "openFolder": "Open logs folder",
+    "copy": "Copy diagnostics",
+    "copied": "Diagnostics copied",
+    "download": "Download logs",
+    "reportIssue": "Report an issue",
+    "openError": "Could not open the logs folder",
+    "copyError": "Could not copy diagnostics",
+    "downloadError": "Could not download logs"
   }
 }

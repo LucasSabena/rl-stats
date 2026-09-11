@@ -316,6 +316,13 @@ impl SessionManager {
                         }
                     }
                     self.ball_speed = game.ball.as_ref().map(|ball| ball.speed).unwrap_or(0.0);
+                    // `Ball.TeamNum` is the last team that touched the ball.
+                    // Only overwrite when the snapshot actually reports it:
+                    // some streams omit it and stale values are better than
+                    // losing possession entirely.
+                    if let Some(team) = game.ball.as_ref().and_then(|ball| ball.team_num) {
+                        self.last_touch_team = Some(team);
+                    }
                     self.max_player_count = self.max_player_count.max(players.len());
                     // Merge players from the snapshot into the session map.
                     // We update existing players with their latest stats AND keep any
@@ -951,6 +958,23 @@ impl SessionManager {
     /// fires when hopping into Free Play.
     pub fn is_real_match(&self) -> bool {
         self.max_player_count > 1
+    }
+
+    /// Force-finalizes the in-memory session when the app is exiting.
+    ///
+    /// Neither a real match quit mid-game nor a training stint interrupted by
+    /// closing the app emits a terminal event, so `flush_before_exit` calls
+    /// this to persist whatever is in memory instead of dropping it.
+    /// Returns `true` when there is something worth persisting.
+    pub fn force_finalize_for_exit(&mut self) -> bool {
+        if self.phase != MatchPhase::Active || !self.has_meaningful_match_data() {
+            return false;
+        }
+        // Use the last activity as the end time: it is the closest we get to
+        // when the session really stopped.
+        self.idle_finalized = true;
+        self.phase = MatchPhase::Finished;
+        true
     }
 
     fn has_meaningful_match_data(&self) -> bool {

@@ -150,6 +150,12 @@ fn parse_game_state(data: &Value) -> GameState {
                     .or_else(|| ball.get("speed"))
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.0),
+                team_num: ball
+                    .get("TeamNum")
+                    .or_else(|| ball.get("teamNum"))
+                    .or_else(|| ball.get("team_num"))
+                    .and_then(|v| v.as_i64())
+                    .and_then(|v| i32::try_from(v).ok()),
             });
 
     GameState {

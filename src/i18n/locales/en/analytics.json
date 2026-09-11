@@ -115,6 +115,59 @@
     "demosTitle": "Demolitions",
     "periodLabel": "Session summary"
   },
+  "sessionSummary": {
+    "title": "Session summary",
+    "subtitle": "How your Rocket League session went",
+    "matches": "Matches",
+    "record": "Record",
+    "streak": "Final streak",
+    "goals": "Goals",
+    "time": "Time played",
+    "winRate": "Win rate",
+    "bestHour": "Best hour"
+  },
+  "mmrHistory": {
+    "title": "MMR history",
+    "allPlaylists": "All",
+    "playlistLabel": "Playlist",
+    "current": "Current",
+    "delta": "Change",
+    "peak": "Peak",
+    "games": "Matches",
+    "empty": {
+      "title": "No MMR readings yet",
+      "description": "MMR is saved with each match when a provider is configured. Play a few matches to see the curve."
+    },
+    "error": "Could not load MMR history."
+  },
+  "comparison": {
+    "title": "Comparison",
+    "current": "Current",
+    "previous": "Previous",
+    "modePeriods": "Periods",
+    "modePlayers": "Players",
+    "pickRival": "Pick a player",
+    "pickRivalHint": "Pick a player to compare against your numbers.",
+    "empty": "Not enough matches in this period.",
+    "error": "Could not load the comparison.",
+    "footnote": "Green = better value in that metric.",
+    "metrics": {
+      "matches": "Matches",
+      "winRate": "Win rate",
+      "wins": "Wins",
+      "losses": "Losses",
+      "goals": "Goals",
+      "conceded": "Goals conceded",
+      "assists": "Assists",
+      "saves": "Saves",
+      "shots": "Shots",
+      "demos": "Demos",
+      "avgScore": "Avg. score",
+      "kickoff": "Kickoff goals",
+      "kickoffConceded": "Kickoff conceded",
+      "peakSpeed": "Peak speed"
+    }
+  },
   "matchDetail": {
     "loading": "Loading matches...",
     "win": "W",
@@ -268,6 +321,7 @@
     "noData": "No data for this combination.",
     "save": "Save",
     "savePlaceholder": "Name this view…",
+    "saveLabel": "View name",
     "prevWin": "After win",
     "prevLoss": "After loss",
     "prevStart": "Session start"
@@ -296,5 +350,14 @@
     "colPlayed": "Matches",
     "colWon": "Won",
     "colWinRate": "Win rate"
+  },
+  "weeklyGoals": {
+    "title": "Weekly goals",
+    "description": "Set goals for this week; they are stored in your settings.",
+    "matchesGoal": "Matches per week",
+    "winsGoal": "Wins per week",
+    "save": "Save goals",
+    "matchesProgress": "Matches played",
+    "winsProgress": "Wins"
   }
 }

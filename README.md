@@ -55,10 +55,16 @@ The app includes a built-in HTTP/WebSocket server for streaming live match data 
 
 | Overlay | URL | Description |
 |---------|-----|-------------|
+| Enhanced | `http://127.0.0.1:9528/overlays/enhanced` | Broadcast scorebug with rosters, events and goal alerts |
 | Scoreboard | `http://127.0.0.1:9528/overlays/scoreboard` | Live score, arena, timer, OT badge |
 | Player Stats | `http://127.0.0.1:9528/overlays/player-stats` | Blue/orange team panels with stats |
 | Event Feed | `http://127.0.0.1:9528/overlays/event-feed` | Goals, saves, demos in a live feed |
+| Alerts | `http://127.0.0.1:9528/overlays/alerts` | Full-screen goal and play alerts for scene switches |
 | All-in-One | `http://127.0.0.1:9528/overlays/all-in-one` | Combined scoreboard + stats + events |
+
+Settings → Streaming builds these URLs with the server token and your scene
+customization (match title, team names, series length, hidden modules and
+active alert types) already applied, and shows a live preview.
 
 ### How to Use
 
@@ -68,7 +74,7 @@ The app includes a built-in HTTP/WebSocket server for streaming live match data 
 4. Adjust width/height to match the overlay design
 5. Start Rocket League and play — the overlays update in real time
 
-The server runs locally on `127.0.0.1`. The default port is `9528` (configurable in settings). Make sure your local firewall allows connections to this port.
+The server runs locally on `127.0.0.1`. The default port is `9528` (configurable in settings) and is remembered across restarts: if the server was running when you closed the app, it starts again automatically. Make sure your local firewall allows connections to this port.
 
 ### Custom Overlays
 
@@ -77,14 +83,29 @@ Developers can create custom OBS overlays using the included RL Overlay SDK:
 ```html
 <script src="http://127.0.0.1:9528/sdk/rl-overlay.js"></script>
 <script>
-  const overlay = RLOverlay.connect({ port: 9528 });
+  const overlay = RLOverlay.connect();
   overlay.on("state", (data) => {
     console.log("Blue:", data.scoreBlue, "Orange:", data.scoreOrange);
   });
 </script>
 ```
 
-The SDK auto-detects the port from the page URL when loaded from the overlay server.
+The SDK auto-detects the port from the page URL, reads the `token` query
+parameter when present, reconnects with backoff, and accepts both the
+canonical `state` event and the legacy `snapshot` alias. Full-state payloads
+are camelCase (`scoreBlue`, `timeRemaining`, `players[]`).
+
+Overlays loaded from `file://` (or any other origin) must include the token
+shown in Settings → Streaming:
+
+```html
+<script>
+  const overlay = RLOverlay.connect({ token: "..." });
+</script>
+```
+
+Browser requests are validated against the `Origin` header, so a random web
+page cannot subscribe to your live match.
 
 ---
 

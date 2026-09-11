@@ -115,6 +115,59 @@
     "demosTitle": "Demoliciones",
     "periodLabel": "Resumen de sesiones"
   },
+  "sessionSummary": {
+    "title": "Resumen de sesión",
+    "subtitle": "Así te fue en esta sesión de Rocket League",
+    "matches": "Partidas",
+    "record": "Récord",
+    "streak": "Racha final",
+    "goals": "Goles",
+    "time": "Tiempo jugado",
+    "winRate": "Win rate",
+    "bestHour": "Mejor hora"
+  },
+  "mmrHistory": {
+    "title": "Evolución de MMR",
+    "allPlaylists": "Todas",
+    "playlistLabel": "Playlist",
+    "current": "Actual",
+    "delta": "Cambio",
+    "peak": "Pico",
+    "games": "Partidas",
+    "empty": {
+      "title": "Sin lecturas de MMR todavía",
+      "description": "El MMR se guarda con cada partida cuando hay un proveedor configurado. Jugá algunas partidas para ver la curva."
+    },
+    "error": "No se pudo cargar el historial de MMR."
+  },
+  "comparison": {
+    "title": "Comparador",
+    "current": "Actual",
+    "previous": "Anterior",
+    "modePeriods": "Períodos",
+    "modePlayers": "Jugadores",
+    "pickRival": "Elegí un jugador",
+    "pickRivalHint": "Elegí un jugador para comparar contra tus números.",
+    "empty": "No hay partidas suficientes en este período.",
+    "error": "No se pudo cargar la comparación.",
+    "footnote": "Verde = mejor valor en esa métrica.",
+    "metrics": {
+      "matches": "Partidas",
+      "winRate": "Win rate",
+      "wins": "Victorias",
+      "losses": "Derrotas",
+      "goals": "Goles",
+      "conceded": "Goles recibidos",
+      "assists": "Asistencias",
+      "saves": "Paradas",
+      "shots": "Tiros",
+      "demos": "Demos",
+      "avgScore": "Puntos prom.",
+      "kickoff": "Goles de saque",
+      "kickoffConceded": "Saque recibidos",
+      "peakSpeed": "Pico velocidad"
+    }
+  },
   "matchDetail": {
     "loading": "Cargando partidas...",
     "win": "V",
@@ -268,6 +321,7 @@
     "noData": "No hay datos para esta combinación.",
     "save": "Guardar",
     "savePlaceholder": "Nombre de esta vista…",
+    "saveLabel": "Nombre de la vista",
     "prevWin": "Tras victoria",
     "prevLoss": "Tras derrota",
     "prevStart": "Inicio de sesión"
@@ -296,5 +350,14 @@
     "colPlayed": "Partidas",
     "colWon": "Ganadas",
     "colWinRate": "Win rate"
+  },
+  "weeklyGoals": {
+    "title": "Objetivos semanales",
+    "description": "Definí metas para esta semana; se guardan en tus ajustes.",
+    "matchesGoal": "Partidos por semana",
+    "winsGoal": "Victorias por semana",
+    "save": "Guardar objetivos",
+    "matchesProgress": "Partidos jugados",
+    "winsProgress": "Victorias"
   }
 }

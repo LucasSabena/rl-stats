@@ -256,6 +256,11 @@ export function LiveDashboard() {
                   {t("live:mmr.estimated", { count: liveMmr.estimatedCount })}
                 </span>
               )}
+              {liveMmr.averageMmr != null && (
+                <span className="rounded bg-bg-surface px-1.5 py-0.5 font-semibold text-text-secondary">
+                  {t("live:mmr.average", { mmr: liveMmr.averageMmr })}
+                </span>
+              )}
               {liveMmr.unavailableCount > 0 && (
                 <span className="rounded bg-accent-warning/10 px-1.5 py-0.5 font-semibold text-accent-warning">
                   {t("live:mmr.unavailableCount", { count: liveMmr.unavailableCount })}

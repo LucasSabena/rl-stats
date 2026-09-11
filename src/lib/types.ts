@@ -328,6 +328,8 @@ export interface OverlayServerStatus {
   running: boolean;
   port: number;
   connected_clients: number;
+  /** Bearer token for custom (file://) overlays; empty when stopped. */
+  token?: string;
 }
 
 // ─── Session-pattern analytics ─────────────────────────────────────────────
@@ -426,8 +428,24 @@ export interface KickoffBackfillReport {
   rollupsRebuilt?: boolean | string;
 }
 export interface OverlayUrl {
+  /** Stable identifier (used as React key and scene presets). */
+  id: string;
   name: string;
+  /** One-line explanation of what the overlay shows. */
+  description: string;
   url: string;
+}
+
+/** Optional query-string customization for the enhanced overlay. */
+export interface OverlaySceneConfig {
+  title: string;
+  blueName: string;
+  orangeName: string;
+  blueLogo: string;
+  orangeLogo: string;
+  series: number | null;
+  hide: string;
+  alertTypes: string;
 }
 
 export type MatchType =
@@ -548,6 +566,8 @@ export interface AppSettings {
   overlayShowBoost?: boolean;
   overlayShowMmr?: boolean;
   overlayShowSpeed?: boolean;
+  overlayServerEnabled?: boolean;
+  overlayServerPort?: number;
   gameRunning?: boolean;
   warnOnProfileMismatch?: boolean;
   autoSwitchProfileOnExactMatch?: boolean;
@@ -556,6 +576,8 @@ export interface AppSettings {
   promptTimeoutSecs?: number;
   promptOnlyWhenGameRunning?: boolean;
   trainingTrackingEnabled?: boolean;
+  weeklyGoalMatches?: number;
+  weeklyGoalWins?: number;
 }
 
 export interface TrainingStats {
@@ -759,6 +781,7 @@ export interface LiveMmrSnapshot {
   historicalCount: number;
   estimatedCount: number;
   unavailableCount: number;
+  averageMmr: number | null;
 }
 
 export interface MmrProviderHealth {

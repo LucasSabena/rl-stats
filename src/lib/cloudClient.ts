@@ -331,3 +331,62 @@ export async function listCloudProfiles(
   );
   return parseResponse<CloudProfileRecord[]>(response);
 }
+
+export interface CloudRemoteChange {
+  server_revision: number;
+  entity_type: string;
+  entity_key: string;
+  operation: string;
+  profile_id: string | null;
+  payload_json: unknown;
+  created_at: string;
+}
+
+/** Fetches all changes after `afterRevision` (at most `limit`). */
+export async function pullCloudChanges(
+  credentials: CloudCredentials,
+  session: CloudSession,
+  afterRevision: number,
+  limit = 500,
+): Promise<CloudRemoteChange[]> {
+  const response = await fetchWithTimeout(
+    `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/rpc/sync_pull`,
+    {
+      method: "POST",
+      headers: authHeaders(credentials, session.access_token),
+      body: JSON.stringify({ p_after_revision: afterRevision, p_limit: limit }),
+    },
+  );
+  const rows = await parseResponse<CloudRemoteChange[]>(response);
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** Highest revision recorded for this user, 0 when there is none. */
+export async function getLatestServerRevision(
+  credentials: CloudCredentials,
+  session: CloudSession,
+): Promise<number> {
+  const response = await fetchWithTimeout(
+    `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/sync_changes?select=server_revision&order=server_revision.desc&limit=1`,
+    { headers: authHeaders(credentials, session.access_token) },
+  );
+  const rows = await parseResponse<{ server_revision: number }[]>(response);
+  return rows[0]?.server_revision ?? 0;
+}
+
+/** Deletes every cloud row for one profile (matches, players, caches...). */
+export async function wipeCloudProfile(
+  credentials: CloudCredentials,
+  session: CloudSession,
+  profileId: string,
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${normalizeSupabaseUrl(credentials.supabaseUrl)}/rest/v1/rpc/sync_wipe_profile`,
+    {
+      method: "POST",
+      headers: authHeaders(credentials, session.access_token),
+      body: JSON.stringify({ p_profile_id: profileId }),
+    },
+  );
+  await parseResponse<unknown>(response);
+}

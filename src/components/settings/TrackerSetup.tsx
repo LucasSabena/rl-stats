@@ -133,6 +133,7 @@ export function TrackerSetup() {
             value={profileUrl}
             onChange={(e) => handleUrlChange(e.target.value)}
             placeholder={t("tracker:setup.profileUrlPlaceholder")}
+            aria-label={t("tracker:setup.profileUrlLabel")}
             className="w-full rounded-lg border border-border-subtle bg-bg-base px-3.5 py-2.5 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20 transition-all duration-200 hover:border-border-highlight"
           />
           <p className="text-[11px] text-text-muted">
@@ -168,6 +169,7 @@ export function TrackerSetup() {
               value={localKey || apiKey}
               onChange={(e) => setLocalKey(e.target.value)}
               placeholder={t("tracker:setup.apiKeyPlaceholder")}
+              aria-label={t("tracker:setup.apiKeyLabel")}
               className="w-full rounded-lg border border-border-subtle bg-bg-base px-3.5 py-2.5 pr-10 font-mono text-xs text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20 transition-all duration-200 hover:border-border-highlight"
             />
             <button
@@ -220,6 +222,7 @@ export function TrackerSetup() {
               value={localUsername || username}
               onChange={(e) => setLocalUsername(e.target.value)}
               placeholder={t("tracker:setup.usernamePlaceholder")}
+              aria-label={t("tracker:setup.usernameLabel")}
               className="w-full rounded-lg border border-border-subtle bg-bg-base px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20 transition-all duration-200 hover:border-border-highlight"
             />
           </div>

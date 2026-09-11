@@ -2,6 +2,7 @@
   "page": {
     "title": "Treinamentos",
     "searchPlaceholder": "Buscar por nome, código ou criador...",
+    "searchLabel": "Buscar pacotes de treino",
     "noResults": "Nenhum pack de treinamento encontrado",
     "noResultsFiltered": "Tente ajustar a busca ou os filtros.",
     "clearFilters": "Limpar filtros",

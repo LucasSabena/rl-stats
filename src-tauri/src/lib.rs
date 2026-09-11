@@ -16,6 +16,10 @@ pub mod core;
 pub mod error;
 mod updater;
 
+/// Guards the exit flush so the second `ExitRequested` (fired after the flush
+/// finishes) falls through to the real exit instead of looping.
+static EXIT_FLUSH_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 use crate::core::autostart::configure_autostart;
 use crate::core::ingestor::{start_ingestor, IngestorHandle};
 use crate::core::models::RlEvent;
@@ -66,7 +70,20 @@ fn init_diagnostics() -> Option<tracing_appender::non_blocking::WorkerGuard> {
         return None;
     }
 
-    let file_appender = tracing_appender::rolling::daily(log_directory, "rl-stats.log");
+    // Rolling daily logs capped at one week: the folder previously grew
+    // without limit while troubleshooting.
+    let file_appender = match tracing_appender::rolling::Builder::new()
+        .filename_prefix("rl-stats.log")
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .max_log_files(7)
+        .build(&log_directory)
+    {
+        Ok(appender) => appender,
+        Err(error) => {
+            eprintln!("Could not create rolling log appender: {error}");
+            return None;
+        }
+    };
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(
@@ -162,9 +179,7 @@ pub fn run() {
             commands::settings::configure_rl_ini_cmd,
             commands::settings::configure_rl_ini_all_cmd,
             commands::settings::sync_rl_installations_cmd,
-            commands::settings::export_data,
             commands::settings::export_data_json,
-            commands::settings::import_data,
             commands::settings::import_data_json,
             commands::settings::get_storage_stats_cmd,
             commands::settings::clear_all_data_cmd,
@@ -182,6 +197,8 @@ pub fn run() {
             commands::detect::detect_local_accounts_cmd,
             commands::diagnostics::report_frontend_error,
             commands::diagnostics::get_diagnostics_info,
+            commands::diagnostics::get_recent_logs,
+            commands::diagnostics::open_log_folder,
             commands::window::toggle_overlay_mode,
             commands::window::is_overlay_mode,
             commands::tracker::fetch_tracker_profile,
@@ -213,6 +230,7 @@ pub fn run() {
             commands::profiles::rename_profile_cmd,
             commands::profiles::find_matching_profile_cmd,
             commands::profiles::update_profile_player_identity_cmd,
+            commands::profiles::get_profile_comparison_cmd,
             commands::friends::add_friend_cmd,
             commands::friends::remove_friend_cmd,
             commands::friends::get_friends_cmd,
@@ -225,6 +243,12 @@ pub fn run() {
             commands::cloud::mark_cloud_push_succeeded_cmd,
             commands::cloud::mark_cloud_push_failed_cmd,
             commands::cloud::enqueue_existing_profile_history_for_sync_cmd,
+            commands::cloud::apply_cloud_pull_batch_cmd,
+            commands::cloud::get_last_pulled_revision_cmd,
+            commands::cloud::set_last_pulled_revision_cmd,
+            commands::cloud::prune_sync_outbox_cmd,
+            commands::cloud::scrub_settings_secrets_cmd,
+            commands::cloud::create_cloud_backup_cmd,
         ])
         .setup(move |app| {
             #[cfg(all(desktop, not(debug_assertions)))]
@@ -271,6 +295,56 @@ pub fn run() {
 
             info!(profile_id = %active_profile_id, db_path = %db_path.display(), "Initializing storage");
             let db_pool = Arc::new(init_storage(&db_path)?);
+
+            // Housekeeping: strip API keys that older versions queued into the
+            // cloud outbox and prune flushed rows so the table cannot grow
+            // forever. Blocking SQLite work runs off the async runtime.
+            {
+                let pool = db_pool.clone();
+                let app_dir_for_backup = app_dir.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    match crate::core::storage::ensure_daily_backup(
+                        &pool,
+                        &app_dir_for_backup,
+                        24,
+                    ) {
+                        Ok(Some(path)) => tracing::info!(path = %path.display(), "Auto backup ready"),
+                        Ok(None) => {}
+                        Err(e) => tracing::warn!(error = %e, "Auto backup failed"),
+                    }
+                    match crate::core::storage::sync::scrub_settings_secrets(&pool) {
+                        Ok(scrubbed) if scrubbed > 0 => {
+                            tracing::warn!(
+                                scrubbed,
+                                "Removed API keys from queued settings sync payloads"
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(error = %e, "Settings secret scrub failed"),
+                    }
+                    match crate::core::storage::sync::prune_synced_outbox(&pool, 30) {
+                        Ok(pruned) if pruned > 0 => {
+                            tracing::info!(pruned, "Pruned synced outbox rows");
+                        }
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(error = %e, "Outbox prune failed"),
+                    }
+                    if let Ok(settings) = get_settings(&pool) {
+                        if settings.data_retention_days > 0 {
+                            match crate::core::storage::apply_data_retention(
+                                &pool,
+                                settings.data_retention_days.into(),
+                            ) {
+                                Ok(deleted) if deleted > 0 => {
+                                    tracing::info!(deleted, "Retention pruned old matches");
+                                }
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(error = %e, "Retention prune failed"),
+                            }
+                        }
+                    }
+                });
+            }
 
             // One-off v21 analytics repair (runs once per profile database):
             // daily rollups switch to local-time dates and kickoff goals are
@@ -391,8 +465,9 @@ pub fn run() {
             let main_window = app.get_webview_window("main");
 
             // Build system tray
-            let show_item = MenuItem::with_id(app, "show", "Mostrar", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
+            let (show_label, quit_label) = tray_labels(&settings.language);
+            let show_item = MenuItem::with_id(app, "show", show_label, true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             let tray_builder = TrayIconBuilder::new();
@@ -496,6 +571,27 @@ pub fn run() {
                     app.handle().clone(),
                 )),
             });
+
+            // Restore the OBS overlay server when the user left it running.
+            // It used to require a manual start on every launch, so streamers
+            // had to remember to flip it before going live.
+            if settings.overlay_server_enabled && settings.overlay_server_port > 0 {
+                let app_handle = app.handle().clone();
+                let port = settings.overlay_server_port;
+                tauri::async_runtime::spawn(async move {
+                    let mut server = OverlayServer::new(port);
+                    match server.start().await {
+                        Ok(()) => {
+                            let state = app_handle.state::<AppState>();
+                            *state.overlay_server.lock().await = Some(server);
+                            info!(port, "Overlay server auto-started");
+                        }
+                        Err(e) => {
+                            tracing::warn!(port, error = %e, "Could not auto-start overlay server");
+                        }
+                    }
+                });
+            }
 
             // Store tray in app state so it stays alive. We move it into a "leaked" Box to
             // keep it for the lifetime of the app without having to manage it through AppState.
@@ -661,16 +757,105 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
 
-    if let Err(error) = result {
-        error!(error = %error, "Tauri application exited with an error");
+    match result {
+        Ok(app) => {
+            app.run(|app_handle, event| {
+                if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                    if EXIT_FLUSH_DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                        // Second pass: the flush already ran, let the exit through.
+                        return;
+                    }
+                    // Quitting mid-match or mid-training used to drop the whole
+                    // in-memory session. Hold the exit until it is persisted and
+                    // the WAL is checkpointed, then exit again.
+                    api.prevent_exit();
+                    let app_handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        flush_before_exit(&app_handle).await;
+                        app_handle.exit(0);
+                    });
+                }
+            });
+        }
+        Err(error) => {
+            error!(error = %error, "Tauri application exited with an error");
+        }
     }
+}
+
+/// Persists any in-flight session and checkpoints SQLite before the process
+/// exits. Runs on the `ExitRequested` path (tray quit, OS session end).
+async fn flush_before_exit(app_handle: &tauri::AppHandle) {
+    let (session_manager, db_pool, session_tally, overlay_server) = {
+        let state = app_handle.state::<AppState>();
+        (
+            Arc::clone(&state.session_manager),
+            Arc::clone(&state.db_pool),
+            Arc::clone(&state.session_tally),
+            Arc::clone(&state.overlay_server),
+        )
+    };
+
+    {
+        let mut guard = overlay_server.lock().await;
+        if let Some(ref mut server) = *guard {
+            server.stop();
+        }
+        *guard = None;
+    }
+
+    {
+        let mut session = session_manager.write().await;
+        if session.force_finalize_for_exit() {
+            let mut tally = session_tally.lock().await;
+            persist_finished_session(&mut session, &db_pool, app_handle, &mut tally).await;
+        }
+    }
+
+    if let Ok(conn) = db_pool.get() {
+        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+    }
+    info!("Exit flush complete");
 }
 
 /// Wrapper to keep the tray icon alive for the app lifetime.
 pub struct TrayHandle {
     _tray: Box<tauri::tray::TrayIcon>,
+}
+
+impl TrayHandle {
+    pub(crate) fn tray(&self) -> &tauri::tray::TrayIcon {
+        &self._tray
+    }
+}
+
+/// Localized system-tray menu labels: (show, quit).
+pub(crate) fn tray_labels(language: &str) -> (&'static str, &'static str) {
+    match language {
+        "en" => ("Show", "Quit"),
+        "pt" => ("Mostrar", "Sair"),
+        _ => ("Mostrar", "Salir"),
+    }
+}
+
+/// Rebuilds the tray menu in the given language.
+pub(crate) fn apply_tray_language(app: &tauri::AppHandle, language: &str) {
+    use tauri::Manager;
+    let Some(tray_state) = app.try_state::<TrayHandle>() else {
+        return;
+    };
+    let (show_label, quit_label) = tray_labels(language);
+    let (Ok(show_item), Ok(quit_item)) = (
+        MenuItem::with_id(app, "show", show_label, true, None::<&str>),
+        MenuItem::with_id(app, "quit", quit_label, true, None::<&str>),
+    ) else {
+        return;
+    };
+    if let Ok(menu) = Menu::with_items(app, &[&show_item, &quit_item]) {
+        let _ = tray_state.tray().set_menu(Some(menu));
+    }
 }
 
 /// Win/loss counters for the current session. Bundled so the persist helper
@@ -1007,8 +1192,9 @@ async fn process_events(
         session.handle_event(event.clone());
 
         {
+            let last_touch_team = session.live_state().last_touch_team;
             let overlay = app_handle.state::<AppState>().overlay_server.clone();
-            broadcast_to_overlay(&overlay, &event);
+            broadcast_to_overlay(&overlay, &event, last_touch_team);
         }
 
         if let Some(live_event) = map_live_event(&event) {
@@ -1124,19 +1310,45 @@ async fn process_events(
 }
 
 fn map_live_event(event: &RlEvent) -> Option<serde_json::Value> {
-    let event_type = match event {
-        RlEvent::MatchCreated | RlEvent::MatchInitialized => "MatchCreated",
-        RlEvent::GoalScored { .. } => "GoalScored",
-        RlEvent::StatfeedEvent { .. } => "StatfeedEvent",
-        RlEvent::MatchEnded { .. } => "MatchEnded",
-        RlEvent::BallHit => "BallHit",
-        RlEvent::CountdownBegin => "CountdownBegin",
-        RlEvent::MatchPaused => "MatchPaused",
-        RlEvent::MatchUnpaused => "MatchUnpaused",
-        RlEvent::GoalReplayStart => "GoalReplayStart",
-        RlEvent::GoalReplayEnd => "GoalReplayEnd",
-        RlEvent::ClockUpdatedSeconds { .. } => "ClockUpdatedSeconds",
-        RlEvent::RoundStarted => "RoundStarted",
+    let (event_type, data) = match event {
+        RlEvent::MatchCreated | RlEvent::MatchInitialized => {
+            ("MatchCreated", serde_json::json!({}))
+        }
+        RlEvent::GoalScored { data } => (
+            "GoalScored",
+            serde_json::json!({
+                "scorerName": data.scorer.name,
+                "scorerTeam": data.scorer.team_num,
+                "assisterName": data.assister.as_ref().map(|assister| assister.name.clone()),
+                "goalTime": data.goal_time,
+            }),
+        ),
+        RlEvent::StatfeedEvent { data } => (
+            "StatfeedEvent",
+            serde_json::json!({
+                "eventName": data.event_name,
+                "mainTargetName": data.main_target.name,
+                "mainTargetTeam": data.main_target.team_num,
+                "secondaryTargetName": data
+                    .secondary_target
+                    .as_ref()
+                    .map(|target| target.name.clone()),
+            }),
+        ),
+        RlEvent::MatchEnded { winner_team_num } => (
+            "MatchEnded",
+            serde_json::json!({ "winnerTeamNum": winner_team_num }),
+        ),
+        RlEvent::BallHit => ("BallHit", serde_json::json!({})),
+        RlEvent::CountdownBegin => ("CountdownBegin", serde_json::json!({})),
+        RlEvent::MatchPaused => ("MatchPaused", serde_json::json!({})),
+        RlEvent::MatchUnpaused => ("MatchUnpaused", serde_json::json!({})),
+        RlEvent::GoalReplayStart => ("GoalReplayStart", serde_json::json!({})),
+        RlEvent::GoalReplayEnd => ("GoalReplayEnd", serde_json::json!({})),
+        RlEvent::ClockUpdatedSeconds { time } => {
+            ("ClockUpdatedSeconds", serde_json::json!({ "time": time }))
+        }
+        RlEvent::RoundStarted => ("RoundStarted", serde_json::json!({})),
         _ => return None,
     };
 
@@ -1144,13 +1356,14 @@ fn map_live_event(event: &RlEvent) -> Option<serde_json::Value> {
         "id": uuid::Uuid::new_v4().to_string(),
         "type": event_type,
         "timestamp": chrono::Utc::now().timestamp(),
-        "data": {}
+        "data": data
     }))
 }
 
 fn broadcast_to_overlay(
     overlay: &std::sync::Arc<tokio::sync::Mutex<Option<OverlayServer>>>,
     event: &RlEvent,
+    last_touch_team: Option<i32>,
 ) {
     if let Ok(guard) = overlay.try_lock() {
         if let Some(ref server) = *guard {
@@ -1168,7 +1381,7 @@ fn broadcast_to_overlay(
                     );
                 }
                 RlEvent::BallHit => {
-                    server.broadcast_ball_hit(-1);
+                    server.broadcast_ball_hit(last_touch_team.unwrap_or(-1));
                 }
                 RlEvent::ClockUpdatedSeconds { time } => {
                     server.broadcast_clock(*time);
@@ -1178,6 +1391,9 @@ fn broadcast_to_overlay(
                 }
                 RlEvent::MatchEnded { winner_team_num } => {
                     server.broadcast_match_ended(*winner_team_num);
+                }
+                RlEvent::CountdownBegin => {
+                    server.broadcast_countdown_begin();
                 }
                 RlEvent::GoalReplayStart => {
                     server.broadcast_replay_start();

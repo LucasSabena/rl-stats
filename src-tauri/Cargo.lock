@@ -3327,11 +3327,12 @@ dependencies = [
 
 [[package]]
 name = "rl-stats"
-version = "2.15.0"
+version = "2.16.0"
 dependencies = [
  "axum",
  "chrono",
  "dirs",
+ "form_urlencoded",
  "mime_guess",
  "r2d2",
  "r2d2_sqlite",

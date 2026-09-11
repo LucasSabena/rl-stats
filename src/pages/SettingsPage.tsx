@@ -4,6 +4,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { IniHelper } from "@/components/settings/IniHelper";
 import { DataManagement } from "@/components/settings/DataManagement";
+import { DiagnosticsPanel } from "@/components/settings/DiagnosticsPanel";
 import { UpdateChecker } from "@/components/settings/UpdateChecker";
 import { OverlayConfig } from "@/components/settings/OverlayConfig";
 import { OverlayStreaming } from "@/components/settings/OverlayStreaming";
@@ -155,6 +156,7 @@ export function SettingsPage() {
 
           <TabsContent value="data" className="space-y-6">
             <DataManagement />
+            <DiagnosticsPanel />
           </TabsContent>
         </Tabs>
       </div>

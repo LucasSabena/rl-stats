@@ -111,5 +111,14 @@
     "emptyDescription": "Jogue uma partida com o Rocket League aberto e sua carreira se monta sozinha daqui.",
     "errorTitle": "Não foi possível carregar sua carreira",
     "errorDescription": "Houve um problema ao carregar suas estatísticas."
+  },
+  "comparison": {
+    "title": "Comparação de perfis",
+    "description": "Suas contas lado a lado, sem trocar de perfil.",
+    "profile": "Perfil",
+    "matches": "Partidas",
+    "winRate": "Vitórias",
+    "training": "Treinos",
+    "lastMatch": "Última partida"
   }
 }

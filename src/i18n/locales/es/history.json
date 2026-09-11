@@ -106,6 +106,11 @@
     "deleted": "Partida borrada",
     "deleteError": "No se pudo borrar la partida"
   },
+  "export": {
+    "button": "Exportar CSV",
+    "success": "Historial exportado a CSV",
+    "error": "No se pudo exportar el CSV"
+  },
   "titles": {
     "training": "Entrenamiento libre"
   }

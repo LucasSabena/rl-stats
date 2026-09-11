@@ -73,6 +73,7 @@ export function PlayerDirectoryPage() {
               value={search}
               onChange={handleSearchChange}
               placeholder={t("players:directory.searchPlaceholder")}
+              aria-label={t("players:directory.searchLabel")}
               className="w-full rounded-md border border-border-subtle bg-bg-base py-2 pl-10 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:outline-none"
             />
           </div>

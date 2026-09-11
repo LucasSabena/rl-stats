@@ -171,6 +171,7 @@ export function TrainingPacksPage() {
             <button
               type="button"
               onClick={() => refetch()}
+              aria-label={t("page.refresh")}
               className="rounded-lg border border-border-subtle bg-bg-panel p-2 text-text-tertiary transition-colors hover:bg-bg-hover hover:text-text-secondary"
               title={t("page.refresh")}
             >
@@ -199,6 +200,7 @@ export function TrainingPacksPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("page.searchPlaceholder")}
+              aria-label={t("page.searchLabel")}
               className="w-full rounded-lg border border-border-subtle bg-bg-panel py-2.5 pl-10 pr-4 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary/50 transition-all"
             />
           </div>
@@ -326,6 +328,7 @@ export function TrainingPacksPage() {
                       <button
                         type="button"
                         onClick={(e) => handleCopyCode(pack, e)}
+                        aria-label={copied ? t("page.copied") : t("page.copyCode")}
                         className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-all",
                           copied
