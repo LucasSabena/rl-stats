@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.11.0] - 2026-09-10
+
+### Changed
+- Split the six largest frontend components into focused files (AnalyticsPage 1043→389, SettingsPanel 814→209, CloudSyncPanel 694→384, OverlayView 517→163, OverlayConfig 518→305, OnboardingOverlay 455→285). Pure moves: same UI, same behavior, verified with the full suite and a browser smoke test of every route, settings tab and the onboarding wizard.
+- Release pipeline is faster: the Cargo target cache no longer invalidates on every source file (dependencies are reused across releases), only the NSIS installer is bundled (MSI was built but never published), release LTO is thin instead of fat, and debug artifacts are uploaded only on failure.
+- `get_matches`/`get_match_detail` now serialize typed structs, with unit tests pinning the exact JSON keys the frontend maps.
+
+### Fixed
+- The history/insights rollup queries chunk their `IN (...)` match lists: histories above ~32k matches no longer fail with SQLite's variable limit.
+- The browser dev preview no longer crashes opening the onboarding wizard (detect commands are mocked, and null results are guarded) and the Overlay settings explain that exclusive fullscreen blocks window overlays.
+
+### Added
+- Unit test for infinite history pagination (append + short-page termination).
+
 ## [2.10.1] - 2026-09-10
 
 ### Fixed
