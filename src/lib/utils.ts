@@ -68,6 +68,17 @@ export function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+/** mm:ss (or h:mm:ss) clock for live timers such as the training stint. */
+export function formatElapsedClock(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(rest).padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
+}
+
 export function formatSpeed(speed: number): string {
   return `${Math.round(speed)} uu/s`;
 }

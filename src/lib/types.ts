@@ -56,6 +56,8 @@ export interface LiveMatchState {
   teamOrangeScore: number;
   playerCount?: number;
   matchType?: string | null;
+  /** Seconds of the current Free Play stint; null during real matches. */
+  trainingElapsedSeconds?: number | null;
 }
 
 export interface SessionSummary {

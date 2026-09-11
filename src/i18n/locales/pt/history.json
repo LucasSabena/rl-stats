@@ -105,5 +105,8 @@
   "toasts": {
     "deleted": "Partida excluída",
     "deleteError": "Não foi possível excluir a partida"
+  },
+  "titles": {
+    "training": "Treino livre"
   }
 }

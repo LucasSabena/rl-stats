@@ -218,6 +218,12 @@ impl SessionManager {
             match_type: self.match_type.clone(),
             last_touch_team: self.last_touch_team,
             playlist_id: self.playlist_id,
+            training_elapsed_seconds: if self.max_player_count <= 1 {
+                self.start_time
+                    .map(|start| (Utc::now() - start).num_seconds().max(0))
+            } else {
+                None
+            },
         }
     }
 
@@ -467,7 +473,10 @@ impl SessionManager {
         }
         .max(start_time);
         let duration = (end_time - start_time).num_seconds().max(0) as i32;
-        let arena = self.arena.clone().unwrap_or_else(|| "Unknown".into());
+        // Free Play reports no arena: keep it NULL instead of the literal
+        // "Unknown" the UI used to render as a match title (migration v25
+        // cleans the rows written by older versions).
+        let arena = self.arena.clone();
 
         let winner = self.winner_team_num.or({
             if self.score_blue > self.score_orange {
@@ -554,7 +563,7 @@ impl SessionManager {
                 &conn,
                 &guid,
                 start_time,
-                Some(&arena),
+                arena.as_deref(),
                 self.is_online,
                 effective_match_type,
                 playlist.as_deref(),

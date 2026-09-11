@@ -258,7 +258,6 @@ pub(crate) fn insert_match_conn(
     match_type: Option<&str>,
     playlist: Option<&str>,
 ) -> AppResult<i64> {
-    let arena = arena.unwrap_or("Unknown");
     conn.execute(
         "INSERT INTO matches (guid, start_time, arena, is_online, match_type, playlist) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![guid, start_time.to_rfc3339(), arena, is_online as i32, match_type, playlist],
@@ -4355,6 +4354,64 @@ mod mood_roundtrip_tests {
         let second_page = get_matches(&pool, query(Some("win"), 1, 1)).unwrap();
         assert_eq!(second_page.len(), 1);
         assert_ne!(second_page[0].id, wins[0].id);
+    }
+
+    #[test]
+    fn match_without_arena_stores_null_instead_of_unknown() {
+        let pool = temp_pool("arena-null");
+        let conn = get_conn(&pool).unwrap();
+        let id = insert_match_conn(
+            &conn,
+            "arena-null-guid",
+            chrono::Utc::now(),
+            None,
+            false,
+            Some("training"),
+            None,
+        )
+        .unwrap();
+
+        let (m, _) = get_match_detail(&pool, id).unwrap();
+        assert_eq!(m.arena, None, "missing arena must stay NULL, not 'Unknown'");
+    }
+
+    #[test]
+    fn migration_v25_cleans_unknown_arena_and_backfills_training_duration() {
+        let pool = temp_pool("v25");
+        let conn = get_conn(&pool).unwrap();
+        let start = chrono::Utc.with_ymd_and_hms(2026, 9, 10, 22, 0, 0).unwrap();
+        let id = insert_match_conn(
+            &conn,
+            "v25-guid",
+            start,
+            Some("Unknown"),
+            false,
+            Some("training"),
+            None,
+        )
+        .unwrap();
+        // Simulate a legacy row: real end_time but a zeroed duration.
+        conn.execute(
+            "UPDATE matches SET end_time = ?1, duration_seconds = 0 WHERE id = ?2",
+            params![(start + chrono::Duration::seconds(480)).to_rfc3339(), id],
+        )
+        .unwrap();
+
+        let migration = migrations::MIGRATIONS
+            .iter()
+            .find(|m| m.version == 25)
+            .expect("v25 migration must exist");
+        conn.execute_batch(migration.sql).unwrap();
+
+        let (arena, duration): (Option<String>, i32) = conn
+            .query_row(
+                "SELECT arena, duration_seconds FROM matches WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(arena, None);
+        assert_eq!(duration, 480, "legacy training duration must be rebuilt");
     }
 
     #[test]

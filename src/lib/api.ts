@@ -99,6 +99,7 @@ interface RawLiveMatchState {
   score_orange: number;
   players: RawLivePlayer[];
   ball_speed: number;
+  training_elapsed_seconds?: number | null;
 }
 
 interface RawMatchSummary {
@@ -321,6 +322,7 @@ function mapLiveState(state: RawLiveMatchState | null): LiveMatchState | null {
     teamOrangeScore: state.score_orange,
     playerCount,
     matchType,
+    trainingElapsedSeconds: state.training_elapsed_seconds ?? null,
   };
 }
 

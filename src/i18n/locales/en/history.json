@@ -105,5 +105,8 @@
   "toasts": {
     "deleted": "Match deleted",
     "deleteError": "Could not delete the match"
+  },
+  "titles": {
+    "training": "Free Play"
   }
 }

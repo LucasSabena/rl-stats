@@ -291,6 +291,22 @@ pub static MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_sessions_match_id ON sessions(match_id);
         CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);",
     },
+    Migration {
+        version: 25,
+        name: "clean_unknown_arena_and_backfill_training_durations",
+        sql: "UPDATE matches SET arena = NULL WHERE arena = 'Unknown';
+
+        UPDATE matches
+        SET duration_seconds = MAX(
+            0,
+            CAST(strftime('%s', end_time) AS INTEGER) - CAST(strftime('%s', start_time) AS INTEGER)
+        )
+        WHERE LOWER(COALESCE(match_type, '')) = 'training'
+          AND COALESCE(duration_seconds, 0) = 0
+          AND end_time IS NOT NULL
+          AND strftime('%s', end_time) IS NOT NULL
+          AND strftime('%s', start_time) IS NOT NULL;",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

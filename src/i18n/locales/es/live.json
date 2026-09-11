@@ -123,5 +123,10 @@
     "shots": "Shots",
     "score": "Score",
     "demos": "Demos"
+  },
+  "training": {
+    "title": "Entrenando",
+    "hint": "El tiempo se guarda al salir de Free Play.",
+    "aria": "Tiempo de entrenamiento"
   }
 }

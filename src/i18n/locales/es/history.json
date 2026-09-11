@@ -105,5 +105,8 @@
   "toasts": {
     "deleted": "Partida borrada",
     "deleteError": "No se pudo borrar la partida"
+  },
+  "titles": {
+    "training": "Entrenamiento libre"
   }
 }

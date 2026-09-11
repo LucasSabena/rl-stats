@@ -12,9 +12,31 @@ import { getMatches } from "@/lib/api";
 import { useLiveMmr } from "@/hooks/useLiveMmr";
 import { useSettings } from "@/hooks/useSettings";
 import { useLiveHeadToHead } from "@/hooks/useLiveHeadToHead";
-import { cn } from "@/lib/utils";
-import { Gauge, Radio, RefreshCw, X } from "lucide-react";
+import { cn, formatElapsedClock } from "@/lib/utils";
+import { Gauge, Radio, RefreshCw, X, Dumbbell } from "lucide-react";
 import { useTranslation } from "react-i18next";
+
+function TrainingLiveCard({ elapsedSeconds }: { elapsedSeconds: number }) {
+  const { t } = useTranslation("live");
+  return (
+    <section className="flex items-center justify-center gap-4 rounded-lg border border-border-subtle bg-bg-surface px-6 py-5">
+      <Dumbbell size={22} className="shrink-0 text-accent-primary" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-text-primary">
+          {t("training.title")}
+        </p>
+        <p className="text-xs text-text-tertiary">{t("training.hint")}</p>
+      </div>
+      <p
+        className="numeral tabular ml-2 text-2xl leading-none text-text-primary"
+        aria-label={t("training.aria")}
+        aria-live="off"
+      >
+        {formatElapsedClock(elapsedSeconds)}
+      </p>
+    </section>
+  );
+}
 
 function getMatchSizeLabel(t: (key: string, options?: Record<string, unknown>) => string, playerCount: number | undefined, blueCount: number, orangeCount: number, isOnline: boolean | undefined): string {
   if (playerCount === 1) return t("live:matchSize.training");
@@ -193,15 +215,19 @@ export function LiveDashboard() {
     <div className="space-y-4">
       <MatchEndBanner />
 
-      <ScoreDisplay
-        blueScore={currentMatch.teamBlueScore}
-        orangeScore={currentMatch.teamOrangeScore}
-        arena={currentMatch.gameState.arena ?? undefined}
-        timeRemaining={currentMatch.gameState.timeRemaining}
-        isOvertime={currentMatch.gameState.isOvertime}
-        matchTypeLabel={matchTypeLabel}
-        matchSizeLabel={matchSizeLabel}
-      />
+      {currentMatch.trainingElapsedSeconds != null ? (
+        <TrainingLiveCard elapsedSeconds={currentMatch.trainingElapsedSeconds} />
+      ) : (
+        <ScoreDisplay
+          blueScore={currentMatch.teamBlueScore}
+          orangeScore={currentMatch.teamOrangeScore}
+          arena={currentMatch.gameState.arena ?? undefined}
+          timeRemaining={currentMatch.gameState.timeRemaining}
+          isOvertime={currentMatch.gameState.isOvertime}
+          matchTypeLabel={matchTypeLabel}
+          matchSizeLabel={matchSizeLabel}
+        />
+      )}
 
       {showInfoBar && (
         <div className="flex items-center justify-between gap-2">

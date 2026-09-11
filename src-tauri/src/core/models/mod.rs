@@ -121,6 +121,11 @@ pub struct LiveMatchState {
     pub last_touch_team: Option<i32>,
     /// Numeric playlist id from the Stats API, when the stream reports it.
     pub playlist_id: Option<i32>,
+    /// Seconds since the current solo (Free Play) session started. `None`
+    /// during real matches; the UI shows it as a live training timer so the
+    /// player can see the stint that will be persisted when they leave.
+    #[serde(default)]
+    pub training_elapsed_seconds: Option<i64>,
 }
 
 /// Represents a statfeed event payload (e.g., "Shot on Goal", "Save").

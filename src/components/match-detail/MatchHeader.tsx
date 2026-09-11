@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
+import { Dumbbell } from "lucide-react";
 import { cn, formatDateTime, formatDuration } from "@/lib/utils";
 import { getArenaDisplayName, getArenaImagePath } from "@/lib/arenaMap";
 import type { MatchDetail, MatchType } from "@/lib/types";
@@ -90,56 +91,73 @@ export const MatchHeader = memo(function MatchHeader({ match }: MatchHeaderProps
         )}
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-6 py-6 sm:gap-10">
-        <div className="flex items-center justify-self-start gap-4">
-          <span
-            aria-hidden="true"
-            className={cn("h-12 w-1 rounded-full", blueWon ? "bg-team-blue" : "bg-team-blue/40")}
-          />
-          <div>
-            <p className="micro-label text-team-blue">{t("teams.blue")}</p>
-            <p
-              className={cn(
-                "numeral animate-score-pop text-6xl leading-none sm:text-7xl",
-                blueWon ? "text-team-blue" : isDraw ? "text-text-primary" : "text-text-tertiary",
-              )}
-            >
-              {match.teamBlueScore}
-            </p>
-          </div>
-        </div>
-
-        <div className="text-center">
-          <p className={cn("text-sm font-bold uppercase tracking-[0.14em]", resultTone)}>
-            {resultLabel}
+      {isTraining ? (
+        <div className="flex flex-col items-center gap-2 px-6 py-8">
+          <Dumbbell size={26} className="text-accent-primary" aria-hidden="true" />
+          <p className="text-sm font-semibold text-text-primary">
+            {t("matchType.training")}
           </p>
-          <p className="mt-1.5 text-[11px] text-text-tertiary">
+          <p className="numeral text-4xl leading-none text-text-primary">
+            {match.durationSeconds ? formatDuration(match.durationSeconds) : "—"}
+          </p>
+          <p className="text-[11px] text-text-tertiary">
             {formatDateTime(match.startTime * 1000)}
           </p>
         </div>
+      ) : (
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 px-6 py-6 sm:gap-10">
+          <div className="flex items-center justify-self-start gap-4">
+            <span
+              aria-hidden="true"
+              className={cn("h-12 w-1 rounded-full", blueWon ? "bg-team-blue" : "bg-team-blue/40")}
+            />
+            <div>
+              <p className="micro-label text-team-blue">{t("teams.blue")}</p>
+              <p
+                className={cn(
+                  "numeral animate-score-pop text-6xl leading-none sm:text-7xl",
+                  blueWon ? "text-team-blue" : isDraw ? "text-text-primary" : "text-text-tertiary",
+                )}
+              >
+                {match.teamBlueScore}
+              </p>
+            </div>
+          </div>
 
-        <div className="flex items-center justify-self-end gap-4">
-          <div className="text-right">
-            <p className="micro-label text-team-orange">{t("teams.orange")}</p>
-            <p
-              className={cn(
-                "numeral animate-score-pop text-6xl leading-none sm:text-7xl",
-                orangeWon ? "text-team-orange" : isDraw ? "text-text-primary" : "text-text-tertiary",
-              )}
-            >
-              {match.teamOrangeScore}
+          <div className="text-center">
+            <p className={cn("text-sm font-bold uppercase tracking-[0.14em]", resultTone)}>
+              {resultLabel}
+            </p>
+            <p className="mt-1.5 text-[11px] text-text-tertiary">
+              {formatDateTime(match.startTime * 1000)}
             </p>
           </div>
-          <span
-            aria-hidden="true"
-            className={cn("h-12 w-1 rounded-full", orangeWon ? "bg-team-orange" : "bg-team-orange/40")}
-          />
+
+          <div className="flex items-center justify-self-end gap-4">
+            <div className="text-right">
+              <p className="micro-label text-team-orange">{t("teams.orange")}</p>
+              <p
+                className={cn(
+                  "numeral animate-score-pop text-6xl leading-none sm:text-7xl",
+                  orangeWon ? "text-team-orange" : isDraw ? "text-text-primary" : "text-text-tertiary",
+                )}
+              >
+                {match.teamOrangeScore}
+              </p>
+            </div>
+            <span
+              aria-hidden="true"
+              className={cn("h-12 w-1 rounded-full", orangeWon ? "bg-team-orange" : "bg-team-orange/40")}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <dl className="grid grid-cols-2 divide-x divide-border-subtle border-t border-border-subtle sm:grid-cols-4">
         <Fact label={t("header.duration")} value={match.durationSeconds ? formatDuration(match.durationSeconds) : "—"} />
-        <Fact label={t("header.overtime")} value={match.isOvertime ? t("overtime.yes") : t("overtime.no")} />
+        {!isTraining && (
+          <Fact label={t("header.overtime")} value={match.isOvertime ? t("overtime.yes") : t("overtime.no")} />
+        )}
         <Fact label={t("header.start")} value={formatDateTime(match.startTime * 1000)} />
         <Fact
           label={t("header.end")}

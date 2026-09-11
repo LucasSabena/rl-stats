@@ -30,6 +30,7 @@ interface RawLiveUpdate {
   score_orange: number;
   players: RawPlayer[];
   ball_speed: number;
+  training_elapsed_seconds?: number | null;
 }
 
 interface RawSessionSummary {
@@ -97,6 +98,7 @@ function mapLiveUpdate(raw: RawLiveUpdate): LiveMatchState {
     teamOrangeScore: raw.score_orange,
     playerCount: mappedPlayers.length,
     matchType: raw.is_online ? "online" : "local",
+    trainingElapsedSeconds: raw.training_elapsed_seconds ?? null,
   };
 }
 

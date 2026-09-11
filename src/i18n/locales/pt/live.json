@@ -123,5 +123,10 @@
     "shots": "Chutes",
     "score": "Pontuação",
     "demos": "Demolições"
+  },
+  "training": {
+    "title": "Treinando",
+    "hint": "O tempo é salvo ao sair do Treino livre.",
+    "aria": "Tempo de treino"
   }
 }

@@ -65,6 +65,8 @@ export const MatchCard = memo(function MatchCard({
   const blueWon = match.winnerTeamNum === 0;
   const orangeWon = match.winnerTeamNum === 1;
   const arenaName = match.arena ? getArenaDisplayName(match.arena) : null;
+  // Free Play reports no arena: show a proper mode title instead of "—".
+  const primaryTitle = arenaName ?? (isTraining ? t("history:titles.training") : "—");
 
   const playlistLabel = match.playlist
     ? t(`history:playlists.${match.playlist.toLowerCase()}`, { defaultValue: match.playlist })
@@ -117,7 +119,7 @@ export const MatchCard = memo(function MatchCard({
 
         <div className="min-w-0">
           <p className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-primary">
-            <span className="truncate">{arenaName ?? "—"}</span>
+            <span className="truncate">{primaryTitle}</span>
             {match.isOvertime && (
               <span className="micro-label shrink-0 text-accent-warning">OT</span>
             )}
@@ -135,7 +137,7 @@ export const MatchCard = memo(function MatchCard({
                 <span className="truncate">{playlistLabel}</span>
               </>
             )}
-            {(match.durationSeconds ?? 0) > 0 && (
+            {!isTraining && (match.durationSeconds ?? 0) > 0 && (
               <>
                 <span aria-hidden="true">·</span>
                 <span className="tabular shrink-0">{formatDuration(match.durationSeconds ?? 0)}</span>

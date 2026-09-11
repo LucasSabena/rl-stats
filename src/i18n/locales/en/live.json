@@ -123,5 +123,10 @@
     "shots": "Shots",
     "score": "Score",
     "demos": "Demos"
+  },
+  "training": {
+    "title": "Training",
+    "hint": "The time is saved when you leave Free Play.",
+    "aria": "Training time"
   }
 }
