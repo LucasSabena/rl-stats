@@ -204,7 +204,8 @@
     "retentionApplied": "Matches deleted",
     "retentionAppliedMessage": "{{deleted}} matches were deleted; the last {{days}} days are kept.",
     "backupPlayer": "Account: {{name}}",
-    "backupOtherProfile": "Belongs to another profile ({{profile}}). Switch to it to restore."
+    "backupOtherProfile": "Belongs to another profile ({{profile}}). Switch to it to restore.",
+    "backupMatches": "{{count}} matches"
   },
   "update": {
     "title": "Updates",

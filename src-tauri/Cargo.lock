@@ -3327,7 +3327,7 @@ dependencies = [
 
 [[package]]
 name = "rl-stats"
-version = "2.16.1"
+version = "2.16.2"
 dependencies = [
  "axum",
  "chrono",

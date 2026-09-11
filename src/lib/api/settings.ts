@@ -407,6 +407,7 @@ export interface DatabaseBackupInfo {
   modifiedAt: string | null;
   profileId: string | null;
   playerName: string | null;
+  matchCount: number | null;
 }
 
 export async function listDatabaseBackups(): Promise<DatabaseBackupInfo[]> {

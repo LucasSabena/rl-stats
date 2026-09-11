@@ -1052,6 +1052,9 @@ pub struct DatabaseBackupInfo {
     /// Player name stored inside the snapshot, so the user can tell which
     /// account it holds before restoring.
     pub player_name: Option<String>,
+    /// How many matches the snapshot holds. The whole point of restoring is
+    /// recovering deleted rows, so show the size of the prize up front.
+    pub match_count: Option<i64>,
 }
 
 /// Reads the player name stored in a backup without migrating or locking it.
@@ -1066,6 +1069,15 @@ fn backup_player_name(path: &std::path::Path) -> Option<String> {
     )
     .ok()
     .filter(|name| !name.trim().is_empty())
+}
+
+/// Counts the matches stored in a backup (read-only).
+fn backup_match_count(path: &std::path::Path) -> Option<i64> {
+    let flags =
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let conn = rusqlite::Connection::open_with_flags(path, flags).ok()?;
+    conn.query_row("SELECT COUNT(*) FROM matches", [], |row| row.get(0))
+        .ok()
 }
 
 /// Parses `auto-<profile>-<YYYYMMDD>-<HHMMSS>.sqlite` into its profile id.
@@ -1117,6 +1129,7 @@ pub fn list_database_backups(app_dir: &Path) -> AppResult<Vec<DatabaseBackupInfo
             Some(DatabaseBackupInfo {
                 profile_id: backup_profile_id(&name),
                 player_name: backup_player_name(&path),
+                match_count: backup_match_count(&path),
                 name,
                 path: path.to_string_lossy().into_owned(),
                 size_bytes: metadata.len(),
@@ -4678,6 +4691,32 @@ mod tests {
         assert_eq!(backup_profile_id("auto-20260911-143259.sqlite"), None);
         assert_eq!(backup_profile_id("pre-sync-20260911-143259.sqlite"), None);
         assert_eq!(backup_profile_id("random.sqlite"), None);
+    }
+
+    #[test]
+    fn backup_helpers_read_player_and_match_count() {
+        let app_dir = temp_app_dir("backup-info");
+        let db = app_dir.join("auto-default-20260911-143259.sqlite");
+        {
+            let conn = rusqlite::Connection::open(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE matches (id INTEGER PRIMARY KEY);
+                 CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO matches DEFAULT VALUES;
+                 INSERT INTO matches DEFAULT VALUES;
+                 INSERT INTO app_settings VALUES ('player_name', 'Lucas');",
+            )
+            .unwrap();
+        }
+
+        assert_eq!(backup_player_name(&db).as_deref(), Some("Lucas"));
+        assert_eq!(backup_match_count(&db), Some(2));
+        assert_eq!(
+            backup_profile_id("auto-default-20260911-143259.sqlite").as_deref(),
+            Some("default")
+        );
+
+        let _ = std::fs::remove_dir_all(&app_dir);
     }
 
     #[test]

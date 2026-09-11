@@ -204,7 +204,8 @@
     "retentionApplied": "Partidas eliminadas",
     "retentionAppliedMessage": "Se eliminaron {{deleted}} partidas; se conservan las de los últimos {{days}} días.",
     "backupPlayer": "Cuenta: {{name}}",
-    "backupOtherProfile": "Es de otro perfil ({{profile}}). Cambiá a ese perfil para restaurarla."
+    "backupOtherProfile": "Es de otro perfil ({{profile}}). Cambiá a ese perfil para restaurarla.",
+    "backupMatches": "{{count}} partidas"
   },
   "update": {
     "title": "Actualizaciones",

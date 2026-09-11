@@ -405,6 +405,9 @@ export function DataManagement() {
                         {backup.playerName
                           ? `${t("settings:data.backupPlayer", { name: backup.playerName })} · `
                           : ""}
+                        {backup.matchCount != null
+                          ? `${t("settings:data.backupMatches", { count: backup.matchCount })} · `
+                          : ""}
                         {backup.modifiedAt
                           ? new Date(backup.modifiedAt).toLocaleString()
                           : "—"}{" "}

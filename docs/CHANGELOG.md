@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.16.3] - 2026-09-11
+
+### Changed
+- The Backups list now shows **the account and the number of matches stored
+  in each snapshot**, read directly from the backup file. With per-profile
+  names, a legacy pre-incident snapshot and a fresh post-prune snapshot can
+  look alike; the match count makes the one with the full history obvious
+  before restoring.
+
 ## [2.16.2] - 2026-09-11
 
 ### Fixed — per-profile backups
