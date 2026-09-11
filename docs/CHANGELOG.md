@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.12.0] - 2026-09-11
+
+### Added
+- Live training timer: while in Free Play a solo session shows "Training" with the elapsed stint time instead of a meaningless 0–0 scoreboard. That stint is what gets saved when you leave Free Play.
+- Training rows in history get a real title ("Free Play" / "Entrenamiento libre") and the match detail shows a training header with the stint duration instead of a 0–0 scoreboard.
+
+### Fixed
+- Matches without arena data no longer store the literal "Unknown" as their name. Migration v25 clears the rows written by older versions.
+- Migration v25 also rebuilds the duration of legacy training rows that kept a valid end time but a zeroed duration, so old stints show their real time and count toward training analytics again.
+
 ## [2.11.2] - 2026-09-11
 
 ### Changed
