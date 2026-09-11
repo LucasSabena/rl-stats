@@ -307,6 +307,29 @@ pub static MIGRATIONS: &[Migration] = &[
           AND strftime('%s', end_time) IS NOT NULL
           AND strftime('%s', start_time) IS NOT NULL;",
     },
+    Migration {
+        version: 26,
+        name: "create_training_packs",
+        // User training packs used to live only in the frontend's
+        // localStorage, which meant they were invisible to backups and cloud
+        // sync. They now live here and enqueue sync_outbox changes like every
+        // other entity (the server stores them in `cloud_profile_entities`,
+        // its generic entity table).
+        sql: "CREATE TABLE IF NOT EXISTS training_packs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL,
+            creator TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT '',
+            difficulty TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            source_url TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_training_packs_created_at ON training_packs(created_at);",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

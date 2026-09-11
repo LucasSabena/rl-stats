@@ -114,6 +114,10 @@ export const MatchCard = memo(function MatchCard({
           "group grid w-full cursor-pointer grid-cols-[3px_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-4 py-3 pl-0 pr-2",
           "transition-colors duration-150 hover:bg-bg-hover",
           "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]",
+          // Rendering virtualization for long histories: off-screen rows are
+          // skipped by layout/paint while keeping DOM-based tests and
+          // focus/scroll behavior intact.
+          "[content-visibility:auto] [contain-intrinsic-size:auto_64px]",
         )}
       >
         <span aria-hidden="true" className={cn("h-full w-[3px] rounded-full", edgeTone)} />

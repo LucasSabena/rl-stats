@@ -1,64 +1,36 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { UserTrainingPack } from "@/lib/trainingPacksTypes";
 
+/**
+ * Favorites are a personal UI preference (they can point at curated packs the
+ * database does not own), so they stay in localStorage. The user-created
+ * packs themselves moved to SQLite (migration v26) and are managed by
+ * `useUserTrainingPacks` / `useTrainingPackMutations`.
+ */
 interface TrainingPacksState {
-  userPacks: UserTrainingPack[];
   favorites: Set<string>;
-  addUserPack: (pack: Omit<UserTrainingPack, "id" | "createdAt" | "type">) => void;
-  removeUserPack: (id: string) => void;
   toggleFavorite: (id: string) => void;
   isFavorite: (id: string) => boolean;
 }
 
 const STORAGE_KEY = "rl-training-packs";
 
-function generateId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-function loadFromStorage(): { userPacks: UserTrainingPack[]; favorites: Set<string> } {
+function loadFavorites(): Set<string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as { userPacks?: UserTrainingPack[]; favorites?: string[] };
-      return {
-        userPacks: parsed.userPacks ?? [],
-        favorites: new Set<string>(parsed.favorites ?? []),
-      };
+      const parsed = JSON.parse(raw) as { favorites?: string[] };
+      return new Set<string>(parsed.favorites ?? []);
     }
   } catch {
     // ignore parse errors
   }
-  return { userPacks: [], favorites: new Set<string>() };
+  return new Set<string>();
 }
-
-const initial = loadFromStorage();
 
 export const useTrainingPacksStore = create<TrainingPacksState>()(
   immer((set, get) => ({
-    userPacks: initial.userPacks,
-    favorites: initial.favorites,
-
-    addUserPack: (pack) =>
-      set((state) => {
-        const newPack: UserTrainingPack = {
-          ...pack,
-          id: generateId(),
-          type: "user",
-          createdAt: Date.now(),
-        };
-        state.userPacks.push(newPack);
-      }),
-
-    removeUserPack: (id) =>
-      set((state) => {
-        state.userPacks = state.userPacks.filter((p) => p.id !== id);
-        state.favorites.delete(id);
-      }),
+    favorites: loadFavorites(),
 
     toggleFavorite: (id) =>
       set((state) => {
@@ -77,12 +49,9 @@ useTrainingPacksStore.subscribe((state) => {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({
-        userPacks: state.userPacks,
-        favorites: Array.from(state.favorites),
-      })
+      JSON.stringify({ favorites: Array.from(state.favorites) }),
     );
   } catch {
-    // ignore write errors
+    // Storage may be full or unavailable; favorites stay in memory.
   }
 });

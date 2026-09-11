@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTrainingPacks } from "@/hooks/useTrainingPacks";
+import { useTrainingPackMutations } from "@/hooks/useUserTrainingPacks";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { CategoryFilter } from "@/components/training-packs/CategoryFilter";
 import { TrainingPackDetail } from "@/components/training-packs/TrainingPackDetail";
 import { AddPackModal } from "@/components/training-packs/AddPackModal";
@@ -57,9 +59,11 @@ export function TrainingPacksPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  const { packs, featuredPacks, filteredPacks, refetch } = useTrainingPacks();
-  const { favorites, toggleFavorite, addUserPack, isFavorite } =
-    useTrainingPacksStore();
+  const { packs, userPacks, featuredPacks, filteredPacks, refetch } =
+    useTrainingPacks();
+  const { favorites, toggleFavorite, isFavorite } = useTrainingPacksStore();
+  const { addTrainingPack, removeTrainingPack } = useTrainingPackMutations();
+  const [deletePackId, setDeletePackId] = useState<string | null>(null);
 
   const allPacks = filteredPacks(search, activeCategory, activeDifficulty);
   const visiblePacks = favoritesOnly
@@ -90,11 +94,26 @@ export function TrainingPacksPage() {
 
   const handleAddSave = useCallback(
     (pack: Omit<TrainingPack, "id" | "featured" | "sourceUrl">) => {
-      addUserPack(pack as Parameters<typeof addUserPack>[0]);
+      addTrainingPack.mutate({
+        name: pack.name,
+        code: pack.code,
+        creator: pack.creator,
+        category: pack.category,
+        difficulty: pack.difficulty,
+        description: pack.description,
+        tags: pack.tags,
+      });
       setAddModalOpen(false);
     },
-    [addUserPack]
+    [addTrainingPack]
   );
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deletePackId) return;
+    removeTrainingPack.mutate(deletePackId);
+    setDeletePackId(null);
+    setSelectedPackId(null);
+  }, [deletePackId, removeTrainingPack]);
 
   const handleCopyCode = useCallback(
     async (pack: TrainingPack, e: React.MouseEvent) => {
@@ -417,6 +436,8 @@ export function TrainingPacksPage() {
               isFavorite={isFavorite(selectedPack.id)}
               onToggleFavorite={() => toggleFavorite(selectedPack.id)}
               onClose={() => setSelectedPackId(null)}
+              isUser={userPacks.some((pack) => pack.id === selectedPack.id)}
+              onDelete={() => setDeletePackId(selectedPack.id)}
             />
           </div>
         </div>
@@ -426,6 +447,17 @@ export function TrainingPacksPage() {
         open={addModalOpen}
         onClose={() => setAddModalOpen(false)}
         onSave={handleAddSave}
+      />
+
+      <ConfirmModal
+        isOpen={deletePackId !== null}
+        onClose={() => setDeletePackId(null)}
+        onConfirm={handleDeleteConfirm}
+        title={t("page.deletePack")}
+        description={t("page.deletePackConfirm")}
+        confirmLabel={t("page.deletePack")}
+        variant="danger"
+        isPending={removeTrainingPack.isPending}
       />
     </PageContainer>
   );

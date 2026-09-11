@@ -1,8 +1,6 @@
-import { useCallback, useMemo } from "react";
-import type { TrainingPack, UserTrainingPack } from "@/lib/trainingPacksTypes";
-import { useTrainingPacksStore } from "@/stores/trainingPacksStore";
-
-const PERSISTED_PACKS_KEY = "rl-training-packs";
+import { useMemo } from "react";
+import type { TrainingPack } from "@/lib/trainingPacksTypes";
+import { useUserTrainingPacks } from "@/hooks/useUserTrainingPacks";
 
 const CURATED_PACKS: TrainingPack[] = [
   // ── Speedflip ──
@@ -382,25 +380,28 @@ const CURATED_PACKS: TrainingPack[] = [
 ];
 
 export function useTrainingPacks() {
-  const userPacks = useTrainingPacksStore((state) => state.userPacks);
+  // Packs live in SQLite now (and sync to the cloud); favorites stay in the
+  // local store because they can also point at curated packs.
+  const {
+    data: storedPacks,
+    isLoading,
+    isError,
+    refetch,
+  } = useUserTrainingPacks();
 
-  const refetch = useCallback(() => {
-    try {
-      const raw = localStorage.getItem(PERSISTED_PACKS_KEY);
-      const parsed = raw
-        ? (JSON.parse(raw) as {
-            userPacks?: UserTrainingPack[];
-            favorites?: string[];
-          })
-        : {};
-      useTrainingPacksStore.setState({
-        userPacks: parsed.userPacks ?? [],
-        favorites: new Set<string>(parsed.favorites ?? []),
-      });
-    } catch {
-      // Corrupted or unreadable storage — keep the in-memory packs.
-    }
-  }, []);
+  const userPacks = useMemo<TrainingPack[]>(
+    () =>
+      (storedPacks ?? []).map((pack) => ({
+        ...pack,
+        // Stored as free-form text; the UI narrows it back to the known
+        // category/difficulty unions when rendering.
+        category: pack.category as TrainingPack["category"],
+        difficulty: pack.difficulty as TrainingPack["difficulty"],
+        sourceUrl: pack.sourceUrl ?? undefined,
+        type: "user" as const,
+      })),
+    [storedPacks],
+  );
 
   const packs = useMemo<TrainingPack[]>(() => {
     const merged: TrainingPack[] = [...CURATED_PACKS, ...userPacks];
@@ -454,9 +455,10 @@ export function useTrainingPacks() {
 
   return {
     packs,
+    userPacks,
     featuredPacks,
-    isLoading: false,
-    isError: false,
+    isLoading,
+    isError,
     filteredPacks,
     refetch,
   };

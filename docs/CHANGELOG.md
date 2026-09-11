@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.15.0] - 2026-09-11
+
+### Added
+- **Training packs now sync to the cloud.** User-created packs moved from browser localStorage to canonical SQLite rows (migration v26): they are covered by data export/backup and every create/update/delete enqueues a `training_pack` entity in the sync outbox. The server needs no new table — it stores them through its generic `cloud_profile_entities` table. Existing localStorage packs migrate automatically on first load; favorites stay local because they can also point at curated packs.
+- **Delete action for user packs**, with confirmation — the i18n strings existed but the flow was never wired, so packs could be added but not removed.
+- Lightweight rendering virtualization for history rows (`content-visibility: auto`), so long histories skip layout/paint for off-screen rows while keeping DOM-based tests and keyboard navigation intact.
+
+### Tests
+- 3 Rust storage tests for the training-pack lifecycle (upsert/list/hydrated sync payload, created_at preservation, tombstone on delete, validation) and 2 frontend tests for the legacy migration. Totals: 224 Rust, 107 frontend, 2 Playwright.
+
+### Known gaps
+- Cloud sync is push-only: `sync_pull` exists server-side but the client does not apply remote changes yet (applies to every entity, not just packs).
+- The `tauri::test` harness covers three read commands; extending it needs the remaining Wry-typed state abstracted.
+- Windows installers ship unsigned until a code-signing certificate is provided through the `WINDOWS_CERTIFICATE`/`WINDOWS_CERTIFICATE_PASSWORD` secrets; Azure Trusted Signing can be added as an extra step.
+
 ## [2.14.0] - 2026-09-11
 
 ### Changed

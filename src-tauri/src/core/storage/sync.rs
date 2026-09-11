@@ -242,6 +242,9 @@ fn hydrate_change_payload_conn(
         "rlstats_cache" => hydrate_profile_cache(conn, &change.entity_key, "rlstats_cache"),
         "friend" => hydrate_friend(conn, &change.entity_key),
         "user_preset" => hydrate_user_preset(conn, &change.entity_key),
+        "training_pack" => {
+            crate::core::storage::training_packs::hydrate_training_pack(conn, &change.entity_key)
+        }
         _ => Some(parse_payload_or_empty(&change.payload_json)),
     }
 }

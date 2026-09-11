@@ -14,6 +14,7 @@ use tracing::{debug, info};
 
 pub mod migrations;
 pub mod sync;
+pub mod training_packs;
 
 pub type DbConnectionPool = Pool<SqliteConnectionManager>;
 

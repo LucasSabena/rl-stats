@@ -84,6 +84,8 @@ The app now enqueues local changes for:
 - `mmr_cache`
 - `friend`
 - `user_preset`
+- `training_pack` (user-created packs; stored server-side in
+  `cloud_profile_entities`, no dedicated table needed)
 - `profile_data` for destructive full-profile clears
 
 The app-level sync DB currently enqueues:
