@@ -19,8 +19,9 @@ export default defineConfig(async () => ({
   clearScreen: false,
   test: {
     // Playwright specs use their own runner; Vitest must not try to execute
-    // them (their `test()` signature is incompatible).
-    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
+    // them (their `test()` signature is incompatible). Same for the landing
+    // site's capture harness, which lives outside this package.
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**", "landing/**"],
     coverage: {
       exclude: [
         "dist/**",

@@ -12,6 +12,21 @@ lerna-debug.log*
 e2e/test-results/
 playwright-report/
 
+# Landing capture scratch and regenerable raw assets.
+#
+# The webp/mp4 in landing/public/media/ ARE tracked: they are what ships. The
+# PNG/WebM masters in landing/assets-src/ are ~7 MB of source material that is
+# fully reproducible from the app build:
+#
+#   cd landing
+#   pnpm assets:capture && pnpm assets:overlays   # screens + overlays
+#   node scripts/capture-video.mjs               # hero loop
+#   pnpm assets:process                          # -> public/media
+#
+# They stay on disk so `pnpm assets:process` can re-encode without a recapture.
+landing/assets-src/
+landing/test-results/
+landing/playwright-report/
 node_modules
 dist
 dist-ssr

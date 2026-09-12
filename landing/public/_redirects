@@ -1,0 +1,5 @@
+# Cloudflare Pages redirects for the RL Stats landing page.
+#
+# Single-page site: any unknown path (typos, stale links, a crawler probing
+# /features) should render the landing page instead of a bare 404.
+/*  /index.html  200

@@ -254,11 +254,18 @@ api-rocketleague/
 │       ├── commands/           # Tauri IPC command handlers
 │       └── updater/            # Auto-update orchestration
 ├── src-tauri/overlays/         # Embedded overlay HTML/CSS/JS for OBS
+├── landing/                    # Marketing landing page (separate package)
 ├── docs/                       # Project documentation
 ├── scripts/                    # Build and release utilities
 ├── tests/                      # End-to-end tests (Playwright)
 └── .github/workflows/          # CI/CD pipeline definitions
 ```
+
+> `landing/` is a separate pnpm workspace package. It is **not** part of the
+> desktop app: the Tauri build only bundles `dist/` (the app UI), the installer
+> never includes landing assets, and the app's CI installs with
+> `--filter rl-stats` so landing dependencies cannot affect the Windows build.
+> See [landing/README.md](landing/README.md).
 
 ---
 

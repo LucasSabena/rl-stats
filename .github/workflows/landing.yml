@@ -1,0 +1,85 @@
+name: Landing CI
+
+# Verifies the marketing landing page builds and passes its own checks.
+#
+# Deployment is handled by Cloudflare Pages' Git integration (root directory
+# `landing`), which needs no repository secrets. This workflow only guards
+# quality so a broken landing never reaches production.
+#
+# The app's own CI is untouched: `landing/` is a separate workspace package and
+# the app jobs install with `--filter rl-stats`, so nothing here can affect the
+# Windows build.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/landing.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'landing/**'
+      - '.github/workflows/landing.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: landing-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  landing-check:
+    name: Landing Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install landing dependencies
+        run: pnpm install --frozen-lockfile --filter rl-stats-landing
+
+      - name: Typecheck landing
+        working-directory: landing
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint landing
+        working-directory: landing
+        run: pnpm lint
+
+      - name: Build landing
+        working-directory: landing
+        run: pnpm build
+
+      - name: Upload build output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-dist-${{ github.run_id }}
+          path: landing/dist/
+          retention-days: 3

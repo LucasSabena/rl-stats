@@ -1,5 +1,6 @@
 packages:
   - "."
+  - "landing"
 
 onlyBuiltDependencies:
   - esbuild

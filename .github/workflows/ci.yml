@@ -57,7 +57,9 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+        # Scoped to the app: the landing (landing/) is a separate package with
+        # its own toolchain and must not affect the app build or the audit.
+        run: pnpm install --frozen-lockfile --filter rl-stats
 
       - name: Run TypeScript check
         run: pnpm exec tsc --noEmit
@@ -218,7 +220,9 @@ jobs:
             ${{ runner.os }}-cargo-release-
 
       - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+        # Scoped to the app: the landing (landing/) is a separate package with
+        # its own toolchain and must not affect the app build or the audit.
+        run: pnpm install --frozen-lockfile --filter rl-stats
 
       - name: Build release profile (no bundles)
         run: pnpm tauri build --no-bundle
@@ -272,7 +276,9 @@ jobs:
           run_install: false
 
       - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+        # Scoped to the app: the landing (landing/) is a separate package with
+        # its own toolchain and must not affect the app build or the audit.
+        run: pnpm install --frozen-lockfile --filter rl-stats
 
       - name: pnpm audit
         run: pnpm audit --audit-level high

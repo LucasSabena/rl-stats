@@ -1,0 +1,182 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Fonts — self-hosted, matching the app.
+   ============================================================ */
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/geist-mono/index.css";
+
+/* ============================================================
+   Tokens.
+   The landing intentionally reuses RL Stats' own OKLCH palette so the site
+   and the product feel like one thing. Only the *dark* theme is shipped:
+   the product's screenshots are dark, and a light marketing page around a
+   dark app icon reads as a mismatch.
+   ============================================================ */
+:root {
+  --canvas: oklch(0.155 0.008 265);
+  --surface: oklch(0.196 0.009 265);
+  --surface-raised: oklch(0.238 0.011 265);
+  --surface-sunken: oklch(0.128 0.007 265);
+
+  --fg: oklch(0.98 0.003 265);
+  --fg-secondary: oklch(0.76 0.012 265);
+  --fg-muted: oklch(0.62 0.014 265);
+  --fg-subtle: oklch(0.62 0.014 265);
+
+  --line-subtle: oklch(1 0 0 / 0.06);
+  --line: oklch(1 0 0 / 0.1);
+  --line-strong: oklch(1 0 0 / 0.18);
+
+  --wash: oklch(1 0 0 / 0.04);
+  --wash-strong: oklch(1 0 0 / 0.08);
+
+  --accent: oklch(0.66 0.19 285);
+  --accent-hover: oklch(0.72 0.18 285);
+  --accent-fg: oklch(0.16 0.02 285);
+
+  --success: oklch(0.74 0.17 157);
+  --danger: oklch(0.66 0.2 25);
+  --warning: oklch(0.79 0.16 75);
+  --info: oklch(0.66 0.16 250);
+
+  --team-blue: oklch(0.66 0.16 250);
+  --team-orange: oklch(0.74 0.16 58);
+
+  --shadow-1: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-2: 0 2px 4px oklch(0 0 0 / 0.32), 0 1px 2px oklch(0 0 0 / 0.24);
+  --shadow-3: 0 8px 16px oklch(0 0 0 / 0.4), 0 2px 4px oklch(0 0 0 / 0.28);
+  --shadow-4: 0 16px 32px oklch(0 0 0 / 0.48), 0 4px 8px oklch(0 0 0 / 0.32);
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-bg-base: var(--canvas);
+  --color-bg-surface: var(--surface);
+  --color-bg-elevated: var(--surface-raised);
+  --color-bg-sunken: var(--surface-sunken);
+  --color-bg-hover: var(--wash);
+  --color-bg-active: var(--wash-strong);
+
+  --color-text-primary: var(--fg);
+  --color-text-secondary: var(--fg-secondary);
+  --color-text-muted: var(--fg-muted);
+  --color-text-subtle: var(--fg-subtle);
+
+  --color-border-subtle: var(--line-subtle);
+  --color-border-default: var(--line);
+  --color-border-strong: var(--line-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-team-blue: var(--team-blue);
+  --color-team-orange: var(--team-orange);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--accent) 40%, transparent);
+  color: var(--fg);
+}
+
+/* Numbers and clocks in the product UI use tabular figures; the marketing
+   stats repeat that so the two feel related. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Reveal on scroll.
+   A tiny class-based system instead of an animation library: elements start
+   translated and fade in when they enter the viewport. `prefers-reduced-motion`
+   short-circuits everything to the final state.
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 520ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 520ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ============================================================
+   Ambient glow — a single, product-justified accent behind the hero.
+   Not a decorative gradient: it echoes the app's violet accent and the
+   "live" pulse used on the dashboard.
+   ============================================================ */
+.hero-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      60% 45% at 50% 0%,
+      color-mix(in oklch, var(--accent) 16%, transparent) 0%,
+      transparent 70%
+    );
+}
+
+/* Live pulse used for the "en vivo" dot — same behaviour as the app. */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.82);
+  }
+}
+
+.live-dot {
+  animation: live-pulse 2000ms ease-in-out infinite;
+}

@@ -1,0 +1,9 @@
+# RL Stats landing page
+User-agent: *
+Allow: /
+
+# The capture harness and raw assets are never deployed; nothing to hide here,
+# but keeping crawlers away from build paths avoids 404 noise.
+Disallow: /assets/
+
+Sitemap: https://rl-stats.pages.dev/sitemap.xml

@@ -1,0 +1,10 @@
+# Cloudflare Pages configuration for the RL Stats landing page.
+#
+# The primary deployment path is Cloudflare's Git integration (connect the
+# repository in the dashboard and set the root directory to `landing`), which
+# needs no repository secrets. This file is for the alternative path: deploying
+# from the command line or CI with `wrangler pages deploy`.
+
+name = "rl-stats-landing"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-01-01"

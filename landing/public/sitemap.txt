@@ -1,0 +1,3 @@
+https://rl-stats.pages.dev/
+https://rl-stats.pages.dev/?lang=en
+https://rl-stats.pages.dev/?lang=pt
