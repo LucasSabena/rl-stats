@@ -107,7 +107,10 @@ impl Default for AppSettings {
             // primary id to a third party, so the user must consent first.
             mmr_scraper_enabled: false,
             tracker_auto_refresh: true,
-            tracker_refresh_interval_min: 5,
+            // 30 minutes: the refresh loop only runs while the game is open, so
+            // a short interval produced needless automated traffic from the
+            // user's IP without adding useful freshness.
+            tracker_refresh_interval_min: 30,
             session_gap_minutes: 30,
             kickoff_goal_threshold_seconds: 7,
             training_tracking_enabled: true,
@@ -414,7 +417,7 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             "mmr_scraper_enabled" => settings.mmr_scraper_enabled = value.parse().unwrap_or(false),
             "tracker_auto_refresh" => settings.tracker_auto_refresh = value.parse().unwrap_or(true),
             "tracker_refresh_interval_min" => {
-                settings.tracker_refresh_interval_min = value.parse().unwrap_or(5)
+                settings.tracker_refresh_interval_min = value.parse().unwrap_or(30)
             }
             "session_gap_minutes" => settings.session_gap_minutes = value.parse().unwrap_or(30),
             "kickoff_goal_threshold_seconds" => {

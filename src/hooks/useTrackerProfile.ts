@@ -5,9 +5,7 @@ import {
   fetchTrackerProfile,
   getCachedProfile,
   refreshTrackerProfile,
-  fetchRlstatsProfile,
   getCachedRlstatsProfile,
-  refreshRlstatsProfile,
 } from "@/lib/api";
 import type { TrackerProfile } from "@/lib/types";
 
@@ -46,13 +44,7 @@ export function useRefreshTrackerProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
-      try {
-        return await refreshTrackerProfile();
-      } catch {
-        return await refreshRlstatsProfile();
-      }
-    },
+    mutationFn: async () => refreshTrackerProfile(),
     onSuccess: (data) => {
       queryClient.setQueryData(QUERY_KEY, data);
     },
@@ -63,13 +55,7 @@ export function useFetchTrackerProfile() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async () => {
-      try {
-        return await fetchTrackerProfile();
-      } catch {
-        return await fetchRlstatsProfile();
-      }
-    },
+    mutationFn: async () => fetchTrackerProfile(),
     onSuccess: (data) => {
       queryClient.setQueryData(QUERY_KEY, data);
     },

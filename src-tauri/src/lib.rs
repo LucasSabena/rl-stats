@@ -20,6 +20,10 @@ mod updater;
 /// finishes) falls through to the real exit instead of looping.
 static EXIT_FLUSH_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Consecutive Tracker auto-refresh failures after which the refresh loop
+/// stops retrying until the next game launch (a session-level circuit breaker).
+const TRACKER_REFRESH_MAX_FAILURES: u32 = 5;
+
 use crate::core::autostart::configure_autostart;
 use crate::core::ingestor::{start_ingestor, IngestorHandle};
 use crate::core::models::RlEvent;
@@ -30,7 +34,6 @@ use crate::core::profiles::{
     find_matching_profile, find_profile_by_primary_id, get_active_profile, get_db_path_for_profile,
     init_profiles, update_profile_player_identity,
 };
-use crate::core::rlstats_api::RlstatsClient;
 use crate::core::session::{
     resolve_local_player_identity, MatchPhase, PersistResult, SessionManager,
 };
@@ -209,9 +212,7 @@ pub fn run() {
             commands::tracker::fetch_tracker_profile,
             commands::tracker::get_cached_profile,
             commands::tracker::refresh_tracker_profile,
-            commands::rlstats::fetch_rlstats_profile,
             commands::rlstats::get_cached_rlstats_profile,
-            commands::rlstats::refresh_rlstats_profile,
             commands::overlay::start_overlay_server,
             commands::overlay::stop_overlay_server,
             commands::overlay::get_overlay_server_status,
@@ -361,6 +362,24 @@ pub fn run() {
                             }
                         }
                         let _ = crate::core::storage::set_kv_flag(&pool, "retention_opt_in_v1");
+                    }
+                    // Existing installs kept the old 5-minute tracker refresh
+                    // cadence. Raise it once to the new 30-minute default so the
+                    // anti-bot fix reaches every profile, not just fresh ones.
+                    if !crate::core::storage::get_kv_flag(&pool, "tracker_interval_30_v1") {
+                        if let Ok(mut settings) = get_settings(&pool) {
+                            if settings.tracker_refresh_interval_min < 30 {
+                                settings.tracker_refresh_interval_min = 30;
+                                if let Err(e) = set_settings(&pool, &settings) {
+                                    tracing::warn!(error = %e, "Could not raise tracker refresh interval");
+                                } else {
+                                    tracing::info!(
+                                        "Tracker refresh interval raised to 30 minutes"
+                                    );
+                                }
+                            }
+                        }
+                        let _ = crate::core::storage::set_kv_flag(&pool, "tracker_interval_30_v1");
                     }
                 });
             }
@@ -572,8 +591,10 @@ pub fn run() {
 
             let db_pool_tracker = Arc::clone(&db_pool);
             let app_handle_tracker = app.handle().clone();
+            let game_running_for_tracker = Arc::clone(&game_running_flag);
             tauri::async_runtime::spawn(async move {
-                tracker_refresh_loop(db_pool_tracker, app_handle_tracker).await;
+                tracker_refresh_loop(db_pool_tracker, app_handle_tracker, game_running_for_tracker)
+                    .await;
             });
 
             let session_manager_for_game_events = Arc::clone(&session_manager);
@@ -1524,8 +1545,28 @@ fn spawn_match_mmr_enrichment(
     });
 }
 
-async fn tracker_refresh_loop(db_pool: Arc<DbPool>, app_handle: tauri::AppHandle) {
+/// Background refresh of the user's own Tracker Network profile.
+///
+/// Deliberately conservative with the network:
+/// - It only runs while Rocket League is actually running. Refreshing a profile
+///   every few minutes around the clock (even with the game closed) sent
+///   hundreds of automated requests per day from the user's residential IP,
+///   which is what anti-bot systems score as abuse and then punish with
+///   challenges on every site behind the same IP.
+/// - It never touches rlstats.net: that host is already reached through the
+///   embedded WebView2 scraper (`core/mmr/webview.rs`), which behaves like a
+///   real browser. Plain HTTP requests to it were both useless (Cloudflare
+///   rejects them) and the main source of the automated-looking traffic.
+/// - Consecutive failures back off exponentially (with jitter) instead of
+///   hammering the API on a fixed cadence.
+async fn tracker_refresh_loop(
+    db_pool: Arc<DbPool>,
+    app_handle: tauri::AppHandle,
+    game_running_flag: Arc<std::sync::atomic::AtomicBool>,
+) {
     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+    let mut failure_streak: u32 = 0;
 
     loop {
         let settings = match get_settings(&db_pool) {
@@ -1542,43 +1583,47 @@ async fn tracker_refresh_loop(db_pool: Arc<DbPool>, app_handle: tauri::AppHandle
             continue;
         }
 
-        let platform = match settings.tracker_platform.clone() {
-            Some(p) => p,
-            None => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        // Do not generate traffic unless the user is actually playing.
+        let game_running = game_running_flag.load(std::sync::atomic::Ordering::Relaxed);
+        if !game_running {
+            failure_streak = 0;
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            continue;
+        }
+
+        let (platform, username) = match (
+            settings.tracker_platform.clone(),
+            settings.tracker_username.clone(),
+        ) {
+            (Some(p), Some(u)) => (p, u),
+            _ => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                 continue;
             }
         };
 
-        let username = match settings.tracker_username.clone() {
-            Some(u) => u,
-            None => {
-                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        let Some(api_key) = settings.tracker_api_key.clone() else {
+            // Without a Tracker API key there is nothing safe to refresh: the
+            // RLStats fallback used to run here and is intentionally gone.
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            continue;
+        };
+
+        let base_interval_secs = (settings.tracker_refresh_interval_min.max(1) as u64) * 60;
+
+        let fetch_result = match TrackerClient::new(Some(api_key)) {
+            Ok(client) => client.fetch_profile(&platform, &username).await,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to create TrackerClient for auto-refresh");
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                 continue;
             }
         };
 
-        let api_key = settings.tracker_api_key.clone();
-        let interval_secs = (settings.tracker_refresh_interval_min.max(1) as u64) * 60;
-
-        let fetch_result = if api_key.is_some() {
-            let client = match TrackerClient::new(api_key) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to create TrackerClient for auto-refresh");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                    continue;
-                }
-            };
-            client.fetch_profile(&platform, &username).await
-        } else {
-            Err(crate::error::AppError::ConfigError(
-                "No Tracker API key configured, using RLStats directly.".into(),
-            ))
-        };
-
+        let mut sleep_secs = base_interval_secs + pseudo_random_below(base_interval_secs / 10);
         match fetch_result {
             Ok(profile) => {
+                failure_streak = 0;
                 if let Ok(profile_json) = serde_json::to_string(&profile) {
                     if let Err(e) = crate::core::storage::upsert_tracker_cache(
                         &db_pool,
@@ -1592,64 +1637,58 @@ async fn tracker_refresh_loop(db_pool: Arc<DbPool>, app_handle: tauri::AppHandle
                     }
                 }
             }
-            Err(tracker_err) => {
-                tracing::warn!(error = %tracker_err, "Auto-refresh tracker profile failed, trying RLStats");
+            Err(error) => {
+                failure_streak = failure_streak.saturating_add(1);
+                tracing::warn!(
+                    error = %error,
+                    failure_streak,
+                    "Auto-refresh tracker profile failed"
+                );
 
-                let rlstats_platform = match platform.to_lowercase().as_str() {
-                    "steam" => "Steam",
-                    "epic" => "Epic",
-                    "xbl" => "Xbox",
-                    "psn" => "PS4",
-                    _ => {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
-                        continue;
-                    }
-                };
-
-                match RlstatsClient::new() {
-                    Ok(rl_client) => {
-                        match rl_client
-                            .fetch_profile_html(rlstats_platform, &username)
-                            .await
-                        {
-                            Ok(html) => {
-                                match crate::core::rlstats_api::parse_profile_html(
-                                    &html, &platform, &username,
-                                ) {
-                                    Ok(profile) => {
-                                        if let Ok(profile_json) = serde_json::to_string(&profile) {
-                                            if let Err(e) =
-                                                crate::core::storage::upsert_rlstats_cache(
-                                                    &db_pool,
-                                                    &platform,
-                                                    &username,
-                                                    &profile_json,
-                                                )
-                                            {
-                                                tracing::error!(error = %e, "Failed to cache rlstats profile");
-                                            } else {
-                                                let _ = app_handle
-                                                    .emit("tracker-profile-updated", &profile);
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(error = %e, "Failed to parse RLStats profile")
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!(error = %e, "Failed to fetch RLStats profile")
-                            }
+                if failure_streak >= TRACKER_REFRESH_MAX_FAILURES {
+                    tracing::warn!(
+                        failure_streak,
+                        "Pausing tracker auto-refresh until the next game launch"
+                    );
+                    // Wait for the game to close (and then for a new launch)
+                    // before trying again, so a persistent error cannot turn
+                    // into an endless retry loop.
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                        let running = game_running_flag.load(std::sync::atomic::Ordering::Relaxed);
+                        if !running {
+                            break;
                         }
                     }
-                    Err(e) => tracing::error!(error = %e, "Failed to create RLStats client"),
+                    failure_streak = 0;
+                    continue;
                 }
+
+                // Exponential backoff, capped, with up to +20% jitter so the
+                // retries never look like a metronome.
+                let backoff = base_interval_secs
+                    .saturating_mul(1u64 << failure_streak.min(4))
+                    .min(60 * 60);
+                let jitter = backoff / 5;
+                sleep_secs = backoff + pseudo_random_below(jitter);
             }
         }
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(sleep_secs)).await;
     }
+}
+
+/// Small non-cryptographic jitter source. `rand` is not a dependency and this
+/// only needs to break up perfectly periodic retry timing, not be secure.
+fn pseudo_random_below(bound: u64) -> u64 {
+    if bound == 0 {
+        return 0;
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.subsec_nanos() as u64)
+        .unwrap_or(0);
+    nanos % bound
 }
 
 /// Internal helper to create the overlay window without going through the command system.

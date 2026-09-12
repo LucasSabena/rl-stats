@@ -386,12 +386,10 @@ const UNBOUNDED_COMMANDS = new Set([
   "create_cloud_backup_cmd",
   "apply_cloud_pull_batch_cmd",
   "enqueue_existing_profile_history_for_sync_cmd",
-  // Network round-trips (tracker / RLStats / MMR providers)
+  // Network round-trips (tracker / MMR providers)
   "fetch_live_mmr_snapshot",
   "fetch_tracker_profile",
   "refresh_tracker_profile",
-  "fetch_rlstats_profile",
-  "refresh_rlstats_profile",
   // Filesystem scans
   "detect_rl_path",
   "inspect_rl_path",

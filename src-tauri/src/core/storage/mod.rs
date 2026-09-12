@@ -2797,32 +2797,6 @@ pub fn get_tracker_cache(
     Ok(result)
 }
 
-pub fn upsert_rlstats_cache(
-    pool: &DbPool,
-    platform: &str,
-    username: &str,
-    profile_json: &str,
-) -> AppResult<()> {
-    let conn = get_conn(pool)?;
-    conn.execute(
-        "INSERT INTO rlstats_cache (platform, username, profile_json, fetched_at)
-         VALUES (?1, ?2, ?3, datetime('now'))
-         ON CONFLICT(platform, username) DO UPDATE SET
-         profile_json = excluded.profile_json,
-         fetched_at = excluded.fetched_at",
-        params![platform, username, profile_json],
-    )
-    .map_err(|e| AppError::StorageError(e.to_string()))?;
-    sync::enqueue_upsert_conn(
-        &conn,
-        "rlstats_cache",
-        &format!("{}:{}", platform, username),
-        serde_json::json!({ "platform": platform, "username": username }),
-    )?;
-    debug!(platform, username, "RLStats cache updated");
-    Ok(())
-}
-
 pub fn get_rlstats_cache(
     pool: &DbPool,
     platform: &str,

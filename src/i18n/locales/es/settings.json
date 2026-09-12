@@ -402,7 +402,7 @@
       "title": "Notas de integración",
       "freePlan": "Plan free detectado: 5 player endpoints por día. No sirve para uso real del live MMR.",
       "proPlan": "Plan Pro detectado: 1000 player endpoints por día y 10 req/s.",
-      "priority": "La app lo usa antes que Tracker/RLStats, pero sigue priorizando la estimación local para tu propio jugador."
+      "priority": "La app lo usa antes que Tracker, pero sigue priorizando la estimación local para tu propio jugador."
     },
     "saving": "Guardando…",
     "save": "Guardar RapidAPI"
@@ -412,7 +412,7 @@
     "description": "Scraper configurable con bypass anti-bot. Ideal cuando RLStats o Tracker están detrás de Cloudflare.",
     "active": "Activo",
     "disabled": "Desactivado",
-    "enableLabel": "Usar Parse.bot como proveedor de MMR (entre Tracker y RLStats)",
+    "enableLabel": "Usar Parse.bot como proveedor de MMR (después de Tracker)",
     "apiKeyLabel": "API Key de Parse.bot",
     "apiKeyPlaceholder": "pmx_tu_api_key_aqui",
     "showKey": "Mostrar key",

@@ -16,9 +16,8 @@ Stats API (TCP 49123)
         ├─ 2. rapidapi          optional, requires paid RapidAPI key
         ├─ 3. tracker           deprecated (no API keys for RL, Cloudflare)
         ├─ 4. parsebot          optional, requires user scraper + credits
-        ├─ 5. rlstats (HTTP)    legacy fallback, usually Cloudflare-blocked
-        ├─ 6. history           last exact MMR stored for that player/playlist
-        └─ 7. local-estimate    local player baseline + per-match delta
+        ├─ 5. history           last exact MMR stored for that player/playlist
+        └─ 6. local-estimate    local player baseline + per-match delta
 ```
 
 Resolution rules:
@@ -77,10 +76,27 @@ latency, and success/failure counters. The Settings > Game tab shows the
 primary provider state and runs an on-demand probe via
 `test_mmr_provider("rlstats-webview")` using the configured local profile.
 
-The scraper is controlled by the `mmr_scraper_enabled` setting (default on).
-When disabled, no hidden window is created and resolution falls back to the
-legacy providers, history, and estimates. "Force refresh" also clears the
+The scraper is controlled by the `mmr_scraper_enabled` setting (default off:
+the user opts in). When disabled, no hidden window is created and resolution
+falls back to history and estimates. "Force refresh" also clears the
 `rlstats-webview` cache entry.
+
+### Anti-bot hygiene
+
+The biggest source of automated traffic was never the scraper: it was the
+Tracker Network refresh loop, which ran with the game closed, every five
+minutes, and fell back to plain HTTP requests against rlstats.net. That is now
+fixed:
+
+- The refresh loop only runs while `game_running` is true.
+- It only talks to the Tracker API (`api.tracker.gg`) when a key is configured;
+  there is no HTTP fallback to rlstats.net anywhere in the app.
+- Consecutive failures back off exponentially with jitter, and five in a row
+  pause refreshes until the next game launch.
+- The default interval is 30 minutes (existing installs are migrated once).
+- The WebView2 scraper itself stays serialized, throttled by its 30-minute
+  cache, parked on `about:blank` between lookups, and reaped after 10 idle
+  minutes.
 
 ## Deprecated / optional providers
 
@@ -91,6 +107,11 @@ legacy providers, history, and estimates. "Force refresh" also clears the
   subscription, but the free tier is far too small for lobby lookups.
 - **Parse.bot**: managed anti-bot scraping, requires a user-built scraper and
   credits; the integration stays as an optional provider.
+- **RLStats HTTP**: removed. A plain `reqwest` client cannot clear Cloudflare,
+  and the automated requests it generated (the Tracker refresh loop fell back
+  to it every five minutes, around the clock) are what got the user's
+  residential IP flagged as a bot. All rlstats.net access now goes through the
+  WebView2 scraper, which behaves like a real browser.
 - **PsyNet RPC (`Skills/GetPlayersSkills`)**: exact and batch, but it is the
   game's private backend and using it violates the ToS, so it is explicitly
   out of scope.

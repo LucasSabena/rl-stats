@@ -94,13 +94,7 @@ pub async fn fetch_live_mmr_snapshot(
                 continue;
             };
             let platform = crate::core::mmr::normalize_provider_platform(raw_platform);
-            for provider in &[
-                "rapidapi",
-                "tracker",
-                "parsebot",
-                "rlstats",
-                "rlstats-webview",
-            ] {
+            for provider in &["rapidapi", "tracker", "parsebot", "rlstats-webview"] {
                 let _ = crate::core::storage::delete_mmr_cache(
                     &state.db_pool,
                     provider,
