@@ -54,7 +54,7 @@ export const TeamPanel = memo(function TeamPanel({
         </h3>
         {averageMmr !== null && (
           <span className="tabular text-[11px] text-text-tertiary">
-            {t("live:mmr.average")} {averageMmr}
+            {t("live:mmr.average", { mmr: averageMmr })}
           </span>
         )}
         {mmrLoading && averageMmr === null && (
