@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [2.16.5] - 2026-09-12
+
+### Fixed
+- **Auto-refresh no longer gets the user's IP flagged as a bot.** The tracker
+  refresh loop ran around the clock (even with Rocket League closed) every five
+  minutes and, without a Tracker API key, fell back to plain HTTP requests
+  against rlstats.net. Those automated requests from a residential IP are what
+  Cloudflare scored as abuse and answered with challenges on unrelated sites.
+  The loop now only runs while the game is running, uses exponential backoff
+  with jitter, and pauses after five consecutive failures until the next game
+  launch. The default interval is 30 minutes and existing installs are migrated
+  once.
+- **All rlstats.net access now goes through the WebView2 scraper.** The plain
+  HTTP client (`core/rlstats_api`) and its commands were removed: it could not
+  clear Cloudflare and was the main source of bot-like traffic. Cached RLStats
+  profiles remain readable, and the MMR provider chain (webview → RapidAPI →
+  Tracker → Parse.bot → history → estimate) lost only the dead HTTP fallback.
+
 ### Tests
 - Automated accessibility smoke test with `axe-core` over the UI primitives
   (Button, Input, Switch) and the Modal dialog; it fails on unnamed icon
