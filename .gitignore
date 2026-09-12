@@ -24,6 +24,7 @@ playwright-report/
 #   pnpm assets:process                          # -> public/media
 #
 # They stay on disk so `pnpm assets:process` can re-encode without a recapture.
+# Demo recordings under assets-src/demos/ are for docs/social, not the web.
 landing/assets-src/
 landing/test-results/
 landing/playwright-report/

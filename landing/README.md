@@ -189,6 +189,41 @@ Keep the deployed bundle light — the whole point is a fast page:
 Check with `du -sh landing/dist`. Anything above the budget means an asset was
 captured at the wrong size or not converted to webp.
 
+## Demo recordings
+
+Separate from the landing assets: scripted walkthroughs of the real app, useful
+for docs, release notes, a README GIF or social clips. They are **not** used by
+the landing page.
+
+```bash
+# App preview must be running on :4183 (the capture script starts one)
+node ../node_modules/vite/bin/vite.js preview --port 4183 --strictPort &
+
+cd landing
+pnpm assets:demos                        # record every clip -> assets-src/demos/*.webm
+pnpm assets:demos --only 04              # record one (substring match)
+pnpm assets:demos:process                # -> out/*.mp4
+pnpm assets:demos:process -- --gif       # also render GIFs for a README
+```
+
+| Clip | Shows |
+|---|---|
+| `01-tour-completo` | Live → History → match detail → Analytics |
+| `02-analisis` | Analytics stats, trend chart, MMR history, period tabs |
+| `03-mood` | Mood panel and session fatigue curve |
+| `04-tema-claro-oscuro` | Dark → light → dark theme switch across charts |
+| `05-historial-a-partido` | Filter history, open a match, browse goals |
+| `06-mood-prompt` | Post-match mood prompt and rating |
+
+Each clip draws a synthetic cursor (`installCursor` in `record-demos.ts`):
+Playwright videos do not capture the OS pointer, so the arrow is an overlay div
+that follows real `mouse.move` events and pulses a ring on `mousedown`. Without
+it the clips look like the UI moves on its own.
+
+The demos share the IPC mock with the screenshot spec (`mock-backend.ts`), so a
+fixture change updates both. To add a clip, append an entry to `DEMOS` in
+`record-demos.ts`.
+
 ## Copy accuracy rules
 
 Marketing that overstates the product erodes trust faster than it wins
