@@ -74,6 +74,7 @@ pub fn calculate_streaks_for_sessions(
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
            AND m.winner IS NOT NULL
+           AND LOWER(COALESCE(m.match_type, '')) != 'training'
          ORDER BY m.start_time ASC",
     )?;
 

@@ -76,7 +76,6 @@ fn fetch_curve_rows(
          JOIN match_players mp ON mp.match_id = m.id
          JOIN players p ON p.id = mp.player_id
          WHERE p.primary_id = ?1
-           AND m.winner IS NOT NULL
            AND date(m.start_time, 'localtime') >= ?2
            AND date(m.start_time, 'localtime') <= ?3",
     );
@@ -88,6 +87,16 @@ fn fetch_curve_rows(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+        // Training stints have no winner; requiring one would empty the panel
+        // when the user explicitly filters by training.
+        if !mt.eq_ignore_ascii_case("training") {
+            sql.push_str(" AND m.winner IS NOT NULL");
+        }
+    } else {
+        // Patterns are win/loss metrics: training stints must never shape the
+        // curve, fatigue, chemistry or breakdown panels.
+        sql.push_str(" AND m.winner IS NOT NULL");
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
     if let Some(pl) = playlist {
         sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
@@ -505,6 +514,10 @@ pub fn get_teammate_stats(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+    } else {
+        // Chemistry is a match metric: training stints (a party in Free Play
+        // shows up as "teammates" with no opponent) must not pollute it.
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
     if let Some(pl) = playlist {
         sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");

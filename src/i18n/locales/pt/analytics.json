@@ -171,6 +171,7 @@
   "matchDetail": {
     "loading": "Carregando partidas...",
     "win": "V",
+    "training": "Treino",
     "loss": "D",
     "draw": "E",
     "overtime": "PR",

@@ -52,6 +52,7 @@ export function PlayerMatchesPanel({
       ) : (
         <div className="space-y-2">
           {matches.map((m) => {
+            const isTraining = m.match_type === "training";
             const startDate = new Date(m.start_time);
             const timeStr = startDate.toLocaleDateString(i18n.language, {
               day: "numeric",
@@ -63,22 +64,28 @@ export function PlayerMatchesPanel({
               <div
                 key={m.id}
                 className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
-                  m.is_win
-                    ? "border-accent-success/20 bg-accent-success/5"
-                    : "border-accent-danger/20 bg-accent-danger/5"
+                  isTraining
+                    ? "border-accent-primary/20 bg-accent-primary/5"
+                    : m.is_win
+                      ? "border-accent-success/20 bg-accent-success/5"
+                      : "border-accent-danger/20 bg-accent-danger/5"
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <span
                     className={`rounded px-2 py-0.5 text-xs font-bold ${
-                      m.is_win
-                        ? "bg-accent-success/20 text-accent-success"
-                        : "bg-accent-danger/20 text-accent-danger"
+                      isTraining
+                        ? "bg-accent-primary/20 text-accent-primary"
+                        : m.is_win
+                          ? "bg-accent-success/20 text-accent-success"
+                          : "bg-accent-danger/20 text-accent-danger"
                     }`}
                   >
-                    {m.is_win
-                      ? t("analytics:matchDetail.win")
-                      : t("analytics:matchDetail.loss")}
+                    {isTraining
+                      ? t("analytics:matchDetail.training")
+                      : m.is_win
+                        ? t("analytics:matchDetail.win")
+                        : t("analytics:matchDetail.loss")}
                   </span>
                   <span className="text-sm font-mono font-semibold text-text-primary">
                     {m.score_blue} - {m.score_orange}

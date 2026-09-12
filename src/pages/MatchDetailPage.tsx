@@ -142,6 +142,7 @@ export function MatchDetailPage() {
     { value: "casual", label: t("history:matchTypes.casual") },
     { value: "tournament", label: t("history:matchTypes.tournament") },
     { value: "other", label: t("history:matchTypes.other") },
+    { value: "training", label: t("history:results.training") },
   ];
 
   const playlistOptions: { value: string; label: string }[] = [

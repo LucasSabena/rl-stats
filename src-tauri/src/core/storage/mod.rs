@@ -1393,6 +1393,49 @@ pub fn remove_duplicate_training_rows(pool: &DbPool) -> AppResult<usize> {
     Ok(deleted)
 }
 
+/// Reclassify legacy one-sided rows as training.
+///
+/// Older builds classified a session as training only when it had at most one
+/// player, so Free Play with a party (every player on the local team, 0–0, no
+/// winner) was persisted as a real match with the roster on a single team and
+/// an empty opponent side. History and analytics then counted it as a played
+/// match. The predicate is deliberately narrow — no score, no winner and a
+/// single team across every recorded player — so no genuine match can match
+/// it. A user who edited such a row intentionally can edit it back.
+pub fn reclassify_one_sided_training_rows(pool: &DbPool) -> AppResult<usize> {
+    let conn = get_conn(pool)?;
+    let match_ids: Vec<i64> = {
+        let mut stmt = conn.prepare(
+            "SELECT mp.match_id
+             FROM match_players mp
+             JOIN matches m ON m.id = mp.match_id
+             WHERE LOWER(COALESCE(m.match_type, '')) != 'training'
+               AND m.winner IS NULL
+               AND m.score_blue = 0
+               AND m.score_orange = 0
+             GROUP BY mp.match_id
+             HAVING COUNT(DISTINCT mp.team_num) <= 1",
+        )?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+
+    let mut updated = 0usize;
+    for match_id in match_ids {
+        conn.execute(
+            "UPDATE matches SET match_type = 'training', playlist = NULL WHERE id = ?1",
+            params![match_id],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+        enqueue_match_upsert_conn(&conn, match_id)?;
+        updated += 1;
+    }
+    if updated > 0 {
+        info!(updated, "Reclassified one-sided rows as training");
+    }
+    Ok(updated)
+}
+
 pub fn identity_candidate_names(settings: &crate::core::settings::AppSettings) -> Vec<String> {
     let mut names = Vec::new();
     if !settings.player_name.trim().is_empty() {
@@ -3367,6 +3410,7 @@ pub fn get_player_directory(
         JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id != p.id
         WHERE mp_local.player_id = ?1
           AND p.id != ?1
+          AND LOWER(COALESCE(m.match_type, '')) != 'training'
           {search_filter}
           {rel_join}
         GROUP BY p.id
@@ -3463,6 +3507,7 @@ pub fn get_player_detail(
         JOIN matches m ON mp_other.match_id = m.id
         JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id != p.id
         WHERE p.id = ?1 AND mp_local.player_id = ?2
+          AND LOWER(COALESCE(m.match_type, '')) != 'training'
         GROUP BY p.id"#,
         params![target_player_id, local_id],
         |row| {
@@ -3504,6 +3549,7 @@ pub fn get_player_detail(
         FROM matches m
         JOIN match_players mp_other ON m.id = mp_other.match_id AND mp_other.player_id = ?1
         JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id = ?2
+        WHERE LOWER(COALESCE(m.match_type, '')) != 'training'
         ORDER BY m.start_time DESC
         LIMIT 50"#,
     )?;
@@ -3722,7 +3768,6 @@ pub fn get_insights(
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
-           AND m.winner IS NOT NULL
            AND date(m.start_time, 'localtime') >= ?2
            AND date(m.start_time, 'localtime') <= ?3",
     );
@@ -3734,6 +3779,16 @@ pub fn get_insights(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+        // Training stints have no winner; requiring one would empty the panel
+        // when the user explicitly filters by training.
+        if !mt.eq_ignore_ascii_case("training") {
+            sql.push_str(" AND m.winner IS NOT NULL");
+        }
+    } else {
+        // Insights are outcome-based: training stints must never contribute a
+        // playlist/win-rate/overtime datapoint.
+        sql.push_str(" AND m.winner IS NOT NULL");
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
     }
 
     if let Some(pl) = playlist {
@@ -4243,10 +4298,8 @@ pub fn get_player_analytics_matches(
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
-           AND m.winner IS NOT NULL
            AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3
-           AND LOWER(COALESCE(m.match_type, '')) != 'training'",
+           AND date(m.start_time, 'localtime') <= ?3",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(player_primary_id.to_string()));
@@ -4256,6 +4309,18 @@ pub fn get_player_analytics_matches(
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
+        // Training stints have no winner by design; requiring one would make
+        // the explicit training filter return an empty list.
+        if !mt.eq_ignore_ascii_case("training") {
+            sql.push_str(" AND m.winner IS NOT NULL");
+        }
+    } else {
+        // Training stints are not analysed as matches unless the caller asks
+        // for them explicitly (the old hard-coded exclusion made the
+        // "training" filter return nothing at all).
+        sql.push_str(
+            " AND m.winner IS NOT NULL AND LOWER(COALESCE(m.match_type, '')) != 'training'",
+        );
     }
     if let Some(pl) = playlist {
         sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
@@ -4411,6 +4476,7 @@ pub(crate) fn compute_head_to_head_conn(
          JOIN matches m ON mp_local.match_id = m.id
          WHERE p_other.primary_id IN ({in_clause})
            AND p_local.primary_id = ?{n}
+           AND LOWER(COALESCE(m.match_type, '')) != 'training'
          GROUP BY p_other.primary_id",
         in_clause = in_clause,
         n = opponent_ids.len() + 1
@@ -4480,6 +4546,7 @@ pub fn get_head_to_head_records(
          JOIN matches m ON mp_local.match_id = m.id
          WHERE p_other.primary_id IN ({in_clause})
            AND p_local.primary_id = ?{n}
+           AND LOWER(COALESCE(m.match_type, '')) != 'training'
          GROUP BY p_other.primary_id",
         in_clause = in_clause,
         n = opponent_ids.len() + 1
@@ -5364,5 +5431,105 @@ mod mood_roundtrip_tests {
 
         // Idempotent: nothing left to remove.
         assert_eq!(remove_duplicate_training_rows(&pool).unwrap(), 0);
+    }
+
+    /// Legacy builds classified a party Free Play stint as a ranked match: the
+    /// roster sat on one team, everything was 0–0 and there was no winner. The
+    /// repair must reclassify exactly those rows and leave every genuine match
+    /// (opposing teams, a score, or a winner) untouched.
+    #[test]
+    fn one_sided_rows_are_reclassified_as_training() {
+        let pool = temp_pool("one-sided-repair");
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        let start = chrono::DateTime::parse_from_rfc3339(&format!("{today}T18:00:00Z"))
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let conn = get_conn(&pool).unwrap();
+
+        let seed = |conn: &rusqlite::Connection,
+                    guid: &str,
+                    teams: &[i32],
+                    score_blue: i32,
+                    score_orange: i32,
+                    winner: Option<i32>|
+         -> i64 {
+            let id = insert_match_conn(
+                conn,
+                guid,
+                start,
+                Some("underpass_p"),
+                false,
+                Some("ranked"),
+                Some("Doubles"),
+            )
+            .unwrap();
+            finish_match_conn(
+                conn,
+                id,
+                FinishMatchUpdate {
+                    end_time: start + chrono::Duration::seconds(300),
+                    score_blue,
+                    score_orange,
+                    winner,
+                    is_overtime: false,
+                    duration_seconds: 300,
+                },
+            )
+            .unwrap();
+            for (index, team) in teams.iter().enumerate() {
+                let player_id =
+                    get_or_create_player_conn(conn, &format!("{guid}-p{index}"), "P").unwrap();
+                insert_match_player_conn(
+                    conn,
+                    id,
+                    MatchPlayerRow {
+                        player_id,
+                        team_num: *team,
+                        stats: crate::core::models::PlayerStats::default(),
+                        head_to_head_json: None,
+                    },
+                )
+                .unwrap();
+            }
+            id
+        };
+
+        // The bug: two players, both on blue, 0–0, no winner.
+        let party_training = seed(&conn, "one-sided", &[0, 0], 0, 0, None);
+        // A genuine 1v1 (opposing teams, score).
+        let duel = seed(&conn, "duel", &[0, 1], 2, 1, Some(0));
+        // Degenerate but real: one team captured, score moved on both sides.
+        let partial_roster = seed(&conn, "partial", &[0], 1, 3, Some(1));
+        // A real match whose scoreboard never moved (0–0 regulation is rare but
+        // possible with a full roster on both teams).
+        let goalless = seed(&conn, "goalless", &[0, 1], 0, 0, None);
+
+        drop(conn);
+
+        let updated = reclassify_one_sided_training_rows(&pool).unwrap();
+        assert_eq!(updated, 1);
+
+        let conn = get_conn(&pool).unwrap();
+        let match_type_of = |id: i64| -> Option<String> {
+            conn.query_row(
+                "SELECT match_type FROM matches WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(match_type_of(party_training).as_deref(), Some("training"));
+        assert_eq!(match_type_of(duel).as_deref(), Some("ranked"));
+        assert_eq!(match_type_of(partial_roster).as_deref(), Some("ranked"));
+        assert_eq!(match_type_of(goalless).as_deref(), Some("ranked"));
+
+        // The reclassified row left the default match analytics.
+        let sessions = get_match_sessions(&pool, 30, None, None, None).unwrap();
+        let analysed: i32 = sessions.iter().map(|s| s.match_count).sum();
+        assert_eq!(analysed, 3);
+
+        // Idempotent.
+        assert_eq!(reclassify_one_sided_training_rows(&pool).unwrap(), 0);
     }
 }

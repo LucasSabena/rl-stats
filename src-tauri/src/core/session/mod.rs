@@ -1,4 +1,4 @@
-use crate::core::mmr::playlists::playlist_id_to_match_label;
+use crate::core::mmr::playlists::{match_type_from_playlist_id, playlist_id_to_match_label};
 use crate::core::mmr::{playlist_label_to_key, update_local_mmr_estimate};
 use crate::core::models::{
     LiveMatchState, LivePlayer, Player, PlayerStats, RlEvent, SessionSummary,
@@ -38,12 +38,18 @@ pub struct SessionManager {
     players: HashMap<String, LivePlayer>,
     events: Vec<(String, String, chrono::DateTime<chrono::Utc>, Option<i32>)>, // (event_type, json, occurred_at, game clock)
     ball_speed: f64,
-    match_type: Option<String>,
     /// Numeric playlist id reported by the Stats API for the current match.
     /// `None` for streams that do not emit it.
     playlist_id: Option<i32>,
     winner_team_num: Option<i32>,
+    /// Highest number of distinct players any UpdateState snapshot reported.
+    /// Sticky: once the roster grew it never drops back, so a teammate leaving
+    /// mid-match cannot turn a real match into a solo session.
     max_player_count: usize,
+    /// Sticky proof that the session ever showed players on two different
+    /// teams. Solo Free Play and Free Play with a party (everybody on one
+    /// team) never do; a real match does on its first full snapshot.
+    had_opposing_teams: bool,
     last_touch_team: Option<i32>,
     mmr_snapshot: Option<MatchMmrSnapshot>,
     // Kickoff goal tracking
@@ -99,10 +105,10 @@ impl SessionManager {
             players: HashMap::new(),
             events: Vec::new(),
             ball_speed: 0.0,
-            match_type: Some("ranked".into()),
             playlist_id: None,
             winner_team_num: None,
             max_player_count: 0,
+            had_opposing_teams: false,
             last_touch_team: None,
             mmr_snapshot: None,
             kickoff_threshold_seconds,
@@ -127,10 +133,6 @@ impl SessionManager {
         &self.players
     }
 
-    pub fn set_match_type(&mut self, mt: String) {
-        self.match_type = Some(mt);
-    }
-
     /// Store the MMR snapshot so it can be persisted with the finished match.
     pub fn set_mmr_snapshot(&mut self, snapshot: MatchMmrSnapshot) {
         self.mmr_snapshot = Some(snapshot);
@@ -142,6 +144,32 @@ impl SessionManager {
     /// Settings had no effect until the app restarted.
     pub fn set_kickoff_threshold_seconds(&mut self, threshold: i32) {
         self.kickoff_threshold_seconds = threshold.max(1);
+    }
+
+    /// Whether the session holds no evidence of a real match.
+    ///
+    /// A solo session is training no matter what the scoreboard says: one
+    /// player cannot play a real match, and Free Play / custom training can
+    /// still move the goal counter. With several players the session is
+    /// training when it never showed opposing teams and nothing hit the
+    /// scoreboard (Free Play with a party, or a one-sided practice). Any of
+    /// these proves a real match instead:
+    /// - a player on the opposing team in any snapshot (sticky, so a teammate
+    ///   leaving mid-match can never flip it back);
+    /// - a winner reported by `MatchEnded`;
+    /// - any score at all, which shows the other side exists even if the
+    ///   roster snapshot only ever listed one team.
+    fn is_training_by_content(&self) -> bool {
+        // A winner reported by MatchEnded is proof of a real match: Free Play
+        // never ends. This is checked first so it also covers the degenerate
+        // case where no roster snapshot ever arrived.
+        if self.winner_team_num.is_some() {
+            return false;
+        }
+        if self.max_player_count <= 1 {
+            return true;
+        }
+        !self.had_opposing_teams && self.score_blue == 0 && self.score_orange == 0
     }
 
     /// Map a goal's scorer onto a key that exists in `self.players`.
@@ -230,6 +258,16 @@ impl SessionManager {
 
     pub fn live_state(&self) -> LiveMatchState {
         let player_count = self.players.len();
+        // Live consumers (OBS overlay, live panel) get the derived type, not
+        // the raw session field: it is `None` until persistence resolves the
+        // queue from `PlaylistId`.
+        let live_match_type = if self.is_training_by_content() {
+            Some("training".to_string())
+        } else {
+            self.playlist_id
+                .and_then(match_type_from_playlist_id)
+                .map(str::to_string)
+        };
         LiveMatchState {
             match_guid: self.match_guid.clone(),
             arena: self.arena.clone(),
@@ -241,10 +279,10 @@ impl SessionManager {
             players: self.players.values().cloned().collect(),
             ball_speed: self.ball_speed,
             player_count,
-            match_type: self.match_type.clone(),
+            match_type: live_match_type,
             last_touch_team: self.last_touch_team,
             playlist_id: self.playlist_id,
-            training_elapsed_seconds: if self.max_player_count <= 1 {
+            training_elapsed_seconds: if self.is_training_by_content() {
                 self.start_time
                     .map(|start| (Utc::now() - start).num_seconds().max(0))
             } else {
@@ -323,7 +361,16 @@ impl SessionManager {
                     if let Some(team) = game.ball.as_ref().and_then(|ball| ball.team_num) {
                         self.last_touch_team = Some(team);
                     }
+                    // Free Play with a party reports every player on one team
+                    // (the local team); a real match always shows players on
+                    // both teams. This is what tells a party training session
+                    // apart from a ranked match, since both have >1 player.
                     self.max_player_count = self.max_player_count.max(players.len());
+                    if players.values().any(|player| player.team == 0)
+                        && players.values().any(|player| player.team == 1)
+                    {
+                        self.had_opposing_teams = true;
+                    }
                     // Merge players from the snapshot into the session map.
                     // We update existing players with their latest stats AND keep any
                     // player who appeared in a previous snapshot but is no longer present
@@ -520,45 +567,53 @@ impl SessionManager {
                 None
             }
         });
-        let is_training = self.max_player_count <= 1;
+        let is_training = self.is_training_by_content();
+        let mut settings = get_settings(pool).unwrap_or_else(|_| AppSettings::default());
 
         // Training-tracking opt-out: when the setting is off, solo sessions are
         // not persisted at all. The reset happens before the check so a disabled
         // tracking session never lingers and leaks into the next real match.
-        if is_training {
-            let training_enabled = get_settings(pool)
-                .map(|s| s.training_tracking_enabled)
-                .unwrap_or(true);
-            if !training_enabled {
-                info!("Training tracking disabled; discarding solo session");
-                self.reset();
-                return Ok(PersistResult {
-                    match_id: -1,
-                    is_training: true,
-                    skipped_training: true,
-                    summary: SessionSummary {
-                        match_guid: String::new(),
-                        duration_seconds: 0,
-                        score_blue: 0,
-                        score_orange: 0,
-                        winner: None,
-                        local_primary_id: None,
-                        local_team_num: None,
-                        players: Vec::new(),
-                        match_type: Some("training".into()),
-                        kickoff_goals_scored: 0,
-                        kickoff_goals_conceded: 0,
-                    },
-                    detected_primary_id: None,
-                    detected_player_name: None,
-                });
-            }
+        if is_training && !settings.training_tracking_enabled {
+            info!("Training tracking disabled; discarding solo session");
+            self.reset();
+            return Ok(PersistResult {
+                match_id: -1,
+                is_training: true,
+                skipped_training: true,
+                summary: SessionSummary {
+                    match_guid: String::new(),
+                    duration_seconds: 0,
+                    score_blue: 0,
+                    score_orange: 0,
+                    winner: None,
+                    local_primary_id: None,
+                    local_team_num: None,
+                    players: Vec::new(),
+                    match_type: Some("training".into()),
+                    kickoff_goals_scored: 0,
+                    kickoff_goals_conceded: 0,
+                },
+                detected_primary_id: None,
+                detected_player_name: None,
+            });
         }
 
         let effective_match_type = if is_training {
-            Some("training")
+            Some("training".to_string())
+        } else if let Some(derived) = self.playlist_id.and_then(match_type_from_playlist_id) {
+            // The queue itself tells ranked from casual from tournament. This
+            // used to fall back to the literal "ranked" for every real match,
+            // so casual games were mislabelled in history and analytics.
+            Some(derived.to_string())
         } else {
-            self.match_type.as_deref()
+            // Streams without a PlaylistId: respect the user's configured
+            // default (`default_match_type` was stored but never read).
+            let default = settings
+                .default_match_type
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "other".to_string());
+            Some(default)
         };
         let playlist = if is_training {
             None
@@ -575,7 +630,6 @@ impl SessionManager {
         conn.execute("BEGIN IMMEDIATE", [])
             .map_err(|e| crate::error::AppError::StorageError(format!("BEGIN failed: {e}")))?;
 
-        let settings = get_settings(pool).unwrap_or_else(|_| AppSettings::default());
         let local_identity = resolve_local_player_identity(self.players.values(), &settings);
 
         let h2h_map: HashMap<String, crate::core::models::HeadToHeadRecord> =
@@ -598,7 +652,7 @@ impl SessionManager {
                 start_time,
                 arena.as_deref(),
                 self.is_online,
-                effective_match_type,
+                effective_match_type.as_deref(),
                 playlist.as_deref(),
             )?;
 
@@ -688,7 +742,6 @@ impl SessionManager {
         };
         self.match_id = Some(match_id);
 
-        let mut settings = get_settings(pool).unwrap_or_else(|_| AppSettings::default());
         let local_identity = resolve_local_player_identity(self.players.values(), &settings);
 
         let my_team = local_identity.as_ref().map(|(_, team_num)| *team_num);
@@ -773,7 +826,7 @@ impl SessionManager {
                 .map(|(primary_id, _)| primary_id.clone()),
             local_team_num: my_team,
             players: players_vec,
-            match_type: effective_match_type.map(str::to_string),
+            match_type: effective_match_type,
             kickoff_goals_scored: my_kickoff_goals,
             kickoff_goals_conceded: their_kickoff_goals,
         };
@@ -901,6 +954,7 @@ impl SessionManager {
         self.winner_team_num = None;
         self.playlist_id = None;
         self.max_player_count = 0;
+        self.had_opposing_teams = false;
         self.last_touch_team = None;
         self.mmr_snapshot = None;
         self.round_start_game_time = None;
@@ -928,7 +982,7 @@ impl SessionManager {
     }
 
     fn finalize_training_stint(&mut self, min_idle_secs: i64) -> bool {
-        if self.phase != MatchPhase::Active || self.max_player_count > 1 {
+        if self.phase != MatchPhase::Active || !self.is_training_by_content() {
             return false;
         }
         let Some(last) = self.last_activity else {
@@ -947,17 +1001,18 @@ impl SessionManager {
         true
     }
 
-    /// Whether the current live session is a training (solo) session.
+    /// Whether the current live session is a training (solo or party Free
+    /// Play) session.
     pub fn is_training_session(&self) -> bool {
-        self.max_player_count <= 1 && self.phase == MatchPhase::Active
+        self.is_training_by_content() && self.phase == MatchPhase::Active
     }
 
-    /// Whether this session has ever contained more than one player, i.e. it
-    /// is a real match and not a solo training stint. The transition to true
-    /// is the reliable "a game actually began" signal — `MatchCreated` also
-    /// fires when hopping into Free Play.
+    /// Whether this session is a real match and not a training stint: it
+    /// showed players on opposing teams (the reliable "a game actually began"
+    /// signal — `MatchCreated` also fires when hopping into Free Play, and
+    /// Free Play with a party reports multiple players on one team).
     pub fn is_real_match(&self) -> bool {
-        self.max_player_count > 1
+        !self.is_training_by_content()
     }
 
     /// Force-finalizes the in-memory session when the app is exiting.
@@ -1166,7 +1221,11 @@ mod tests {
     fn two_players() -> HashMap<String, LivePlayer> {
         let mut players = HashMap::new();
         players.insert("p1".to_string(), live_player("p1", "Alpha"));
-        players.insert("p2".to_string(), live_player("p2", "Beta"));
+        // A real match shows opposing teams; two players on the same team are
+        // Free Play with a party (training).
+        let mut beta = live_player("p2", "Beta");
+        beta.team = 1;
+        players.insert("p2".to_string(), beta);
         players
     }
 
@@ -1198,7 +1257,9 @@ mod tests {
 
         let mut players = HashMap::new();
         players.insert("p1".to_string(), live_player("p1", "Alpha"));
-        players.insert("p2".to_string(), live_player("p2", "Beta"));
+        let mut beta = live_player("p2", "Beta");
+        beta.team = 1;
+        players.insert("p2".to_string(), beta);
         session.handle_event(update_state_with(300, players));
         session
     }
@@ -1543,6 +1604,72 @@ mod tests {
         assert!(multiplayer.is_real_match());
     }
 
+    /// Free Play with a party (or a one-sided custom practice) reports several
+    /// players, but all of them on the local team with a 0–0 scoreboard. The
+    /// old roster-count-only check saved it as a ranked 0–0 match with an
+    /// empty opponent side; it must be training instead.
+    #[test]
+    fn one_sided_party_session_is_training() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+
+        let mut players = HashMap::new();
+        players.insert("p1".to_string(), live_player("p1", "Alpha"));
+        players.insert("p2".to_string(), live_player("p2", "Beta"));
+        session.handle_event(update_state_with(0, players));
+
+        assert!(session.is_training_session());
+        assert!(!session.is_real_match());
+        assert!(session.check_training_superseded_finalize());
+    }
+
+    /// A team score proves the opposing side exists even when the roster
+    /// snapshot only ever listed one team: that is a real (if poorly captured)
+    /// match, not training.
+    #[test]
+    fn one_sided_roster_with_opponent_score_is_a_real_match() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+
+        // Two players, both on the local team, but the opponent scored 1.
+        let mut players = HashMap::new();
+        players.insert("p1".to_string(), live_player("p1", "Alpha"));
+        players.insert("p2".to_string(), live_player("p2", "Beta"));
+        session.handle_event(RlEvent::UpdateState {
+            match_guid: Some("guid-1".into()),
+            game: GameState {
+                teams: Some(vec![
+                    crate::core::models::TeamInfo { score: 2 },
+                    crate::core::models::TeamInfo { score: 1 },
+                ]),
+                time: 120,
+                is_overtime: false,
+                ball: None,
+                arena: Some("stadium_p".into()),
+                target: None,
+                playlist_id: None,
+            },
+            players,
+        });
+
+        assert!(session.is_real_match());
+        assert!(!session.is_training_session());
+        assert!(!session.check_training_idle_finalize());
+    }
+
+    /// A winner reported by MatchEnded is proof of a match even in the
+    /// degenerate case where the scoreboard never moved.
+    #[test]
+    fn reported_winner_makes_a_session_a_real_match() {
+        let mut session = SessionManager::new(THRESHOLD);
+        session.handle_event(RlEvent::MatchCreated);
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: Some(0),
+        });
+
+        assert!(session.is_real_match());
+    }
+
     #[test]
     fn finished_training_is_persisted_exactly_once() {
         let dir = std::env::temp_dir().join(format!(
@@ -1605,6 +1732,72 @@ mod tests {
         assert!(session.check_training_superseded_finalize());
         assert_eq!(session.phase(), &MatchPhase::Finished);
         assert!(session.idle_finalized);
+    }
+
+    /// The persisted match type comes from the queue id: a casual 2v2 must not
+    /// land in history labelled as ranked, and a tournament must not either.
+    #[test]
+    fn persisted_match_type_follows_the_queue() {
+        let persist = |playlist_id: i32| -> (String, Option<String>) {
+            let dir = std::env::temp_dir().join(format!(
+                "rl-stats-session-queue-{}-{}-{}",
+                std::process::id(),
+                playlist_id,
+                Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let pool =
+                crate::core::storage::init_storage(dir.join("test.db")).expect("init storage");
+
+            let mut session = SessionManager::new(THRESHOLD);
+            session.handle_event(RlEvent::MatchCreated);
+            let mut players = HashMap::new();
+            players.insert("p1".to_string(), live_player("p1", "Alpha"));
+            let mut beta = live_player("p2", "Beta");
+            beta.team = 1;
+            players.insert("p2".to_string(), beta);
+            session.handle_event(RlEvent::UpdateState {
+                match_guid: Some("queue-guid".into()),
+                game: GameState {
+                    teams: Some(vec![
+                        crate::core::models::TeamInfo { score: 0 },
+                        crate::core::models::TeamInfo { score: 0 },
+                    ]),
+                    time: 300,
+                    is_overtime: false,
+                    ball: None,
+                    arena: Some("stadium_p".into()),
+                    target: None,
+                    playlist_id: Some(playlist_id),
+                },
+                players,
+            });
+            session.handle_event(RlEvent::MatchEnded {
+                winner_team_num: Some(0),
+            });
+
+            let result = session.persist_finished_match(&pool).unwrap();
+            let conn = crate::core::storage::get_conn(&pool).unwrap();
+            conn.query_row(
+                "SELECT match_type, playlist FROM matches WHERE id = ?1",
+                rusqlite::params![result.match_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap()
+        };
+
+        // Casual Doubles.
+        let (match_type, playlist) = persist(2);
+        assert_eq!(match_type, "casual");
+        assert_eq!(playlist.as_deref(), Some("Doubles"));
+
+        // Ranked Standard.
+        let (match_type, _) = persist(13);
+        assert_eq!(match_type, "ranked");
+
+        // Tournament.
+        let (match_type, _) = persist(34);
+        assert_eq!(match_type, "tournament");
     }
 
     /// The idle-finalized stint keeps its real duration: the persisted

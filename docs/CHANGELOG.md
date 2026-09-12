@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Los entrenamientos con party (Free Play con amigos) se guardaban como
+  partidas ranked.** La detección solo miraba cuántos jugadores había: un Free
+  Play con dos o más personas se persistía como partida 0–0 "ranked" con todo
+  el plantel en un equipo y el rival vacío, y contaba como partida jugada en
+  Análisis. Ahora una sesión solitaria es entrenamiento siempre, y una con
+  varios jugadores lo es salvo que haya jugadores en ambos equipos, un ganador
+  reportado o algún gol en el marcador; el roster es pegajoso, así que un
+  compañero que se va a mitad de partido no la convierte en entrenamiento. Las
+  filas viejas con esa forma se reclasifican automáticamente al abrir la app y
+  salen de las estadísticas de partidos.
+- **Se puede mover una partida a entrenamiento desde cualquier modal de
+  edición.** El detalle de partida no ofrecía la opción (solo el historial) y,
+  al moverla, el análisis por jugador, el directorio de jugadores, el
+  head-to-head y el tiempo de entrenamiento quedaban desactualizados: ahora
+  todas esas vistas se invalidan y la partida deja de contar como jugada.
+- **El tipo de partida deja de ser siempre "ranked".** El tipo se deriva del
+  playlist real del partido (competitivo, casual o torneo) en vez de asumir
+  ranked; para streams sin `PlaylistId` se usa el tipo por defecto configurado
+  en Ajustes, que antes se guardaba pero nunca se leía.
+- **Ninguna analítica de partidos cuenta entrenamientos.** Insights, curva de
+  sesión, química con compañeros, breakdown por tipo, rachas, directorio y
+  detalle de jugador y H2H tenían consultas que se apoyaban solo en que
+  hubiera ganador, así que un stint con marcador podía colarse. Ahora todas
+  excluyen `training` salvo que el filtro pida entrenamiento explícitamente
+  (y en ese caso el panel muestra la etiqueta correcta en vez de "derrota").
+
 ## [2.16.5] - 2026-09-12
 
 ### Fixed

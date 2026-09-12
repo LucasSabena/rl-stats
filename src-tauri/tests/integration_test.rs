@@ -1384,4 +1384,51 @@ mod end_to_end_training_tests {
 
         let _ = fs::remove_file(&path);
     }
+
+    /// Free Play with a party reports several players, all on the local team
+    /// with a 0–0 scoreboard. The old roster-count classification persisted it
+    /// as a ranked 0–0 match; it must land as a training stint instead.
+    #[test]
+    fn party_free_play_is_persisted_as_training() {
+        let (pool, path) = temp_db_pool();
+
+        let mut session = SessionManager::new(7);
+        session.handle_event(RlEvent::MatchCreated);
+
+        let mut party = HashMap::new();
+        party.insert("Steam|me".into(), live("Steam|me", "Me", 0));
+        party.insert("Steam|friend".into(), live("Steam|friend", "Friend", 0));
+        session.handle_event(update(None, party));
+        assert!(session.is_training_session());
+
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: None,
+        });
+        let result = session.persist_finished_match(&pool).unwrap();
+
+        assert!(result.is_training);
+        assert_eq!(result.summary.match_type.as_deref(), Some("training"));
+
+        let all = storage::get_matches(
+            &pool,
+            storage::MatchQuery {
+                limit: 50,
+                offset: 0,
+                arena: None,
+                match_type: None,
+                playlist: None,
+                result: None,
+                date_from: None,
+                date_to: None,
+                search: None,
+                local_primary_id: None,
+                local_player_names: &[],
+            },
+        )
+        .unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].match_type.as_deref(), Some("training"));
+
+        let _ = fs::remove_file(&path);
+    }
 }

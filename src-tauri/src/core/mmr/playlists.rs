@@ -49,6 +49,27 @@ pub fn playlist_id_to_match_label(id: i32) -> Option<&'static str> {
     }
 }
 
+/// Match type implied by a numeric `PlaylistId`.
+///
+/// The official playlist ids distinguish competitive, casual and tournament
+/// queues. Real matches used to be persisted as the user's default match type
+/// regardless of the queue, so a casual 2v2 landed in history labelled as
+/// ranked. Ids shared with no clear bucket return `None` and let the caller
+/// fall back to the configured default.
+pub fn match_type_from_playlist_id(id: i32) -> Option<&'static str> {
+    match id {
+        // Casual queues. The ids are the ones `playlist_id_to_key` already
+        // collapses into the single casual MMR bucket.
+        0 | 1 | 2 | 3 | 4 | 15 | 17 | 18 | 23 => Some("casual"),
+        22 | 34 => Some("tournament"),
+        // Competitive queues, including the competitive extra modes.
+        10 | 11 | 13 | 27 | 28 | 29 | 30 => Some("ranked"),
+        // Heatseeker and unknown ids stay `None`: the caller falls back to the
+        // user's configured default instead of guessing a bucket.
+        _ => None,
+    }
+}
+
 /// Canonical display label for an internal playlist key.
 pub fn playlist_key_label(key: &str) -> Option<&'static str> {
     match key {
@@ -141,5 +162,35 @@ mod tests {
         assert_eq!(rlstats_label_to_key("3v3 Snow Day"), Some("snowday"));
         assert_eq!(rlstats_label_to_key("Casual"), Some("casual"));
         assert_eq!(rlstats_label_to_key("Unknown"), None);
+    }
+
+    /// The numeric queue id distinguishes ranked from casual from tournament;
+    /// every real match used to be persisted as the user's default instead.
+    #[test]
+    fn playlist_ids_derive_the_match_type() {
+        assert_eq!(match_type_from_playlist_id(11), Some("ranked"));
+        assert_eq!(match_type_from_playlist_id(13), Some("ranked"));
+        assert_eq!(match_type_from_playlist_id(27), Some("ranked"));
+        assert_eq!(match_type_from_playlist_id(2), Some("casual"));
+        assert_eq!(match_type_from_playlist_id(3), Some("casual"));
+        assert_eq!(match_type_from_playlist_id(0), Some("casual"));
+        assert_eq!(match_type_from_playlist_id(34), Some("tournament"));
+        assert_eq!(match_type_from_playlist_id(22), Some("tournament"));
+        // Unknown ids defer to the caller's configured default.
+        assert_eq!(match_type_from_playlist_id(999), None);
+    }
+
+    /// Every id that maps to a known playlist must also resolve a match type,
+    /// so a real match can never fall through to the default by accident.
+    #[test]
+    fn every_known_playlist_has_a_match_type() {
+        for id in [
+            0, 1, 2, 3, 4, 10, 11, 13, 15, 17, 18, 22, 23, 27, 28, 29, 30, 34,
+        ] {
+            assert!(
+                match_type_from_playlist_id(id).is_some(),
+                "playlist id {id} must resolve a match type"
+            );
+        }
     }
 }

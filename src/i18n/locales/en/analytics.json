@@ -171,6 +171,7 @@
   "matchDetail": {
     "loading": "Loading matches...",
     "win": "W",
+    "training": "Training",
     "loss": "L",
     "draw": "D",
     "overtime": "OT",

@@ -446,7 +446,28 @@ pub fn run() {
                             tracing::warn!(error = %error, "Training dedup failed");
                         }
                     }
-                    if rollups_dirty || training_repair_pending || kickoff_repair_pending {
+
+                    // Free Play with a party used to be persisted as a real
+                    // match: every player sat on one team, 0–0, with no winner.
+                    // Reclassify those legacy rows before the rollup rebuild so
+                    // they stop counting as played matches.
+                    let one_sided_repair_pending = !crate::core::storage::get_kv_flag(
+                        &pool,
+                        "analytics_repair_one_sided_v27",
+                    );
+                    if one_sided_repair_pending {
+                        if let Err(error) =
+                            crate::core::storage::reclassify_one_sided_training_rows(&pool)
+                        {
+                            tracing::warn!(error = %error, "One-sided training repair failed");
+                        }
+                    }
+
+                    if rollups_dirty
+                        || training_repair_pending
+                        || kickoff_repair_pending
+                        || one_sided_repair_pending
+                    {
                         let settings =
                             crate::core::settings::get_settings(&pool).unwrap_or_default();
                         let names = crate::core::storage::identity_candidate_names(&settings);
@@ -465,6 +486,7 @@ pub fn run() {
                         "analytics_repair_v21",
                         "analytics_repair_training_v23",
                         "analytics_repair_kickoff_v25",
+                        "analytics_repair_one_sided_v27",
                     ] {
                         if let Err(error) = crate::core::storage::set_kv_flag(&pool, flag) {
                             tracing::warn!(error = %error, flag, "Could not persist repair flag");
