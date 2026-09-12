@@ -1,7 +1,7 @@
 {
   "name": "rl-stats",
   "private": true,
-  "version": "2.16.5",
+  "version": "2.16.6",
   "type": "module",
   "scripts": {
     "dev": "vite",

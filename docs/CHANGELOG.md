@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.16.6] - 2026-09-12
+
 ### Fixed
 - **Los entrenamientos con party (Free Play con amigos) se guardaban como
   partidas ranked.** La detección solo miraba cuántos jugadores había: un Free
