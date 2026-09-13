@@ -252,8 +252,9 @@ pub fn default_layout_for_state(state: &str) -> Value {
     let modules = match state {
         "waiting" => vec![
             ("brand", json!({ "x": 86, "y": 5, "w": 10, "h": 10 })),
-            ("upnext", json!({ "x": 12, "y": 66, "w": 30, "h": 16 })),
-            ("countdown", json!({ "x": 34, "y": 30, "w": 32, "h": 22 })),
+            ("bracket", json!({ "x": 62, "y": 34, "w": 36, "h": 30 })),
+            ("upnext", json!({ "x": 2, "y": 62, "w": 30, "h": 16 })),
+            ("countdown", json!({ "x": 12, "y": 30, "w": 32, "h": 22 })),
         ],
         "brb" => vec![
             ("brand", json!({ "x": 86, "y": 5, "w": 10, "h": 10 })),
@@ -273,9 +274,10 @@ pub fn default_layout_for_state(state: &str) -> Value {
             ),
         ],
         "post" => vec![
-            ("series", json!({ "x": 30, "y": 12, "w": 40, "h": 16 })),
-            ("mvp", json!({ "x": 30, "y": 36, "w": 40, "h": 24 })),
-            ("socials", json!({ "x": 32, "y": 66, "w": 36, "h": 8 })),
+            ("series", json!({ "x": 30, "y": 10, "w": 40, "h": 14 })),
+            ("mvp", json!({ "x": 30, "y": 26, "w": 40, "h": 22 })),
+            ("bracket", json!({ "x": 30, "y": 50, "w": 40, "h": 26 })),
+            ("socials", json!({ "x": 32, "y": 79, "w": 36, "h": 8 })),
         ],
         // "live" and unknown states
         _ => vec![

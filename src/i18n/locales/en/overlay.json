@@ -210,7 +210,8 @@
       "scene": "Scene",
       "teams": "Teams",
       "chat": "Chat",
-      "server": "Server"
+      "server": "Server",
+      "tournament": "Tournament"
     },
     "states": {
       "label": "State",
@@ -363,6 +364,34 @@
       "connected": "OBS connected",
       "disconnected": "OBS disconnected",
       "switched": "OBS scene: {{scene}}"
+    },
+    "tournament": {
+      "title": "Tournament",
+      "select": "Select tournament",
+      "name": "Tournament name",
+      "format": "Format",
+      "singleElim": "Single elimination",
+      "roundRobin": "Round robin",
+      "create": "Create tournament",
+      "created": "Tournament created",
+      "generated": "Bracket generated",
+      "generating": "Generating…",
+      "registration": "Registration",
+      "checkIn": "Check-in",
+      "checkedIn": "Checked in",
+      "noTeams": "No teams registered.",
+      "availableTeams": "Add teams",
+      "generate": "Generate bracket",
+      "noBracket": "Generate the bracket to see the tree.",
+      "report": "Report",
+      "reported": "Result saved",
+      "noDraw": "Draws are not allowed: enter a decided score.",
+      "startSeries": "Start series",
+      "seriesStarted": "Series started",
+      "standings": "Standings",
+      "finished": "Finished",
+      "delete": "Delete tournament",
+      "deleteConfirm": "The bracket, results and registration will be removed."
     }
   }
 }

@@ -34,6 +34,7 @@ const MODULE_LABELS: Record<string, string> = {
   replaybadge: "Replay",
   upnext: "Próximo",
   focus: "En cámara",
+  bracket: "Llave",
   mvp: "MVP",
   info: "Info",
 };
@@ -60,6 +61,7 @@ const DEFAULT_PLACEMENT: Record<string, Placement> = {
   replaybadge: { x: 44, y: 16, w: 12, h: 6 },
   upnext: { x: 12, y: 68, w: 30, h: 16 },
   focus: { x: 2, y: 62, w: 22, h: 14 },
+  bracket: { x: 62, y: 34, w: 36, h: 30 },
   mvp: { x: 30, y: 36, w: 40, h: 24 },
   info: { x: 12, y: 8, w: 22, h: 12 },
 };

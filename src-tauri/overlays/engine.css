@@ -553,6 +553,51 @@ body {
   font-size: 16px;
 }
 
+/* ---------------------------------------------------------------- bracket */
+
+.ov-bracket {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.ov-bracket-round {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ov-bracket-title {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ov-muted);
+}
+
+.ov-bracket-match {
+  background: color-mix(in srgb, var(--ov-surface-solid) 70%, transparent);
+  border: 1px solid var(--ov-border);
+  border-radius: calc(var(--ov-radius) * 0.6);
+  padding: 4px 8px;
+  min-width: 150px;
+}
+
+.ov-bracket-team {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--ov-font-numeric, monospace);
+  font-size: 15px;
+  color: var(--ov-muted);
+}
+
+.ov-bracket-team.winner {
+  color: var(--ov-text);
+  font-weight: 700;
+}
+
 /* ----------------------------------------------------------------- alerts */
 
 #ov-alerts {

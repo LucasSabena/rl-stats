@@ -20,6 +20,7 @@ const MODULE_LABELS: Record<string, string> = {
   replaybadge: "Replay",
   upnext: "Próximo",
   focus: "En cámara",
+  bracket: "Llave",
   mvp: "MVP",
   info: "Info",
 };

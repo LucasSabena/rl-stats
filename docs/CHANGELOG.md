@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-09-13
+
+### Added
+- Tournament module: registration with check-in, single-elimination brackets
+  with seeding and byes, round robin with standings, result reporting with
+  automatic advancement, and start-series-from-match integration.
+- `bracket` overlay widget (rounds, tags, scores, winners).
+- Live team identity: the parser now reads `Game.Teams` names/colors and the
+  spectator target; overlays use the real team names/colors when no series is
+  configured.
+- `focus` widget (on-camera player card) and crossbar alerts.
+- Migration 29: tournaments, tournament teams and tournament matches.
+
 ## [3.1.0] - 2026-09-13
 
 ### Added

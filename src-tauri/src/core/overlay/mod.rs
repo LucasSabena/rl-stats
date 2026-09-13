@@ -275,6 +275,7 @@ impl OverlayServer {
             .route("/api/v2/scene", get(v2_scene_handler))
             .route("/api/v2/series", get(v2_series_handler))
             .route("/api/v2/teams", get(v2_teams_handler))
+            .route("/api/v2/tournament", get(v2_tournament_handler))
             .route("/api/v2/action", post(v2_action_handler))
             .route("/sdk/rl-overlay.js", get(serve_sdk))
             .route("/assets/{*path}", get(serve_asset))
@@ -840,6 +841,8 @@ struct ApiQuery {
     state: Option<String>,
     /// `/api/v2/scene`: design-pack override.
     pack: Option<String>,
+    /// `/api/v2/tournament`: explicit tournament id.
+    tournament: Option<String>,
 }
 
 fn json_response(status: StatusCode, body: serde_json::Value) -> Response {
@@ -1110,6 +1113,9 @@ pub fn scene_payload(
     let teams = pool
         .and_then(|pool| store::list_teams_with_logos(pool).ok())
         .unwrap_or_default();
+    let tournament = pool
+        .and_then(|pool| crate::core::broadcast::tournament::tournament_snapshot(pool, None).ok())
+        .unwrap_or_else(|| serde_json::json!({ "available": false }));
     let custom_fonts: Vec<serde_json::Value> = pool
         .and_then(|pool| store::list_assets(pool, Some("font")).ok())
         .unwrap_or_default()
@@ -1123,6 +1129,7 @@ pub fn scene_payload(
         "pack": { "id": pack_id, "name": tokens.0, "tokens": tokens.1 },
         "layout": layout,
         "series": series,
+        "tournament": tournament,
         "teams": teams,
         "fonts": font_options(),
         "customFonts": custom_fonts,
@@ -1188,6 +1195,41 @@ async fn v2_series_handler(
         );
     };
     let task = tauri::async_runtime::spawn_blocking(move || store::series_snapshot(&pool, None));
+    match task.await {
+        Ok(Ok(value)) => json_response(StatusCode::OK, value),
+        Ok(Err(error)) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
+/// `GET /api/v2/tournament` — active (or requested) tournament snapshot.
+async fn v2_tournament_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if authorize_api(&headers, &query, &state).is_none() {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+    let Some(pool) = state.db_pool.clone() else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            serde_json::json!({ "error": "database unavailable" }),
+        );
+    };
+    let tournament_id = query.tournament.clone();
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::broadcast::tournament::tournament_snapshot(&pool, tournament_id.as_deref())
+    });
     match task.await {
         Ok(Ok(value)) => json_response(StatusCode::OK, value),
         Ok(Err(error)) => json_response(
@@ -1523,6 +1565,7 @@ mod tests {
         assert_eq!(payload["pack"]["id"], "prime-broadcast");
         assert!(!payload["layout"].as_object().unwrap().is_empty());
         assert_eq!(payload["series"]["available"], false);
+        assert_eq!(payload["tournament"]["available"], false);
     }
 
     #[test]

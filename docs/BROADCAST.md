@@ -82,6 +82,24 @@ The **Teams** tab stores name, tag, primary/secondary colors and an uploaded
 logo. **Series** are best-of-N with automatic winner detection and a per-game
 log; the overlay picks up the team names, colors and logos automatically.
 
+## 3.5 Tournaments
+
+The **Tournament** tab runs events end to end:
+
+1. Create a tournament (single elimination or round robin, best-of N).
+2. Register teams from the library and mark their check-in.
+3. **Generate bracket**: single elimination uses standard seeding with byes;
+   round robin uses the circle method.
+4. Report each result; winners advance automatically and a finished final
+   closes the tournament. Round robin shows the standings table.
+5. **Start series** on any match: RL Stats creates the BO series (teams, colors
+   and logos come from the library), links it to the bracket and the Control
+   Room follows the live match. Report the series score from the Control tab
+   when it ends.
+
+The `bracket` widget renders rounds, team tags, scores and winners on the
+overlay (included in the default waiting and post scenes).
+
 ## 4. Chat (read-only)
 
 The **Chat** tab connects to Twitch (anonymous IRC over WebSocket) and/or Kick
@@ -123,6 +141,7 @@ All endpoints accept the token via `?token=` or the `x-rl-token` header.
 | GET | `/api/v2/packs` | Built-in and custom packs, fonts |
 | GET | `/api/v2/series` | Active series snapshot |
 | GET | `/api/v2/teams` | Team library |
+| GET | `/api/v2/tournament` | Active (or requested) tournament snapshot |
 | POST | `/api/v2/action` | Operator actions |
 | GET | `/assets/{file}` | Uploaded assets |
 | WS | `/ws` | Live feed (state, goal, statfeed, chat, scene, series, timer, delay) |

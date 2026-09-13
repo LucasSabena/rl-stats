@@ -56,6 +56,7 @@
     replay: false,
     paused: false,
     visible: {},
+    tournament: null,
     alertQueue: [],
     activeAlerts: 0,
     sponsors: [],
@@ -521,6 +522,60 @@
       node.appendChild(wrap);
     },
 
+    bracket: function (node) {
+      var tournament = App.tournament;
+      var wrap = el('div', 'ov-upnext');
+      wrap.appendChild(el('div', 'ov-upnext-title', 'LLAVE'));
+      if (!tournament || !tournament.available || !tournament.matches.length) {
+        var emptyRow = el('div', 'ov-upnext-match');
+        emptyRow.appendChild(el('span', '', 'Sin torneo activo'));
+        wrap.appendChild(emptyRow);
+        clear(node);
+        node.appendChild(wrap);
+        return;
+      }
+      var rounds = {};
+      tournament.matches.forEach(function (match) {
+        var key = String(match.round);
+        if (!rounds[key]) rounds[key] = [];
+        rounds[key].push(match);
+      });
+      var columns = el('div', 'ov-bracket');
+      Object.keys(rounds)
+        .sort(function (a, b) {
+          return Number(a) - Number(b);
+        })
+        .forEach(function (round) {
+          var column = el('div', 'ov-bracket-round');
+          column.appendChild(el('div', 'ov-bracket-title', 'RONDA ' + round));
+          rounds[round].forEach(function (match) {
+            var row = el('div', 'ov-bracket-match');
+            [
+              [match.teamAId, match.scoreA],
+              [match.teamBId, match.scoreB]
+            ].forEach(function (entry) {
+              var team = null;
+              (tournament.teams || []).forEach(function (registered) {
+                if (registered.teamId === entry[0]) team = registered.team;
+              });
+              var line = el(
+                'div',
+                'ov-bracket-team' +
+                  (match.winnerTeamId && match.winnerTeamId === entry[0] ? ' winner' : '')
+              );
+              line.appendChild(el('span', '', team ? team.tag || team.name : '—'));
+              line.appendChild(el('span', '', String(entry[1] || 0)));
+              row.appendChild(line);
+            });
+            column.appendChild(row);
+          });
+          columns.appendChild(column);
+        });
+      wrap.appendChild(columns);
+      clear(node);
+      node.appendChild(wrap);
+    },
+
     focus: function (node) {
       var target = App.match && App.match.target;
       var wrap = el('div', 'ov-upnext');
@@ -673,6 +728,7 @@
     'replaybadge',
     'upnext',
     'focus',
+    'bracket',
     'mvp',
     'info'
   ];
@@ -848,6 +904,10 @@
         App.series = data;
         requestRender();
         break;
+      case 'tournament':
+        App.tournament = data;
+        requestRender();
+        break;
       case 'goal':
         pushEvent({ who: data.scorerName || '', what: 'GOL', team: data.teamNum });
         showGoal(data);
@@ -950,6 +1010,7 @@
         applyPack(config);
         applyLayout(config);
         App.series = config.series || null;
+        App.tournament = config.tournament || null;
         requestRender();
       })
       .catch(function () {

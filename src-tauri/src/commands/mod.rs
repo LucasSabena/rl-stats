@@ -15,6 +15,7 @@ pub mod profiles;
 pub mod prompt_window;
 pub mod rlstats;
 pub mod settings;
+pub mod tournament;
 pub mod tracker;
 pub mod training_packs;
 pub mod window;

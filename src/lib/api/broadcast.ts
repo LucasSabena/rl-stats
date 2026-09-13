@@ -8,6 +8,10 @@ import {
   type PacksResponse,
   type SeriesSnapshot,
   type SceneModule,
+  type Tournament,
+  type TournamentMatch,
+  type TournamentSnapshot,
+  type TournamentTeam,
 } from "../types";
 import { invokeCommand } from "./core";
 
@@ -240,6 +244,122 @@ export async function resetSeries(): Promise<void> {
 
 export async function deleteSeries(id: string): Promise<void> {
   return invokeCommand<void>("delete_series_cmd", { id });
+}
+
+// ─── Tournaments ────────────────────────────────────────────────────────────
+
+export async function listTournaments(): Promise<Tournament[]> {
+  return invokeCommand<Tournament[]>("list_tournaments");
+}
+
+export async function saveTournament(input: {
+  id?: string | null;
+  name: string;
+  format: string;
+  bestOf: number;
+  status?: string | null;
+}): Promise<Tournament> {
+  return invokeCommand<Tournament>("save_tournament", {
+    id: input.id ?? null,
+    name: input.name,
+    format: input.format,
+    bestOf: input.bestOf,
+    status: input.status ?? null,
+  });
+}
+
+export async function deleteTournament(id: string): Promise<void> {
+  return invokeCommand<void>("delete_tournament", { id });
+}
+
+export async function listTournamentTeams(
+  tournamentId: string,
+): Promise<TournamentTeam[]> {
+  return invokeCommand<TournamentTeam[]>("list_tournament_teams", {
+    tournamentId,
+  });
+}
+
+export async function addTournamentTeam(
+  tournamentId: string,
+  teamId: string,
+  seed?: number | null,
+): Promise<TournamentTeam> {
+  return invokeCommand<TournamentTeam>("add_tournament_team", {
+    tournamentId,
+    teamId,
+    seed: seed ?? null,
+  });
+}
+
+export async function removeTournamentTeam(
+  tournamentId: string,
+  teamId: string,
+): Promise<void> {
+  return invokeCommand<void>("remove_tournament_team", {
+    tournamentId,
+    teamId,
+  });
+}
+
+export async function setTournamentTeamCheckedIn(
+  tournamentId: string,
+  teamId: string,
+  checkedIn: boolean,
+): Promise<void> {
+  return invokeCommand<void>("set_tournament_team_checked_in", {
+    tournamentId,
+    teamId,
+    checkedIn,
+  });
+}
+
+export async function generateTournamentBracket(
+  tournamentId: string,
+): Promise<TournamentMatch[]> {
+  return invokeCommand<TournamentMatch[]>("generate_tournament_bracket", {
+    tournamentId,
+  });
+}
+
+export async function listTournamentMatches(
+  tournamentId: string,
+): Promise<TournamentMatch[]> {
+  return invokeCommand<TournamentMatch[]>("list_tournament_matches", {
+    tournamentId,
+  });
+}
+
+export async function reportTournamentMatch(input: {
+  matchId: string;
+  scoreA: number;
+  scoreB: number;
+  winnerTeamId?: string | null;
+}): Promise<TournamentMatch> {
+  return invokeCommand<TournamentMatch>("report_tournament_match", {
+    input: {
+      matchId: input.matchId,
+      scoreA: input.scoreA,
+      scoreB: input.scoreB,
+      winnerTeamId: input.winnerTeamId ?? null,
+    },
+  });
+}
+
+export async function startTournamentMatchSeries(
+  matchId: string,
+): Promise<SeriesSnapshot> {
+  return invokeCommand<SeriesSnapshot>("start_tournament_match_series", {
+    matchId,
+  });
+}
+
+export async function getTournamentSnapshot(
+  tournamentId?: string | null,
+): Promise<TournamentSnapshot> {
+  return invokeCommand<TournamentSnapshot>("get_tournament_snapshot", {
+    tournamentId: tournamentId ?? null,
+  });
 }
 
 // ─── Chat ───────────────────────────────────────────────────────────────────

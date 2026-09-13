@@ -1,5 +1,33 @@
 # Changelog
 
+## v3.2.0 — Torneos: llaves, inscripción y series en vivo
+
+El Control Room suma la gestión completa de torneos y los overlays pasan a
+usar la identidad real de los equipos que reporta el juego.
+
+### Nuevo — Torneos
+
+- **Torneo** en `/broadcast → Torneo`: eliminación directa (con seeding
+  estándar y byes) y todos contra todos con **tabla de posiciones**.
+- **Inscripción con check-in**: agregá equipos de la biblioteca, ordenalos
+  por seed y marcá quién se presentó.
+- **Reporte de resultados con avance automático**: el ganador pasa a la
+  ronda siguiente; la final cierra el torneo.
+- **Iniciar serie desde la llave**: crea la serie BO con los equipos de la
+  llave, la enlaza al torneo y la Control Room sigue la partida en vivo.
+- **Widget de llave en el overlay**: rondas, tags, marcadores y ganadores
+  (incluido en las escenas de espera y post-partido).
+
+### Nuevo — Datos en vivo reales
+
+- **Nombres y colores de equipo** que reporta la Stats API: el marcador usa
+  la identidad real en partidas privadas/LAN, y sigue permitiendo el
+  override manual desde la biblioteca de equipos.
+- **Jugador en cámara** (`focus`): tarjeta que sigue al observador con sus
+  goles, asistencias, saves y tiros.
+- **Alerta de palo** (`crossbar`): momento de transmisión para los tiros al
+  travesaño.
+
 ## v3.1.0 — Broadcast Studio: packs de diseño, Control Room y chat
 
 La app deja de ser solo un visor de estadísticas y se convierte en una

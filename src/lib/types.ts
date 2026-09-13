@@ -514,6 +514,60 @@ export interface ChatStatus {
   enabled?: boolean;
 }
 
+// ─── Tournaments ────────────────────────────────────────────────────────────
+
+export interface Tournament {
+  id: string;
+  name: string;
+  format: "single_elim" | "round_robin" | string;
+  bestOf: number;
+  status: "draft" | "live" | "finished" | string;
+  settings: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TournamentTeam {
+  tournamentId: string;
+  teamId: string;
+  seed: number;
+  checkedIn: boolean;
+}
+
+export interface TournamentMatch {
+  id: string;
+  tournamentId: string;
+  round: number;
+  position: number;
+  bracket: string;
+  teamAId?: string | null;
+  teamBId?: string | null;
+  scoreA: number;
+  scoreB: number;
+  winnerTeamId?: string | null;
+  seriesId?: string | null;
+  status: "pending" | "live" | "finished" | string;
+  station?: string | null;
+  scheduledAt?: string | null;
+}
+
+export interface TournamentSnapshot {
+  available: boolean;
+  id?: string;
+  name?: string;
+  format?: string;
+  bestOf?: number;
+  status?: string;
+  rounds?: number;
+  teams?: Array<{
+    teamId: string;
+    seed: number;
+    checkedIn: boolean;
+    team: BroadcastTeam;
+  }>;
+  matches?: TournamentMatch[];
+}
+
 export interface ChatEmote {
   name: string;
   url: string;

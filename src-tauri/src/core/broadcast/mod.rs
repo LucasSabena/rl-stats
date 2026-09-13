@@ -15,6 +15,7 @@ pub mod chat;
 pub mod game_commands;
 pub mod packs;
 pub mod store;
+pub mod tournament;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

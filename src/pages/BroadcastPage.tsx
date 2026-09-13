@@ -12,6 +12,7 @@ import { SeriesPanel } from "@/components/broadcast/SeriesPanel";
 import { ServerPanel } from "@/components/broadcast/ServerPanel";
 import { StateBar } from "@/components/broadcast/StateBar";
 import { TeamsPanel } from "@/components/broadcast/TeamsPanel";
+import { TournamentPanel } from "@/components/broadcast/TournamentPanel";
 import { useBroadcastFeed } from "@/hooks/useBroadcastFeed";
 import { useObsController } from "@/hooks/useObsController";
 import {
@@ -26,7 +27,7 @@ import type {
 } from "@/lib/types";
 import { Radio, Wifi, WifiOff } from "lucide-react";
 
-const TABS = ["control", "scene", "teams", "chat", "server"] as const;
+const TABS = ["control", "scene", "teams", "tournament", "chat", "server"] as const;
 
 /**
  * Broadcast Studio Control Room.
@@ -157,6 +158,10 @@ export function BroadcastPage() {
               port={status?.port ?? 9528}
               onChanged={() => void refreshData()}
             />
+          </TabsContent>
+
+          <TabsContent value="tournament" className="mt-4">
+            <TournamentPanel onSeriesStarted={() => void refreshData()} />
           </TabsContent>
 
           <TabsContent value="chat" className="mt-4">

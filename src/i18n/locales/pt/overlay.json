@@ -210,7 +210,8 @@
       "scene": "Cena",
       "teams": "Equipes",
       "chat": "Chat",
-      "server": "Servidor"
+      "server": "Servidor",
+      "tournament": "Torneio"
     },
     "states": {
       "label": "Estado",
@@ -363,6 +364,34 @@
       "connected": "OBS conectado",
       "disconnected": "OBS desconectado",
       "switched": "Cena do OBS: {{scene}}"
+    },
+    "tournament": {
+      "title": "Torneio",
+      "select": "Selecionar torneio",
+      "name": "Nome do torneio",
+      "format": "Formato",
+      "singleElim": "Eliminação direta",
+      "roundRobin": "Todos contra todos",
+      "create": "Criar torneio",
+      "created": "Torneio criado",
+      "generated": "Chave gerada",
+      "generating": "Gerando…",
+      "registration": "Inscrição",
+      "checkIn": "Check-in",
+      "checkedIn": "Presente",
+      "noTeams": "Sem equipes inscritas.",
+      "availableTeams": "Adicionar equipes",
+      "generate": "Gerar chave",
+      "noBracket": "Gere a chave para ver o quadro.",
+      "report": "Reportar",
+      "reported": "Resultado salvo",
+      "noDraw": "Empate não é permitido: informe um placar decidido.",
+      "startSeries": "Iniciar série",
+      "seriesStarted": "Série iniciada",
+      "standings": "Classificação",
+      "finished": "Finalizado",
+      "delete": "Excluir torneio",
+      "deleteConfirm": "A chave, os resultados e a inscrição serão removidos."
     }
   }
 }
