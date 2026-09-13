@@ -330,6 +330,14 @@ pub static MIGRATIONS: &[Migration] = &[
         );
         CREATE INDEX IF NOT EXISTS idx_training_packs_created_at ON training_packs(created_at);",
     },
+    Migration {
+        version: 27,
+        name: "match_notes_and_tags",
+        // Free-form user annotations. Notes are searchable through the
+        // existing `search` filter; tags are stored as a JSON array.
+        sql: "ALTER TABLE matches ADD COLUMN notes TEXT;
+              ALTER TABLE matches ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

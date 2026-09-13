@@ -22,6 +22,12 @@ pub struct Match {
     /// Added in migration v22; defaults to `None` for old rows.
     #[serde(default)]
     pub mood: Option<String>,
+    /// Free-form user notes (migration v27).
+    #[serde(default)]
+    pub notes: Option<String>,
+    /// User tags stored as a JSON array string (migration v27).
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Represents a player in a match.

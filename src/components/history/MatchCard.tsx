@@ -5,7 +5,9 @@ import { cn, formatDateTime, formatDuration } from "@/lib/utils";
 import { ContextMenu } from "@/components/ui/ContextMenu";
 import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import type { MatchSummary } from "@/lib/types";
-import { Eye, Pencil, Trash2, ChevronRight, Dumbbell } from "lucide-react";
+import { Eye, Pencil, Trash2, ChevronRight, Dumbbell ,
+  StickyNote,
+} from "lucide-react";
 import { getArenaDisplayName } from "@/lib/arenaMap";
 
 interface MatchCardProps {
@@ -15,6 +17,10 @@ interface MatchCardProps {
   onDelete?: (matchId: number) => void;
   /** 0-based position within its day group, for the entrance stagger. */
   staggerIndex?: number;
+  /** Selection mode: row click toggles selection instead of navigating. */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: (matchId: number) => void;
 }
 
 export const MatchCard = memo(function MatchCard({
@@ -23,6 +29,9 @@ export const MatchCard = memo(function MatchCard({
   onEdit,
   onDelete,
   staggerIndex = 0,
+  selectable = false,
+  selected = false,
+  onToggleSelected,
 }: MatchCardProps) {
   const navigate = useNavigate();
   const { t } = useTranslation(["history", "common", "mood"]);
@@ -73,6 +82,10 @@ export const MatchCard = memo(function MatchCard({
     : null;
 
   function handleClick() {
+    if (selectable) {
+      onToggleSelected?.(match.id);
+      return;
+    }
     if (onClick) onClick();
     else navigate(`/history/${match.id}`);
   }
@@ -110,9 +123,14 @@ export const MatchCard = memo(function MatchCard({
         }}
         role="button"
         tabIndex={0}
+        aria-pressed={selectable ? selected : undefined}
         className={cn(
-          "group grid w-full cursor-pointer grid-cols-[3px_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-4 py-3 pl-0 pr-2",
+          "group grid w-full cursor-pointer items-center gap-4 py-3 pl-0 pr-2",
+          selectable
+            ? "grid-cols-[3px_28px_minmax(0,1fr)_auto_auto_auto_auto]"
+            : "grid-cols-[3px_minmax(0,1fr)_auto_auto_auto_auto]",
           "transition-colors duration-150 hover:bg-bg-hover",
+          selected && "bg-accent-primary-muted/30",
           "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]",
           // Rendering virtualization for long histories: off-screen rows are
           // skipped by layout/paint while keeping DOM-based tests and
@@ -121,6 +139,17 @@ export const MatchCard = memo(function MatchCard({
         )}
       >
         <span aria-hidden="true" className={cn("h-full w-[3px] rounded-full", edgeTone)} />
+
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={selected}
+            readOnly
+            tabIndex={-1}
+            aria-hidden="true"
+            className="pointer-events-none h-3.5 w-3.5 accent-[var(--accent)]"
+          />
+        )}
 
         <div className="min-w-0">
           <p className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-text-primary">
@@ -177,6 +206,23 @@ export const MatchCard = memo(function MatchCard({
         <span title={t(moodLabelKey(match.mood))}>
           <MoodGlyph size={15} className={cn("shrink-0", moodTone(match.mood))} aria-label={t(moodLabelKey(match.mood))} />
         </span>
+
+        {(match.notes || (match.tags && match.tags.length > 0)) && (
+          <span
+            className="hidden shrink-0 items-center gap-1 sm:flex"
+            title={match.notes ?? match.tags?.join(", ")}
+          >
+            {match.tags?.slice(0, 2).map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full bg-bg-elevated px-1.5 py-0.5 text-[9px] font-medium text-text-tertiary"
+              >
+                {tag}
+              </span>
+            ))}
+            <StickyNote size={12} className="text-text-tertiary" aria-hidden="true" />
+          </span>
+        )}
 
         <ChevronRight
           size={14}

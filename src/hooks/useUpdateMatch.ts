@@ -10,7 +10,12 @@ export function useUpdateMatch() {
       data,
     }: {
       matchId: number;
-      data: { matchType?: string | null; playlist?: string | null };
+      data: {
+        matchType?: string | null;
+        playlist?: string | null;
+        notes?: string | null;
+        tags?: string[] | null;
+      };
     }) => updateMatch(matchId, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["matches"] });

@@ -64,7 +64,11 @@
     "edit": {
       "title": "Editar Partida",
       "matchTypeLabel": "Tipo de partida",
-      "playlistLabel": "Playlist"
+      "playlistLabel": "Playlist",
+      "notesLabel": "Notas",
+      "notesPlaceholder": "O que você quer lembrar desta partida?",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "torneio, ranked, com amigos…"
     }
   },
   "filters": {
@@ -113,5 +117,22 @@
   },
   "titles": {
     "training": "Treino livre"
+  },
+  "bulk": {
+    "select": "Selecionar",
+    "cancel": "Cancelar",
+    "selected": "{{count}} selecionadas",
+    "selectAll": "Selecionar tudo",
+    "clear": "Limpar",
+    "changeType": "Mudar tipo…",
+    "changePlaylist": "Mudar playlist…",
+    "tagPlaceholder": "Tag…",
+    "tagged": "Tag aplicada",
+    "typeChanged": "Tipo de partida atualizado",
+    "playlistChanged": "Playlist atualizada",
+    "applied": "{{count}} partidas atualizadas",
+    "deleted": "{{count}} partidas excluídas",
+    "deleteTitle": "Excluir partidas",
+    "deleteConfirm": "{{count}} partidas serão excluídas. Isso não pode ser desfeito."
   }
 }

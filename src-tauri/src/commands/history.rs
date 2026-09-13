@@ -40,6 +40,8 @@ struct MatchEntry {
     match_type: Option<String>,
     playlist: Option<String>,
     mood: Option<String>,
+    notes: Option<String>,
+    tags: Vec<String>,
 }
 
 impl MatchEntry {
@@ -60,6 +62,8 @@ impl MatchEntry {
             match_type: m.match_type,
             playlist: m.playlist,
             mood: m.mood,
+            notes: m.notes,
+            tags: m.tags,
         }
     }
 }
@@ -433,10 +437,21 @@ pub async fn update_match_cmd(
     match_id: i64,
     match_type: Option<String>,
     playlist: Option<String>,
+    notes: Option<String>,
+    tags: Option<Vec<String>>,
 ) -> Result<(), String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        match storage::update_match(&pool, match_id, match_type.as_deref(), playlist.as_deref()) {
+        let tags_json =
+            tags.map(|list| serde_json::to_string(&list).unwrap_or_else(|_| "[]".into()));
+        match storage::update_match(
+            &pool,
+            match_id,
+            match_type.as_deref(),
+            playlist.as_deref(),
+            notes.as_deref(),
+            tags_json.as_deref(),
+        ) {
             Ok(()) => {
                 // The pre-aggregated daily rollups exclude training and are keyed
                 // by the stored match_type/playlist; an edit without a rebuild left
@@ -504,6 +519,8 @@ mod serialization_tests {
             match_type: Some("ranked".to_string()),
             playlist: Some("Doubles".to_string()),
             mood: None,
+            notes: Some("gg".to_string()),
+            tags: vec!["torneo".to_string()],
         }
     }
 
@@ -529,10 +546,12 @@ mod serialization_tests {
                 "local_team_num",
                 "match_type",
                 "mood",
+                "notes",
                 "playlist",
                 "score_blue",
                 "score_orange",
                 "start_time",
+                "tags",
                 "winner",
             ]
         );
@@ -565,4 +584,32 @@ mod serialization_tests {
         .unwrap();
         assert_eq!(keys(&value), vec!["events", "goals", "match", "players"]);
     }
+}
+
+/// Neighbouring matches in chronological order, for prev/next navigation.
+#[tauri::command]
+pub async fn get_adjacent_matches(
+    state: State<'_, AppState>,
+    match_id: i64,
+) -> Result<serde_json::Value, String> {
+    let pool = state.db_pool.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = storage::get_conn(&pool).map_err(|e| e.to_string())?;
+        let (prev, next) = conn
+            .query_row(
+                "SELECT
+                    (SELECT id FROM matches
+                     WHERE start_time < (SELECT start_time FROM matches WHERE id = ?1)
+                     ORDER BY start_time DESC LIMIT 1),
+                    (SELECT id FROM matches
+                     WHERE start_time > (SELECT start_time FROM matches WHERE id = ?1)
+                     ORDER BY start_time ASC LIMIT 1)",
+                rusqlite::params![match_id],
+                |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "prevId": prev, "nextId": next }))
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
 }

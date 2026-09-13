@@ -155,6 +155,7 @@ pub fn run() {
             commands::history::get_match_detail,
             commands::history::delete_match_cmd,
             commands::history::update_match_cmd,
+            commands::history::get_adjacent_matches,
             commands::history::set_match_mood_cmd,
             commands::history::export_history_csv,
             commands::analytics::get_analytics,

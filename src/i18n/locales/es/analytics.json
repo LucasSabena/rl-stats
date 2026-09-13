@@ -360,5 +360,24 @@
     "save": "Guardar objetivos",
     "matchesProgress": "Partidos jugados",
     "winsProgress": "Victorias"
+  },
+  "layout": {
+    "customize": "Personalizar",
+    "done": "Listo",
+    "reset": "Restablecer",
+    "dragPanel": "Mover panel",
+    "showPanel": "Mostrar panel",
+    "hidePanel": "Ocultar panel",
+    "panels": {
+      "primary": "Métricas principales",
+      "training": "Tiempo de entrenamiento",
+      "chart": "Evolución",
+      "mmr": "MMR",
+      "secondary": "Métricas secundarias",
+      "insights": "Insights",
+      "comparison": "Comparación",
+      "patterns": "Patrones",
+      "sessions": "Sesiones"
+    }
   }
 }

@@ -121,6 +121,10 @@ export interface MatchSummary {
   playlist?: string | null;
   /** Self-reported post-match mood (`very_happy`…`very_angry`), null = unrated. */
   mood?: string | null;
+  /** Free-form user notes (editable from the match detail/edit modal). */
+  notes?: string | null;
+  /** User tags for filtering and grouping matches. */
+  tags?: string[] | null;
 }
 
 export interface MatchDetail extends MatchSummary {

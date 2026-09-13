@@ -360,5 +360,24 @@
     "save": "Save goals",
     "matchesProgress": "Matches played",
     "winsProgress": "Wins"
+  },
+  "layout": {
+    "customize": "Customize",
+    "done": "Done",
+    "reset": "Reset",
+    "dragPanel": "Move panel",
+    "showPanel": "Show panel",
+    "hidePanel": "Hide panel",
+    "panels": {
+      "primary": "Primary metrics",
+      "training": "Training time",
+      "chart": "Trend",
+      "mmr": "MMR",
+      "secondary": "Secondary metrics",
+      "insights": "Insights",
+      "comparison": "Comparison",
+      "patterns": "Patterns",
+      "sessions": "Sessions"
+    }
   }
 }

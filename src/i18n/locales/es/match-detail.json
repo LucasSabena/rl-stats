@@ -100,6 +100,8 @@
     "editMatch": "Editar",
     "deleteMatch": "Borrar",
     "deleteSuccess": "Partida eliminada",
-    "deleteError": "No se pudo eliminar la partida."
+    "deleteError": "No se pudo eliminar la partida.",
+    "previousMatch": "Partida anterior",
+    "nextMatch": "Partida siguiente"
   }
 }

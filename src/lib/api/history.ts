@@ -65,12 +65,19 @@ export async function deleteMatch(matchId: number): Promise<void> {
 
 export async function updateMatch(
   matchId: number,
-  data: { matchType?: string | null; playlist?: string | null },
+  data: {
+    matchType?: string | null;
+    playlist?: string | null;
+    notes?: string | null;
+    tags?: string[] | null;
+  },
 ): Promise<void> {
   return invokeCommand<void>("update_match_cmd", {
     matchId,
     matchType: data.matchType ?? null,
     playlist: data.playlist ?? null,
+    notes: data.notes ?? null,
+    tags: data.tags ?? null,
   });
 }
 
@@ -121,4 +128,14 @@ export async function exportHistoryCsv(filters?: MatchFilters): Promise<string> 
       search: filters?.search ?? undefined,
     },
   });
+}
+
+/** Chronological neighbours of a match, for prev/next navigation. */
+export async function getAdjacentMatches(
+  matchId: number,
+): Promise<{ prevId: number | null; nextId: number | null }> {
+  return invokeCommand<{ prevId: number | null; nextId: number | null }>(
+    "get_adjacent_matches",
+    { matchId },
+  );
 }

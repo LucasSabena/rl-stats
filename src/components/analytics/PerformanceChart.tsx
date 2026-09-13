@@ -23,6 +23,8 @@ interface PerformanceChartProps {
   data: DailyRollup[];
   defaultMetric?: ChartMetric;
   scope?: DataScope;
+  /** Called when a data point is clicked, with the bucket's date label. */
+  onDayClick?: (date: string) => void;
 }
 
 const METRICS: { key: ChartMetric; labelKey: string; color: string; type: "rate" | "volume" }[] = [
@@ -39,6 +41,7 @@ export const PerformanceChart = memo(function PerformanceChart({
   data,
   defaultMetric = "winRate",
   scope,
+  onDayClick,
 }: PerformanceChartProps) {
   const { t } = useTranslation("analytics");
   const [metric, setMetric] = useState<ChartMetric>(defaultMetric);
@@ -123,10 +126,20 @@ export const PerformanceChart = memo(function PerformanceChart({
         </div>
       </div>
 
-      <div role="img" aria-label={t("chart.ariaLabel", { metric: t(currentMetricDef.labelKey) })} className="h-80 max-sm:h-64">
+      <div role="img" aria-label={t("chart.ariaLabel", { metric: t(currentMetricDef.labelKey) })} className={cn("h-80 max-sm:h-64", onDayClick && "cursor-pointer")}>
         <ResponsiveContainer width="100%" height="100%">
           {combo ? (
-            <ComposedChart data={chartData}>
+            <ComposedChart
+              data={chartData}
+              onClick={
+                onDayClick
+                  ? (state) => {
+                      const label = state?.activeLabel;
+                      if (label) onDayClick(String(label));
+                    }
+                  : undefined
+              }
+            >
               <defs>
                 <linearGradient id="gradient-winRate" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--color-accent-primary)" stopOpacity={0.15} />
@@ -184,7 +197,17 @@ export const PerformanceChart = memo(function PerformanceChart({
               />
             </ComposedChart>
           ) : (
-            <AreaChart data={chartData}>
+            <AreaChart
+              data={chartData}
+              onClick={
+                onDayClick
+                  ? (state) => {
+                      const label = state?.activeLabel;
+                      if (label) onDayClick(String(label));
+                    }
+                  : undefined
+              }
+            >
               <defs>
                 <linearGradient id={`gradient-${metric}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={currentMetricDef.color} stopOpacity={0.15} />

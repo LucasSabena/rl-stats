@@ -64,7 +64,11 @@
     "edit": {
       "title": "Edit Match",
       "matchTypeLabel": "Match Type",
-      "playlistLabel": "Playlist"
+      "playlistLabel": "Playlist",
+      "notesLabel": "Notes",
+      "notesPlaceholder": "What do you want to remember about this match?",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "tournament, ranked, with friends…"
     }
   },
   "filters": {
@@ -113,5 +117,22 @@
   },
   "titles": {
     "training": "Free Play"
+  },
+  "bulk": {
+    "select": "Select",
+    "cancel": "Cancel",
+    "selected": "{{count}} selected",
+    "selectAll": "Select all",
+    "clear": "Clear",
+    "changeType": "Change type…",
+    "changePlaylist": "Change playlist…",
+    "tagPlaceholder": "Tag…",
+    "tagged": "Tag applied",
+    "typeChanged": "Match type updated",
+    "playlistChanged": "Playlist updated",
+    "applied": "{{count}} matches updated",
+    "deleted": "{{count}} matches deleted",
+    "deleteTitle": "Delete matches",
+    "deleteConfirm": "{{count}} matches will be deleted. This cannot be undone."
   }
 }

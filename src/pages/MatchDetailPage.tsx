@@ -9,6 +9,7 @@ import { useDeleteMatch } from "@/hooks/useDeleteMatch";
 import { useSetMatchMood } from "@/hooks/useSetMatchMood";
 import { useUIStore } from "@/stores/uiStore";
 import { MoodPicker } from "@/components/mood/MoodPicker";
+import { TagInput } from "@/components/ui/TagInput";
 import { moodIcon, moodLabelKey, moodTone } from "@/lib/moods";
 import { MatchHeader } from "@/components/match-detail/MatchHeader";
 import { MatchInfoPanel } from "@/components/match-detail/MatchInfoPanel";
@@ -24,7 +25,8 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { buildMatchShareContext } from "@/lib/shareContext";
-import { Gamepad2, ArrowLeft, Pencil, Share2, Trash2 } from "lucide-react";
+import { getAdjacentMatches } from "@/lib/api";
+import { Gamepad2, ArrowLeft, Pencil, Share2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 
 export function MatchDetailPage() {
   const { t, i18n } = useTranslation(["matchDetail", "history", "common", "mood"]);
@@ -40,7 +42,13 @@ export function MatchDetailPage() {
   const [editMatchType, setEditMatchType] = useState("");
   const [editPlaylist, setEditPlaylist] = useState("");
   const [editMood, setEditMood] = useState<string | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
+  const [neighbors, setNeighbors] = useState<{
+    prevId: number | null;
+    nextId: number | null;
+  }>({ prevId: null, nextId: null });
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const updateMutation = useUpdateMatch();
   const deleteMutation = useDeleteMatch();
@@ -48,10 +56,48 @@ export function MatchDetailPage() {
   const addToast = useUIStore((state) => state.addToast);
 
   useEffect(() => {
+    let cancelled = false;
+    getAdjacentMatches(id)
+      .then((result) => {
+        if (!cancelled) setNeighbors(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "[") {
+        event.preventDefault();
+        navigate(`/history/${neighbors.prevId ?? id}`);
+      } else if (event.key === "]") {
+        event.preventDefault();
+        navigate(`/history/${neighbors.nextId ?? id}`);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [id, navigate, neighbors.nextId, neighbors.prevId]);
+
+  useEffect(() => {
     if (editing && data) {
       setEditMatchType(data.matchType ?? "");
       setEditPlaylist(data.playlist ?? "");
       setEditMood(data.mood ?? null);
+      setEditNotes(data.notes ?? "");
+      setEditTags(data.tags ?? []);
       setEditError(null);
     }
   }, [editing, data]);
@@ -158,7 +204,12 @@ export function MatchDetailPage() {
     try {
       await updateMutation.mutateAsync({
         matchId: id,
-        data: { matchType: editMatchType || null, playlist: editPlaylist || null },
+        data: {
+          matchType: editMatchType || null,
+          playlist: editPlaylist || null,
+          notes: editNotes.trim() ? editNotes.trim() : null,
+          tags: editTags,
+        },
       });
       await moodMutation.mutateAsync({ matchId: id, mood: editMood });
       setEditing(false);
@@ -190,13 +241,49 @@ export function MatchDetailPage() {
   return (
     <PageContainer>
       <div className="flex items-center justify-between gap-2">
-        <Button
-          variant="ghost"
-          leftIcon={ArrowLeft}
-          onClick={() => navigate("/history")}
-        >
-          {t("matchDetail:page.backToHistory")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            leftIcon={ArrowLeft}
+            onClick={() => navigate("/history")}
+          >
+            {t("matchDetail:page.backToHistory")}
+          </Button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={!neighbors.prevId}
+              onClick={() =>
+                neighbors.prevId && navigate(`/history/${neighbors.prevId}`)
+              }
+              aria-label={t("matchDetail:page.previousMatch", {
+                defaultValue: "Partida anterior",
+              })}
+              title={`${t("matchDetail:page.previousMatch", {
+                defaultValue: "Partida anterior",
+              })} [ ]`}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              type="button"
+              disabled={!neighbors.nextId}
+              onClick={() =>
+                neighbors.nextId && navigate(`/history/${neighbors.nextId}`)
+              }
+              aria-label={t("matchDetail:page.nextMatch", {
+                defaultValue: "Partida siguiente",
+              })}
+              title={`${t("matchDetail:page.nextMatch", {
+                defaultValue: "Partida siguiente",
+              })} [ ]`}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
@@ -275,6 +362,36 @@ export function MatchDetailPage() {
             <label className="mb-2 block text-sm font-medium text-text-secondary">{t("mood:editLabel")}</label>
             <MoodPicker value={editMood} onChange={setEditMood} size="sm" />
           </div>
+          <div>
+            <label
+              htmlFor="detail-notes"
+              className="mb-1 block text-sm font-medium text-text-secondary"
+            >
+              {t("history:modals.edit.notesLabel", { defaultValue: "Notas" })}
+            </label>
+            <textarea
+              id="detail-notes"
+              rows={3}
+              value={editNotes}
+              onChange={(event) => setEditNotes(event.target.value)}
+              placeholder={t("history:modals.edit.notesPlaceholder", {
+                defaultValue: "¿Qué querés recordar de esta partida?",
+              })}
+              className="w-full resize-none rounded-lg border border-border-subtle bg-bg-panel px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-secondary">
+              {t("history:modals.edit.tagsLabel", { defaultValue: "Etiquetas" })}
+            </label>
+            <TagInput
+              value={editTags}
+              onChange={setEditTags}
+              placeholder={t("history:modals.edit.tagsPlaceholder", {
+                defaultValue: "torneo, ranked, con amigos…",
+              })}
+            />
+          </div>
           {editError && (
             <p className="text-xs text-accent-danger">{editError}</p>
           )}
@@ -317,6 +434,28 @@ export function MatchDetailPage() {
         <DetailMoodIcon size={16} className={moodTone(data.mood)} />
         <span>{t(moodLabelKey(data.mood))}</span>
       </button>
+
+      {(data.notes || (data.tags && data.tags.length > 0)) && (
+        <section className="rounded-lg border border-border-subtle bg-bg-surface p-4">
+          {data.tags && data.tags.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {data.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-bg-elevated px-2.5 py-0.5 text-[11px] font-medium text-text-secondary"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          {data.notes && (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+              {data.notes}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* The two rosters share one flat surface, split by a hairline. */}
       <section className="grid divide-y divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-bg-surface lg:grid-cols-2 lg:divide-x lg:divide-y-0">

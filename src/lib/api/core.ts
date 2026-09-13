@@ -85,6 +85,8 @@ export interface RawMatchSummary {
   match_type?: string | null;
   playlist?: string | null;
   mood?: string | null;
+  notes?: string | null;
+  tags?: string[] | null;
 }
 
 export interface RawPlayerStats {
@@ -243,6 +245,8 @@ export function mapMatchSummary(match: RawMatchSummary): MatchSummary {
     matchType: (match.match_type as MatchType) ?? null,
     playlist: match.playlist ?? null,
     mood: match.mood ?? null,
+    notes: match.notes ?? null,
+    tags: match.tags ?? [],
   };
 }
 

@@ -666,6 +666,12 @@ fn map_match_row(row: &rusqlite::Row) -> rusqlite::Result<Match> {
         playlist: row.get(12)?,
         // `mood` (v22) may be missing on very old snapshots; fall back to None.
         mood: row.get::<_, Option<String>>(13).unwrap_or(None),
+        notes: row.get::<_, Option<String>>(14).unwrap_or(None),
+        tags: row
+            .get::<_, Option<String>>(15)
+            .unwrap_or(None)
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -675,7 +681,7 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
     let mut matches = Vec::new();
 
     let mut sql = String::from(
-        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood FROM matches WHERE 1=1"
+        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json FROM matches WHERE 1=1"
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -740,10 +746,13 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
     }
 
     if let Some(search) = filters.search {
+        // Players' names plus the free-form match notes written by the user.
         sql.push_str(
-            " AND id IN (SELECT match_id FROM match_players mp JOIN players p ON mp.player_id = p.id WHERE p.name LIKE ?)"
+            " AND (id IN (SELECT match_id FROM match_players mp JOIN players p ON mp.player_id = p.id WHERE p.name LIKE ?)
+               OR LOWER(COALESCE(notes, '')) LIKE LOWER(?))",
         );
         let pattern = format!("%{}%", search);
+        args.push(Box::new(pattern.clone()));
         args.push(Box::new(pattern));
     }
 
@@ -766,7 +775,7 @@ pub fn get_match_detail(pool: &DbPool, match_id: i64) -> AppResult<(Match, Vec<P
     let conn = get_conn(pool)?;
 
     let m: Match = conn.query_row(
-        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood FROM matches WHERE id = ?1",
+        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json FROM matches WHERE id = ?1",
         params![match_id],
         |row| {
             Ok(Match {
@@ -784,6 +793,12 @@ pub fn get_match_detail(pool: &DbPool, match_id: i64) -> AppResult<(Match, Vec<P
                 match_type: row.get(11)?,
                 playlist: row.get(12)?,
                 mood: row.get::<_, Option<String>>(13).unwrap_or(None),
+                notes: row.get::<_, Option<String>>(14).unwrap_or(None),
+                tags: row
+                    .get::<_, Option<String>>(15)
+                    .unwrap_or(None)
+                    .and_then(|raw| serde_json::from_str(&raw).ok())
+                    .unwrap_or_default(),
             })
         },
     ).map_err(|e| AppError::StorageError(e.to_string()))?;
@@ -893,11 +908,18 @@ pub fn update_match(
     match_id: i64,
     match_type: Option<&str>,
     playlist: Option<&str>,
+    notes: Option<&str>,
+    tags_json: Option<&str>,
 ) -> AppResult<()> {
     let conn = get_conn(pool)?;
     conn.execute(
-        "UPDATE matches SET match_type = ?1, playlist = ?2 WHERE id = ?3",
-        params![match_type, playlist, match_id],
+        "UPDATE matches
+         SET match_type = ?1,
+             playlist = ?2,
+             notes = COALESCE(?3, notes),
+             tags_json = COALESCE(?4, tags_json)
+         WHERE id = ?5",
+        params![match_type, playlist, notes, tags_json, match_id],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     enqueue_match_upsert_conn(&conn, match_id)?;

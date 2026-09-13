@@ -100,6 +100,8 @@
     "editMatch": "Edit",
     "deleteMatch": "Delete",
     "deleteSuccess": "Match deleted",
-    "deleteError": "Could not delete the match."
+    "deleteError": "Could not delete the match.",
+    "previousMatch": "Previous match",
+    "nextMatch": "Next match"
   }
 }

@@ -9,6 +9,9 @@ interface MatchListProps {
   onSelectMatch?: (matchId: number) => void;
   onEditMatch?: (match: MatchSummary) => void;
   onDeleteMatch?: (matchId: number) => void;
+  selectable?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelected?: (matchId: number) => void;
 }
 
 interface DayGroup {
@@ -28,6 +31,9 @@ export const MatchList = memo(function MatchList({
   onSelectMatch,
   onEditMatch,
   onDeleteMatch,
+  selectable = false,
+  selectedIds,
+  onToggleSelected,
 }: MatchListProps) {
   const { t, i18n } = useTranslation("history");
 
@@ -90,6 +96,9 @@ export const MatchList = memo(function MatchList({
                 onClick={onSelectMatch ? () => onSelectMatch(match.id) : undefined}
                 onEdit={onEditMatch}
                 onDelete={onDeleteMatch}
+                selectable={selectable}
+                selected={selectedIds?.has(match.id) ?? false}
+                onToggleSelected={onToggleSelected}
               />
             ))}
           </div>

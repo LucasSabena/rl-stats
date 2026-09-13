@@ -252,7 +252,7 @@ fn hydrate_change_payload_conn(
 fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::Value> {
     conn.query_row(
         "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner,
-                is_online, is_overtime, duration_seconds, match_type, playlist, mood
+                is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json
          FROM matches
          WHERE guid = ?1",
         params![guid],
@@ -271,6 +271,11 @@ fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::
             let match_type = row.get::<_, Option<String>>(11)?;
             let playlist = row.get::<_, Option<String>>(12)?;
             let mood = row.get::<_, Option<String>>(13).unwrap_or(None);
+            let notes = row.get::<_, Option<String>>(14).unwrap_or(None);
+            let tags_json = row.get::<_, Option<String>>(15).unwrap_or(None);
+            let tags: serde_json::Value = tags_json
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_else(|| serde_json::json!([]));
 
             Ok(serde_json::json!({
                 "local_id": local_id,
@@ -287,6 +292,8 @@ fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::
                 "match_type": match_type,
                 "playlist": playlist,
                 "mood": mood,
+                "notes": notes,
+                "tags": tags,
             }))
         },
     )

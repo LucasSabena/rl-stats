@@ -137,8 +137,8 @@ fn apply_match(
     conn.execute(
         "INSERT INTO matches (
             guid, start_time, end_time, arena, score_blue, score_orange, winner,
-            is_online, is_overtime, duration_seconds, match_type, playlist, mood
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
          ON CONFLICT(guid) DO UPDATE SET
             start_time = excluded.start_time,
             end_time = COALESCE(excluded.end_time, matches.end_time),
@@ -151,7 +151,9 @@ fn apply_match(
             duration_seconds = excluded.duration_seconds,
             match_type = COALESCE(excluded.match_type, matches.match_type),
             playlist = COALESCE(excluded.playlist, matches.playlist),
-            mood = COALESCE(excluded.mood, matches.mood)",
+            mood = COALESCE(excluded.mood, matches.mood),
+            notes = COALESCE(excluded.notes, matches.notes),
+            tags_json = CASE WHEN excluded.tags_json = '[]' THEN matches.tags_json ELSE excluded.tags_json END",
         params![
             guid,
             start_time,
@@ -166,6 +168,11 @@ fn apply_match(
             string_field(p, "match_type"),
             string_field(p, "playlist"),
             string_field(p, "mood"),
+            string_field(p, "notes"),
+            {
+                let tags = p.get("tags").cloned().unwrap_or(serde_json::json!([]));
+                serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())
+            },
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;

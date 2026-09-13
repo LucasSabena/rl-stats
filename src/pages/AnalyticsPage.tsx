@@ -1,5 +1,8 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAnalyticsLayout, type AnalyticsPanelId } from "@/hooks/useAnalyticsLayout";
+import { SortableList, DragHandle } from "@/components/ui/SortableList";
+import { Eye, EyeOff, LayoutGrid, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAnalytics, useSessionMatches, useInsights, usePlayerAnalyticsMatches, usePlayerAnalyticsSummary } from "@/hooks/useAnalytics";
 import { useFriends } from "@/hooks/useFriends";
@@ -55,6 +58,7 @@ function paramOr<T extends string>(value: string | null, allowed: readonly T[], 
 
 export function AnalyticsPage() {
   const { t, i18n } = useTranslation(["analytics", "common"]);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [period, setPeriod] = useState<AnalyticsPeriod>(() =>
     paramOr(searchParams.get("period"), PERIODS, "week")
@@ -125,6 +129,7 @@ export function AnalyticsPage() {
   );
 
   const sessions = useMemo(() => result?.sessions ?? [], [result]);
+  const analyticsLayout = useAnalyticsLayout();
 
   const { data: friends, isLoading: friendsLoading } = useFriends();
   const { data: settings } = useSettings();
@@ -195,6 +200,77 @@ export function AnalyticsPage() {
     );
   }, [result, period, friendsPresent, username, i18n.language, t]);
 
+  const panelNodes: Record<AnalyticsPanelId, React.ReactNode> = {
+    primary: result ? <PrimaryStatsRow data={result.data} scope={scope} /> : null,
+    training: result ? <TrainingTimeCard period={period} /> : null,
+    chart:
+      result && result.rollups.length > 0 ? (
+        <PerformanceChart
+          data={result.rollups}
+          scope={scope}
+          onDayClick={(date) => {
+            const start = new Date(`${date}T00:00:00`).getTime();
+            const end = new Date(`${date}T23:59:59.999`).getTime();
+            navigate(`/history?from=${start}&to=${end}`);
+          }}
+        />
+      ) : null,
+    mmr: <MmrHistoryChart playerId={null} period={period} />,
+    secondary: result ? (
+      <SecondaryStatsRow
+        data={result.data}
+        scope={scope}
+        streak={{ best: result.data.bestStreak, current: result.data.currentStreak }}
+      />
+    ) : null,
+    insights: (
+      <InsightsPanel
+        insights={insights}
+        isLoading={insightsLoading}
+        summary={result?.data}
+      />
+    ),
+    comparison: (
+      <ComparisonPanel
+        period={period}
+        playlist={playlist}
+        matchType={matchType}
+        playerId={null}
+        playerOptions={playerOptions}
+        username={username}
+      />
+    ),
+    patterns: (
+      <PatternPanels
+        period={period}
+        playlist={playlist}
+        matchType={matchType}
+        scope={scope}
+        playerId={null}
+        username={username}
+        friendsPresent={friendsPresent}
+        dateLabel={t("analytics:periods." + period, { defaultValue: period.toUpperCase() })}
+      />
+    ),
+    sessions:
+      period === "session" && sessions.length > 0 ? (
+        <div>
+          <h3 className="mb-3 text-sm font-semibold text-text-primary">
+            {t("analytics:sessions.title")}
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {sessions.map((session) => (
+              <SessionCard
+                key={session.id}
+                session={session}
+                onClick={() => setSelectedSession(session)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null,
+  };
+
   return (
     <PageContainer>
       <div className="mb-6 flex flex-col gap-4">
@@ -209,15 +285,37 @@ export function AnalyticsPage() {
           ) : (
             <span />
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={Share2}
-            onClick={() => setShareOpen(true)}
-            disabled={!shareContext || friendsLoading}
-          >
-            {t("common:buttons.share")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={analyticsLayout.editing ? "primary" : "ghost"}
+              size="sm"
+              leftIcon={LayoutGrid}
+              onClick={() => analyticsLayout.setEditing(!analyticsLayout.editing)}
+            >
+              {analyticsLayout.editing
+                ? t("analytics:layout.done", { defaultValue: "Listo" })
+                : t("analytics:layout.customize", { defaultValue: "Personalizar" })}
+            </Button>
+            {analyticsLayout.editing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                leftIcon={RotateCcw}
+                onClick={analyticsLayout.reset}
+              >
+                {t("analytics:layout.reset", { defaultValue: "Restablecer" })}
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={Share2}
+              onClick={() => setShareOpen(true)}
+              disabled={!shareContext || friendsLoading}
+            >
+              {t("common:buttons.share")}
+            </Button>
+          </div>
         </div>
         <div className="rounded-lg border border-border-subtle bg-bg-surface p-2.5">
           <AnalyticsFilters
@@ -289,67 +387,60 @@ export function AnalyticsPage() {
             />
           ) : (
             <>
-              <PrimaryStatsRow data={result.data} scope={scope} />
-
-              <TrainingTimeCard period={period} />
-
-              {result.rollups.length > 0 && (
-                <PerformanceChart data={result.rollups} scope={scope} />
+              {analyticsLayout.editing ? (
+                <SortableList
+                  items={analyticsLayout.layout.order}
+                  idOf={(id) => id}
+                  onReorder={analyticsLayout.setOrder}
+                  className="flex flex-col gap-6"
+                  renderItem={(id, handle) => {
+                    const isHidden = analyticsLayout.layout.hidden.includes(id);
+                    return (
+                      <div className="rounded-xl border border-dashed border-border-default bg-bg-panel/40 p-3">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <DragHandle
+                              handle={handle}
+                              label={t("analytics:layout.dragPanel", {
+                                defaultValue: "Mover panel",
+                              })}
+                            />
+                            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                              {t(`analytics:layout.panels.${id}`, { defaultValue: id })}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => analyticsLayout.togglePanel(id)}
+                            aria-label={
+                              isHidden
+                                ? t("analytics:layout.showPanel", {
+                                    defaultValue: "Mostrar panel",
+                                  })
+                                : t("analytics:layout.hidePanel", {
+                                    defaultValue: "Ocultar panel",
+                                  })
+                            }
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-bg-hover hover:text-text-primary"
+                          >
+                            {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </div>
+                        <div className={isHidden ? "pointer-events-none opacity-35" : ""}>
+                          {panelNodes[id]}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+              ) : (
+                analyticsLayout.visiblePanels.map((id) => (
+                  <div key={id}>{panelNodes[id]}</div>
+                ))
               )}
-
-              <MmrHistoryChart playerId={null} period={period} />
-
-              <SecondaryStatsRow
-                data={result.data}
-                scope={scope}
-                streak={{ best: result.data.bestStreak, current: result.data.currentStreak }}
-              />
-
-              <InsightsPanel
-                insights={insights}
-                isLoading={insightsLoading}
-                summary={result.data}
-              />
-
-              <ComparisonPanel
-                period={period}
-                playlist={playlist}
-                matchType={matchType}
-                playerId={null}
-                playerOptions={playerOptions}
-                username={username}
-              />
-
-              <PatternPanels
-                period={period}
-                playlist={playlist}
-                matchType={matchType}
-                scope={scope}
-                playerId={null}
-                username={username}
-                friendsPresent={friendsPresent}
-                dateLabel={t('analytics:periods.' + period, { defaultValue: period.toUpperCase() })}
-              />
 
               <KickoffRecountButton />
             </>
-          )}
-
-          {period === "session" && sessions.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-text-primary">
-                {t("analytics:sessions.title")}
-              </h3>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {sessions.map((s) => (
-                  <SessionCard
-                    key={s.id}
-                    session={s}
-                    onClick={() => setSelectedSession(s)}
-                  />
-                ))}
-              </div>
-            </div>
           )}
         </div>
       )}
