@@ -45,6 +45,9 @@ pub struct OverlaySceneConfig {
     pub hide: String,
     /// Alert types the alerts overlay should play.
     pub alert_types: String,
+    /// Append per-player speed (uu/s) to supported overlays.
+    #[serde(default)]
+    pub show_speed: bool,
 }
 
 fn scene_query(config: &OverlaySceneConfig, token: &str) -> String {
@@ -73,6 +76,9 @@ fn scene_query(config: &OverlaySceneConfig, token: &str) -> String {
     }
     if !config.alert_types.is_empty() {
         serializer.append_pair("types", &config.alert_types);
+    }
+    if config.show_speed {
+        serializer.append_pair("speed", "1");
     }
     serializer.finish()
 }

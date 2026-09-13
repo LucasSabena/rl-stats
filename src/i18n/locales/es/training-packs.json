@@ -34,7 +34,9 @@
     "noFeatured": "No hay packs destacados",
     "refresh": "Actualizar",
     "showMore": "Mostrar más ({{remaining}} más)",
-    "tagsLabel": "Etiquetas"
+    "tagsLabel": "Etiquetas",
+    "editPack": "Editar pack",
+    "packUpdated": "Pack actualizado"
   },
   "categories": {
     "all": "Todas",

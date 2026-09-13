@@ -67,8 +67,13 @@ export function HistoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialFilters = paramsToFilters(searchParams);
   const [filters, setFilters] = useState<MatchFilters>(initialFilters);
+  const initialTab = searchParams.get("tab");
   const [viewTab, setViewTab] = useState<"matches" | "training" | "all">(
-    initialFilters.matchType === "training" ? "training" : "matches",
+    initialTab === "training" || initialTab === "all"
+      ? initialTab
+      : initialFilters.matchType === "training"
+        ? "training"
+        : "matches",
   );
 
   const {
@@ -136,9 +141,21 @@ export function HistoryPage() {
     (newFilters: MatchFilters) => {
       setFilters(newFilters);
       const newParams = filtersToParams(newFilters);
+      if (viewTab !== "matches") newParams.set("tab", viewTab);
       setSearchParams(newParams, { replace: true });
     },
-    [setSearchParams]
+    [setSearchParams, viewTab]
+  );
+
+  const handleTabChange = useCallback(
+    (tab: string) => {
+      const next = tab as typeof viewTab;
+      setViewTab(next);
+      const newParams = filtersToParams(filters);
+      if (next !== "matches") newParams.set("tab", next);
+      setSearchParams(newParams, { replace: true });
+    },
+    [filters, setSearchParams]
   );
 
   useEffect(() => {
@@ -336,7 +353,7 @@ export function HistoryPage() {
 
       <Tabs
         value={viewTab}
-        onValueChange={(v) => setViewTab(v as typeof viewTab)}
+        onValueChange={handleTabChange}
         className="gap-0"
       >
         <TabsList>

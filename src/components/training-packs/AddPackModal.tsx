@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { SelectWithLabel } from "@/components/ui/Select";
 import type { SelectOption } from "@/components/ui/Select";
-import type { PackCategory, PackDifficulty } from "@/lib/trainingPacksTypes";
+import type { PackCategory, PackDifficulty, TrainingPack } from "@/lib/trainingPacksTypes";
 
 const PACK_CATEGORIES: PackCategory[] = [
   "speedflip",
@@ -32,6 +32,8 @@ const CODE_REGEX = /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/i;
 interface AddPackModalProps {
   open: boolean;
   onClose: () => void;
+  /** When provided the modal edits an existing user pack instead of creating. */
+  initialPack?: TrainingPack | null;
   onSave: (pack: {
     name: string;
     code: string;
@@ -43,7 +45,7 @@ interface AddPackModalProps {
   }) => void;
 }
 
-export function AddPackModal({ open, onClose, onSave }: AddPackModalProps) {
+export function AddPackModal({ open, onClose, initialPack, onSave }: AddPackModalProps) {
   const { t } = useTranslation("trainingPacks");
 
   const [name, setName] = useState("");
@@ -57,16 +59,16 @@ export function AddPackModal({ open, onClose, onSave }: AddPackModalProps) {
 
   useEffect(() => {
     if (open) {
-      setName("");
-      setCode("");
-      setCreator("");
-      setCategory("");
-      setDifficulty("");
-      setDescription("");
-      setTags("");
+      setName(initialPack?.name ?? "");
+      setCode(initialPack?.code ?? "");
+      setCreator(initialPack?.creator ?? "");
+      setCategory(initialPack?.category ?? "");
+      setDifficulty(initialPack?.difficulty ?? "");
+      setDescription(initialPack?.description ?? "");
+      setTags(initialPack?.tags?.join(", ") ?? "");
       setTouched({});
     }
-  }, [open]);
+  }, [open, initialPack]);
 
   const handleBlur = (field: string) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -150,7 +152,7 @@ export function AddPackModal({ open, onClose, onSave }: AddPackModalProps) {
     <Modal
       isOpen={open}
       onClose={onClose}
-      title={t("modal.addTitle")}
+      title={initialPack ? t("modal.editTitle") : t("modal.addTitle")}
       size="lg"
       footer={
         <div className="flex justify-end gap-2">

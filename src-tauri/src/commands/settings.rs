@@ -260,9 +260,12 @@ fn export_data_json_internal(pool: &storage::DbPool) -> Result<String, String> {
         .map(|settings| settings.for_sync())
         .map_err(|e| e.to_string())?;
     let user_presets = storage::list_user_presets(pool).map_err(|e| e.to_string())?;
+    let friends = storage::get_friends(pool).map_err(|e| e.to_string())?;
+    let training_packs =
+        storage::training_packs::list_training_packs(pool).map_err(|e| e.to_string())?;
 
     let export = serde_json::json!({
-        "version": "1.0",
+        "version": "1.1",
         "exported_at": chrono::Utc::now().to_rfc3339(),
         "app_settings": app_settings,
         "matches": matches,
@@ -272,6 +275,8 @@ fn export_data_json_internal(pool: &storage::DbPool) -> Result<String, String> {
         "sessions": sessions,
         "daily_rollups": daily_rollups,
         "user_presets": user_presets,
+        "friends": friends,
+        "training_packs": training_packs,
     });
 
     serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
@@ -593,6 +598,43 @@ fn import_data_json_internal(
             }
         }
         info!(imported_presets, "User presets imported");
+
+        // ── 7. Friends (by player primary id) ──
+        let mut imported_friends = 0u32;
+        if let Some(friends) = import.get("friends").and_then(|v| v.as_array()) {
+            for f in friends {
+                let primary_id = match f.get("primary_id").and_then(|v| v.as_str()) {
+                    Some(id) => id,
+                    None => continue,
+                };
+                let name = f.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                let tag = f.get("tag").and_then(|v| v.as_str());
+                let player_id = storage::upsert_player_by_primary_id(&conn, primary_id, name)
+                    .map_err(|e| e.to_string())?;
+                storage::add_friend_conn(&conn, player_id, tag).map_err(|e| e.to_string())?;
+                imported_friends += 1;
+            }
+        }
+        info!(imported_friends, "Friends imported");
+
+        // ── 8. Training packs (upsert by stable id) ──
+        let mut imported_packs = 0u32;
+        if let Some(packs) = import.get("training_packs").and_then(|v| v.as_array()) {
+            for p in packs {
+                let input: storage::training_packs::TrainingPackInput =
+                    match serde_json::from_value(p.clone()) {
+                        Ok(input) => input,
+                        Err(error) => {
+                            warn!(%error, "Skipping invalid training pack");
+                            continue;
+                        }
+                    };
+                storage::training_packs::upsert_training_pack_conn(&conn, input)
+                    .map_err(|e| e.to_string())?;
+                imported_packs += 1;
+            }
+        }
+        info!(imported_packs, "Training packs imported");
 
         Ok(())
     })();

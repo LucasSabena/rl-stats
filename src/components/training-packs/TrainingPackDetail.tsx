@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { TrainingPack, PackDifficulty } from "@/lib/trainingPacksTypes";
-import { ExternalLink, Copy, Star, X, Check, Trash2 } from "lucide-react";
+import { ExternalLink, Copy, Star, X, Check, Trash2, Pencil } from "lucide-react";
 import { useState } from "react";
 
 interface TrainingPackDetailProps {
@@ -12,6 +12,7 @@ interface TrainingPackDetailProps {
   /** User-created packs can be deleted; curated packs cannot. */
   isUser?: boolean;
   onDelete?: () => void;
+  onEdit?: () => void;
 }
 
 const DIFFICULTY_STYLES: Record<
@@ -47,6 +48,7 @@ export function TrainingPackDetail({
   onClose,
   isUser = false,
   onDelete,
+  onEdit,
 }: TrainingPackDetailProps) {
   const { t } = useTranslation("trainingPacks");
   const [copied, setCopied] = useState(false);
@@ -205,15 +207,29 @@ export function TrainingPackDetail({
           : t("page.addedToFavorites")}
       </button>
 
-      {isUser && onDelete && (
-        <button
-          type="button"
-          onClick={onDelete}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent-danger/30 bg-accent-danger/5 py-3 text-sm font-semibold text-accent-danger transition-colors hover:bg-accent-danger/10"
-        >
-          <Trash2 size={16} />
-          {t("page.deletePack")}
-        </button>
+      {isUser && (onEdit || onDelete) && (
+        <div className="flex flex-col gap-2">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border-subtle bg-bg-panel py-3 text-sm font-semibold text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+            >
+              <Pencil size={16} />
+              {t("page.editPack")}
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent-danger/30 bg-accent-danger/5 py-3 text-sm font-semibold text-accent-danger transition-colors hover:bg-accent-danger/10"
+            >
+              <Trash2 size={16} />
+              {t("page.deletePack")}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

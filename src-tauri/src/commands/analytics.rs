@@ -219,7 +219,7 @@ pub async fn get_player_analytics_summary(
             "avgAssists": if total_matches > 0 { summary.total_assists as f64 / total_matches as f64 } else { 0.0 },
             "avgSaves": if total_matches > 0 { summary.total_saves as f64 / total_matches as f64 } else { 0.0 },
             "avgShots": if total_matches > 0 { summary.total_shots as f64 / total_matches as f64 } else { 0.0 },
-            "avgBoost": 0.0,
+            "avgBoost": summary.avg_boost,
             "totalGoals": summary.total_goals,
             "totalAssists": summary.total_assists,
             "totalSaves": summary.total_saves,
@@ -560,6 +560,20 @@ pub async fn get_analytics(
             )
         };
 
+        let avg_boost = match local_id {
+            Some(id) => get_period_avg_boost(
+                &pool,
+                id,
+                &start_str,
+                &end_str,
+                playlist.as_deref(),
+                match_type.as_deref(),
+                scope_str,
+            )
+            .unwrap_or(0.0),
+            None => 0.0,
+        };
+
         let avg_goals = if total_matches > 0 {
             total_goals as f64 / total_matches as f64
         } else {
@@ -607,7 +621,7 @@ pub async fn get_analytics(
                 "avgAssists": avg_assists,
                 "avgSaves": avg_saves,
                 "avgShots": avg_shots,
-                "avgBoost": 0.0,
+                "avgBoost": avg_boost,
                 "totalGoals": total_goals,
                 "totalAssists": total_assists,
                 "totalSaves": total_saves,
@@ -1088,6 +1102,20 @@ fn get_session_analytics_inner(
         0.0
     };
 
+    let avg_boost = match settings.local_primary_id.as_deref() {
+        Some(id) if total_matches > 0 => get_period_avg_boost(
+            pool,
+            id,
+            &start_str,
+            &end_str,
+            playlist.as_deref(),
+            match_type.as_deref(),
+            scope_str,
+        )
+        .unwrap_or(0.0),
+        _ => 0.0,
+    };
+
     let streak = if let Some(ref local_id) = settings.local_primary_id {
         metrics::calculate_streaks(
             pool,
@@ -1153,7 +1181,7 @@ fn get_session_analytics_inner(
             "avgAssists": avg_assists,
             "avgSaves": avg_saves,
             "avgShots": avg_shots,
-            "avgBoost": 0.0,
+            "avgBoost": avg_boost,
             "totalGoals": total_goals,
             "totalAssists": total_assists,
             "totalSaves": total_saves,
@@ -1221,6 +1249,70 @@ fn get_team_period_peak_speed(
 
     let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
 
+    conn.query_row(&sql, &*params_refs, |row| row.get(0))
+        .map_err(|e| e.to_string())
+}
+
+/// Average boost at the end of matches across the window.
+///
+/// `scope == "me"` restricts to the local player's rows; anything else keeps
+/// the local player's team, matching how the rest of the summary aggregates.
+fn get_period_avg_boost(
+    pool: &crate::core::storage::DbPool,
+    local_primary_id: &str,
+    start_date: &str,
+    end_date: &str,
+    playlist: Option<&str>,
+    match_type: Option<&str>,
+    scope: &str,
+) -> Result<f64, String> {
+    let conn = get_conn(pool).map_err(|e| e.to_string())?;
+    let individual = scope.eq_ignore_ascii_case("me");
+
+    let mut sql = if individual {
+        String::from(
+            "SELECT COALESCE(AVG(mp.boost), 0.0)
+             FROM match_players mp
+             JOIN players p ON p.id = mp.player_id
+             JOIN matches m ON mp.match_id = m.id
+             WHERE p.primary_id = ?1
+               AND date(m.start_time, 'localtime') >= ?2
+               AND date(m.start_time, 'localtime') <= ?3",
+        )
+    } else {
+        String::from(
+            "SELECT COALESCE(AVG(mp.boost), 0.0)
+             FROM match_players mp
+             JOIN matches m ON mp.match_id = m.id
+             WHERE date(m.start_time, 'localtime') >= ?2
+               AND date(m.start_time, 'localtime') <= ?3
+               AND mp.team_num = (
+                    SELECT mp2.team_num
+                    FROM match_players mp2
+                    JOIN players p2 ON p2.id = mp2.player_id
+                    WHERE mp2.match_id = m.id AND p2.primary_id = ?1
+                    LIMIT 1
+               )",
+        )
+    };
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    args.push(Box::new(local_primary_id.to_string()));
+    args.push(Box::new(start_date.to_string()));
+    args.push(Box::new(end_date.to_string()));
+
+    if let Some(mt) = match_type {
+        sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
+        args.push(Box::new(mt.to_string()));
+    } else {
+        sql.push_str(" AND LOWER(COALESCE(m.match_type, '')) != 'training'");
+    }
+
+    if let Some(pl) = playlist {
+        sql.push_str(" AND LOWER(m.playlist) = LOWER(?)");
+        args.push(Box::new(pl.to_string()));
+    }
+
+    let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
     conn.query_row(&sql, &*params_refs, |row| row.get(0))
         .map_err(|e| e.to_string())
 }

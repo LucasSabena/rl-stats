@@ -9,12 +9,15 @@ interface LiveState {
   connectionStatus: ConnectionStatus;
   lastMatchSummary: SessionSummary | null;
   matchSummaryTimestamp: number | null;
+  /** False until the first `get_live_state`/connection fetch resolves. */
+  hydrated: boolean;
 
   setMatch: (match: LiveMatchState | null) => void;
   addEvent: (event: RlEvent) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setMatchSummary: (summary: SessionSummary) => void;
   clearMatchSummary: () => void;
+  setHydrated: (hydrated: boolean) => void;
   reset: () => void;
 }
 
@@ -26,6 +29,7 @@ export const useLiveStore = create<LiveState>()(
       connectionStatus: "disconnected",
       lastMatchSummary: null,
       matchSummaryTimestamp: null,
+      hydrated: false,
 
       setMatch: (match) =>
         set((state) => {
@@ -56,6 +60,11 @@ export const useLiveStore = create<LiveState>()(
         set((state) => {
           state.lastMatchSummary = null;
           state.matchSummaryTimestamp = null;
+        }),
+
+      setHydrated: (hydrated) =>
+        set((state) => {
+          state.hydrated = hydrated;
         }),
 
       reset: () =>

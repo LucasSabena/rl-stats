@@ -9,6 +9,7 @@ import { CategoryFilter } from "@/components/training-packs/CategoryFilter";
 import { TrainingPackDetail } from "@/components/training-packs/TrainingPackDetail";
 import { AddPackModal } from "@/components/training-packs/AddPackModal";
 import { useTrainingPacksStore } from "@/stores/trainingPacksStore";
+import { useUIStore } from "@/stores/uiStore";
 import type { TrainingPack } from "@/lib/trainingPacksTypes";
 import { cn } from "@/lib/utils";
 import {
@@ -55,14 +56,16 @@ export function TrainingPacksPage() {
   const [activeDifficulty, setActiveDifficulty] = useState<string | null>(null);
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editingPackId, setEditingPackId] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  const { packs, userPacks, featuredPacks, filteredPacks, refetch } =
+  const { packs, userPacks, featuredPacks, filteredPacks, refetch, isLoading, isError } =
     useTrainingPacks();
   const { favorites, toggleFavorite, isFavorite } = useTrainingPacksStore();
   const { addTrainingPack, removeTrainingPack } = useTrainingPackMutations();
+  const addToast = useUIStore((s) => s.addToast);
   const [deletePackId, setDeletePackId] = useState<string | null>(null);
 
   const allPacks = filteredPacks(search, activeCategory, activeDifficulty);
@@ -91,21 +94,52 @@ export function TrainingPacksPage() {
   const hasMore = visiblePacks.length > INITIAL_COUNT;
 
   const selectedPack = packs.find((p) => p.id === selectedPackId) ?? null;
+  const editingPack = packs.find((p) => p.id === editingPackId) ?? null;
+
+  const savePack = useCallback(
+    (
+      pack: Omit<TrainingPack, "id" | "featured" | "sourceUrl">,
+      id?: string
+    ) => {
+      addTrainingPack.mutate(
+        {
+          id: id ?? undefined,
+          name: pack.name,
+          code: pack.code,
+          creator: pack.creator,
+          category: pack.category,
+          difficulty: pack.difficulty,
+          description: pack.description,
+          tags: pack.tags,
+        },
+        {
+          onSuccess: () => {
+            addToast({
+              type: "success",
+              title: id ? t("page.packUpdated") : t("page.packAdded"),
+            });
+          },
+        }
+      );
+      setAddModalOpen(false);
+      setEditingPackId(null);
+    },
+    [addTrainingPack, addToast, t]
+  );
 
   const handleAddSave = useCallback(
     (pack: Omit<TrainingPack, "id" | "featured" | "sourceUrl">) => {
-      addTrainingPack.mutate({
-        name: pack.name,
-        code: pack.code,
-        creator: pack.creator,
-        category: pack.category,
-        difficulty: pack.difficulty,
-        description: pack.description,
-        tags: pack.tags,
-      });
-      setAddModalOpen(false);
+      savePack(pack);
     },
-    [addTrainingPack]
+    [savePack]
+  );
+
+  const handleEditSave = useCallback(
+    (pack: Omit<TrainingPack, "id" | "featured" | "sourceUrl">) => {
+      if (editingPackId) savePack(pack, editingPackId);
+      setSelectedPackId(null);
+    },
+    [editingPackId, savePack]
   );
 
   const handleDeleteConfirm = useCallback(() => {
@@ -237,7 +271,24 @@ export function TrainingPacksPage() {
         </div>
 
         {/* Grid */}
-        {visiblePacks.length === 0 ? (
+        {isError ? (
+          <EmptyState
+            icon={Target}
+            title={t("page.noResults")}
+            description={t("page.noResultsFiltered")}
+            actionLabel={t("page.refresh")}
+            onAction={() => refetch()}
+          />
+        ) : isLoading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-[148px] animate-pulse rounded-xl border border-border-subtle bg-bg-panel"
+              />
+            ))}
+          </div>
+        ) : visiblePacks.length === 0 ? (
           <EmptyState
             icon={Target}
             title={t("page.noResults")}
@@ -441,6 +492,10 @@ export function TrainingPacksPage() {
               onClose={() => setSelectedPackId(null)}
               isUser={userPacks.some((pack) => pack.id === selectedPack.id)}
               onDelete={() => setDeletePackId(selectedPack.id)}
+              onEdit={() => {
+                setEditingPackId(selectedPack.id);
+                setAddModalOpen(true);
+              }}
             />
           </div>
         </div>
@@ -448,8 +503,12 @@ export function TrainingPacksPage() {
 
       <AddPackModal
         open={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onSave={handleAddSave}
+        initialPack={editingPack}
+        onClose={() => {
+          setAddModalOpen(false);
+          setEditingPackId(null);
+        }}
+        onSave={editingPack ? handleEditSave : handleAddSave}
       />
 
       <ConfirmModal

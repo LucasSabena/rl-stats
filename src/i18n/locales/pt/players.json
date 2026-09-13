@@ -23,7 +23,8 @@
     "opponentShort": "rival",
     "firstSeen": "Primeira vez:",
     "together": "juntos",
-    "versus": "vs"
+    "versus": "vs",
+    "loadMore": "Carregar mais"
   },
   "detail": {
     "title": "Detalhes do Jogador",

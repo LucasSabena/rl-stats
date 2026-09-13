@@ -49,6 +49,7 @@ export function useLiveMatch() {
   const setMatchSummary = useLiveStore((state) => state.setMatchSummary);
   const addEvent = useLiveStore((state) => state.addEvent);
   const reset = useLiveStore((state) => state.reset);
+  const setHydrated = useLiveStore((state) => state.setHydrated);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +74,8 @@ export function useLiveMatch() {
           reset();
           setConnectionStatus("disconnected");
         }
+      } finally {
+        if (!cancelled) setHydrated(true);
       }
 
       // Listen for real-time Tauri events from the Rust backend
@@ -154,5 +157,5 @@ export function useLiveMatch() {
       if (unlisten2) unlisten2();
       if (unlisten3) unlisten3();
     };
-  }, [addEvent, queryClient, reset, setConnectionStatus, setMatch, setMatchSummary]);
+  }, [addEvent, queryClient, reset, setConnectionStatus, setHydrated, setMatch, setMatchSummary]);
 }

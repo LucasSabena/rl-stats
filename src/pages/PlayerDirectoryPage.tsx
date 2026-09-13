@@ -27,11 +27,21 @@ export function PlayerDirectoryPage() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const { data: players, isLoading, isError, refetch } = usePlayerDirectory({
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = usePlayerDirectory({
     search: debouncedSearch || undefined,
     relationship: relationship || undefined,
     sortBy,
   });
+
+  const players = useMemo(() => data?.pages.flat() ?? [], [data]);
 
   const { data: friends } = useFriends();
   const addFriend = useAddFriend();
@@ -206,6 +216,18 @@ export function PlayerDirectoryPage() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {!isError && hasNextPage && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            variant="secondary"
+            onClick={() => void fetchNextPage()}
+            isLoading={isFetchingNextPage}
+          >
+            {t("players:directory.loadMore", { defaultValue: "Cargar más" })}
+          </Button>
         </div>
       )}
     </PageContainer>

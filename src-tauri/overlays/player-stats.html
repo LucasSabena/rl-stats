@@ -145,6 +145,13 @@
     letter-spacing: 0.05em;
   }
 
+  /* Optional speed column via ?speed=1 */
+  body.show-speed .col-labels,
+  body.show-speed .player-row {
+    grid-template-columns: 1fr 38px 28px 28px 28px 28px 46px;
+  }
+  .stat-val.speed { color: rgba(255, 255, 255, 0.78); font-size: 11px; }
+
   .no-players {
     font-size: 12px;
     color: var(--text-muted);
@@ -185,6 +192,7 @@
       <span class="stat-label">A</span>
       <span class="stat-label">S</span>
       <span class="stat-label">Sh</span>
+      <span class="stat-label speed-label" style="display:none">Spd</span>
     </div>
     <div id="bluePlayers"></div>
   </div>
@@ -203,6 +211,7 @@
       <span class="stat-label">A</span>
       <span class="stat-label">S</span>
       <span class="stat-label">Sh</span>
+      <span class="stat-label speed-label" style="display:none">Spd</span>
     </div>
     <div id="orangePlayers"></div>
   </div>
@@ -214,6 +223,14 @@
 <script>
 (function() {
   var overlay = RLOverlay.connect();
+
+  var SHOW_SPEED = new URLSearchParams(window.location.search).get('speed') === '1';
+  if (SHOW_SPEED) {
+    document.body.classList.add('show-speed');
+    Array.prototype.forEach.call(document.querySelectorAll('.speed-label'), function(el) {
+      el.style.display = '';
+    });
+  }
 
   function $(id) { return document.getElementById(id); }
 
@@ -259,6 +276,9 @@
     row.appendChild(statCell(p.assists, 'highlight'));
     row.appendChild(statCell(p.saves, 'highlight'));
     row.appendChild(statCell(p.shots, 'highlight'));
+    if (SHOW_SPEED) {
+      row.appendChild(statCell(Math.round(p.speed || 0), 'speed'));
+    }
     return row;
   }
 

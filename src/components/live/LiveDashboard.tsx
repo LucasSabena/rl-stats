@@ -7,6 +7,7 @@ import { EventFeed } from "./EventFeed";
 import { ScoreDisplay } from "./ScoreDisplay";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { getMatches } from "@/lib/api";
 import { useLiveMmr } from "@/hooks/useLiveMmr";
@@ -171,6 +172,7 @@ export function LiveDashboard() {
   const navigate = useNavigate();
   const currentMatch = useLiveStore((state) => state.currentMatch);
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
+  const hydrated = useLiveStore((state) => state.hydrated);
   const {
     data: liveMmr,
     isFetching: isFetchingMmr,
@@ -187,6 +189,16 @@ export function LiveDashboard() {
   const mmrByPlayerId = Object.fromEntries(
     (liveMmr?.players ?? []).map((player) => [player.primaryId, player])
   );
+
+  if (!hydrated) {
+    return (
+      <div className="space-y-4" aria-busy="true">
+        <Skeleton className="h-[124px] w-full rounded-xl" />
+        <Skeleton className="h-[300px] w-full rounded-xl" />
+        <Skeleton className="h-[140px] w-full rounded-xl" />
+      </div>
+    );
+  }
 
   if (!currentMatch) {
     return (

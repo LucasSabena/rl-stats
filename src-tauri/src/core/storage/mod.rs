@@ -2180,12 +2180,10 @@ pub fn clear_all_data(pool: &DbPool) -> AppResult<()> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
-    sync::enqueue_delete_conn(
-        &tx,
-        "profile_data",
-        "*",
-        serde_json::json!({ "scope": "all_local_profile_data" }),
-    )?;
+    // Cloud deletion is handled by the frontend (`wipeCurrentProfileFromCloud`,
+    // which calls the `sync_wipe_profile` RPC) right after this command.
+    // Enqueueing a `profile_data` entity here was pointless: the sync outbox is
+    // cleared below, and neither the puller nor the server understands it.
     // Everything the user created, plus every sync bookkeeping row: keeping
     // queued upserts after a wipe would re-upload the deleted data, and
     // keeping tombstones would delete it again on the next device.
@@ -3170,18 +3168,28 @@ pub struct FriendRecord {
 
 pub fn add_friend(pool: &DbPool, player_id: i64, tag: Option<&str>) -> AppResult<()> {
     let conn = get_conn(pool)?;
+    add_friend_conn(&conn, player_id, tag)
+}
+
+/// Connection-scoped friend insert. Used by the pool wrapper above and by the
+/// transactional JSON import.
+pub(crate) fn add_friend_conn(
+    conn: &rusqlite::Connection,
+    player_id: i64,
+    tag: Option<&str>,
+) -> AppResult<()> {
     conn.execute(
         "INSERT INTO friends (player_id, tag, created_at) VALUES (?1, ?2, datetime('now')) ON CONFLICT(player_id) DO UPDATE SET tag = excluded.tag",
         params![player_id, tag],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
     sync::enqueue_upsert_conn(
-        &conn,
+        conn,
         "friend",
         &player_id.to_string(),
         serde_json::json!({
             "player_id": player_id,
-            "player_primary_id": player_primary_id_for_id_conn(&conn, player_id)?,
+            "player_primary_id": player_primary_id_for_id_conn(conn, player_id)?,
         }),
     )?;
     Ok(())
@@ -3618,6 +3626,7 @@ pub struct IndividualAnalyticsSummary {
     pub total_demos: i32,
     pub avg_score: f64,
     pub avg_duration: f64,
+    pub avg_boost: f64,
     pub peak_speed: f64,
     pub total_kickoff_goals: i32,
     pub total_kickoff_conceded: i32,
@@ -3637,7 +3646,7 @@ pub fn get_analytics_summary_for_identity(
 
     let mut sql = String::from(
         "SELECT m.winner, mp.team_num, m.score_blue, m.score_orange, m.duration_seconds,
-                mp.goals, mp.shots, mp.saves, mp.assists, mp.demos, mp.score, mp.speed,
+                mp.goals, mp.shots, mp.saves, mp.assists, mp.demos, mp.score, mp.speed, mp.boost,
                 mp.kickoff_goals,
                 (SELECT COALESCE(SUM(mp2.kickoff_goals), 0)
                  FROM match_players mp2
@@ -3683,6 +3692,7 @@ pub fn get_analytics_summary_for_identity(
             row.get::<_, f64>(11)?,
             row.get::<_, i32>(12)?,
             row.get::<_, i32>(13)?,
+            row.get::<_, i32>(14)?,
         ))
     })?;
 
@@ -3702,6 +3712,7 @@ pub fn get_analytics_summary_for_identity(
             demos,
             score,
             speed,
+            boost,
             kickoff_goals,
             opponent_kickoff_goals,
         ) = row.map_err(|e| AppError::StorageError(e.to_string()))?;
@@ -3727,6 +3738,7 @@ pub fn get_analytics_summary_for_identity(
         summary.total_kickoff_conceded += opponent_kickoff_goals;
         summary.avg_score += score as f64;
         summary.avg_duration += duration as f64;
+        summary.avg_boost += boost as f64;
         if speed > summary.peak_speed {
             summary.peak_speed = speed;
         }
@@ -3735,6 +3747,7 @@ pub fn get_analytics_summary_for_identity(
     if summary.total_matches > 0 {
         summary.avg_score /= summary.total_matches as f64;
         summary.avg_duration /= summary.total_matches as f64;
+        summary.avg_boost /= summary.total_matches as f64;
     }
 
     Ok(summary)

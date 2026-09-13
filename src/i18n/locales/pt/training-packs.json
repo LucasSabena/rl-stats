@@ -34,7 +34,9 @@
     "name": "Nome do pack",
     "refresh": "Atualizar",
     "showMore": "Mostrar mais ({{remaining}} mais)",
-    "tagsLabel": "Tags"
+    "tagsLabel": "Tags",
+    "editPack": "Editar pack",
+    "packUpdated": "Pack atualizado"
   },
   "categories": {
     "all": "Todas",

@@ -34,7 +34,9 @@
     "noFeatured": "No featured packs",
     "refresh": "Refresh",
     "showMore": "Show more ({{remaining}} more)",
-    "tagsLabel": "Tags"
+    "tagsLabel": "Tags",
+    "editPack": "Edit pack",
+    "packUpdated": "Pack updated"
   },
   "categories": {
     "all": "All",

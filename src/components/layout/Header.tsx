@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus } from "lucide-react";
+import { Plus, Moon, Sun } from "lucide-react";
 import { useLiveStore } from "@/stores/liveStore";
+import { useUIStore } from "@/stores/uiStore";
 import { useActiveProfile, useProfiles, useProfileMutations } from "@/hooks/useProfiles";
 import { restartApp } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,8 @@ function resolveTitleKey(pathname: string): string {
 export function Header() {
   const { t } = useTranslation("common");
   const location = useLocation();
+  const theme = useUIStore((state) => state.theme);
+  const toggleTheme = useUIStore((state) => state.toggleTheme);
 
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
   // Derive the boolean in the selector: currentMatch is a new object at 20 Hz
@@ -127,6 +130,23 @@ export function Header() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5" data-tour="profiles">
+          <Button
+            variant="icon"
+            size="sm"
+            onClick={toggleTheme}
+            aria-label={
+              theme === "dark"
+                ? t("theme.switchToLight")
+                : t("theme.switchToDark")
+            }
+            title={theme === "dark" ? t("theme.light") : t("theme.dark")}
+          >
+            {theme === "dark" ? (
+              <Sun size={15} aria-hidden="true" />
+            ) : (
+              <Moon size={15} aria-hidden="true" />
+            )}
+          </Button>
           <Select
             options={profileOptions}
             value={activeProfile?.id ?? ""}

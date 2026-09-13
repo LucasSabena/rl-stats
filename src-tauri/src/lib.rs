@@ -1783,6 +1783,7 @@ async fn create_overlay_window_inner(
             "showPlayerScore": settings.overlay_show_player_score,
             "showBoost": settings.overlay_show_boost,
             "showMmr": settings.overlay_show_mmr,
+            "showSpeed": settings.overlay_show_speed,
         }),
     );
     let _ = win.emit("overlay-opacity-changed", settings.overlay_opacity);

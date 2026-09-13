@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAnalytics, useSessionMatches, useInsights, usePlayerAnalyticsMatches, usePlayerAnalyticsSummary } from "@/hooks/useAnalytics";
 import { useFriends } from "@/hooks/useFriends";
@@ -26,15 +27,62 @@ import { buildDayShareContext, buildWeekShareContext, buildSessionShareContext, 
 import type { AnalyticsPeriod, MatchSession, PlaylistFilter, MatchTypeFilter, DataScope, ShareContext } from "@/lib/types";
 import { BarChart3, X, Share2 } from "lucide-react";
 
-export function AnalyticsPage() {  const { t, i18n } = useTranslation(["analytics", "common"]);
-  const [period, setPeriod] = useState<AnalyticsPeriod>("week");
-  const [playlist, setPlaylist] = useState<PlaylistFilter>("all");
-  const [matchType, setMatchType] = useState<MatchTypeFilter>("all");
-  const [scope, setScope] = useState<DataScope>("me");
-  const [playerId, setPlayerId] = useState<string | null>(null);
+const PERIODS: AnalyticsPeriod[] = ["day", "week", "month", "year", "alltime", "session"];
+const PLAYLISTS: PlaylistFilter[] = [
+  "all",
+  "duel",
+  "doubles",
+  "standard",
+  "chaos",
+  "rumble",
+  "dropshot",
+  "hoops",
+  "snowday",
+  "other",
+];
+const MATCH_TYPES: MatchTypeFilter[] = [
+  "all",
+  "ranked",
+  "casual",
+  "tournament",
+  "training",
+  "other",
+];
+
+function paramOr<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+export function AnalyticsPage() {
+  const { t, i18n } = useTranslation(["analytics", "common"]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [period, setPeriod] = useState<AnalyticsPeriod>(() =>
+    paramOr(searchParams.get("period"), PERIODS, "week")
+  );
+  const [playlist, setPlaylist] = useState<PlaylistFilter>(() =>
+    paramOr(searchParams.get("playlist"), PLAYLISTS, "all")
+  );
+  const [matchType, setMatchType] = useState<MatchTypeFilter>(() =>
+    paramOr(searchParams.get("type"), MATCH_TYPES, "all")
+  );
+  const [scope, setScope] = useState<DataScope>(() =>
+    paramOr(searchParams.get("scope"), ["me", "team"] as const, "me")
+  );
+  const [playerId, setPlayerId] = useState<string | null>(() => searchParams.get("player"));
   const [selectedSession, setSelectedSession] = useState<MatchSession | null>(null);
   const [sessionShareOpen, setSessionShareOpen] = useState(false);
   const [sessionShareContext, setSessionShareContext] = useState<ShareContext | null>(null);
+
+  // Keep the URL shareable/deep-linkable without adding history entries.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (period !== "week") params.set("period", period);
+    if (playlist !== "all") params.set("playlist", playlist);
+    if (matchType !== "all") params.set("type", matchType);
+    if (scope !== "me") params.set("scope", scope);
+    if (playerId) params.set("player", playerId);
+    setSearchParams(params, { replace: true });
+  }, [period, playlist, matchType, scope, playerId, setSearchParams]);
 
   const filters = useMemo(
     () => ({ playlist, matchType, scope, playerId }),

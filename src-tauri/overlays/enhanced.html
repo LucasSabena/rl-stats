@@ -320,6 +320,15 @@ html, body {
 }
 .roster-compact.blue-side .roster-boost-bar { background: var(--blue-primary); }
 .roster-compact.orange-side .roster-boost-bar { background: var(--orange-primary); }
+.roster-speed {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  color: rgba(255,255,255,0.72);
+  min-width: 52px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
 
 /* ── Goal Celebration ── */
 .goal-overlay {
@@ -512,6 +521,9 @@ html, body {
   // Modules hidden via ?hide=scorebug,rosters,ball,series
   var hiddenModules = {};
 
+  // Optional per-player speed readout (uu/s) via ?speed=1
+  var showSpeed = false;
+
   var MODULE_ELEMENTS = {
     scorebug: ['scorebug'],
     rosters: ['blueRoster', 'orangeRoster'],
@@ -534,6 +546,7 @@ html, body {
     if (params.get('blueLogo')) config.blueLogoUrl = params.get('blueLogo');
     if (params.get('orangeLogo')) config.orangeLogoUrl = params.get('orangeLogo');
     if (params.get('series')) config.seriesLength = parseInt(params.get('series')) || 0;
+    if (params.get('speed') === '1') showSpeed = true;
     if (params.get('hide')) {
       params.get('hide').split(',').forEach(function(name) {
         hiddenModules[name.trim()] = true;
@@ -709,6 +722,13 @@ html, body {
       card.appendChild(name);
       card.appendChild(boostValue);
       card.appendChild(barWrap);
+      if (showSpeed) {
+        var speed = (p.speed != null && p.speed > 0) ? Math.round(p.speed) : null;
+        var speedValue = document.createElement('div');
+        speedValue.className = 'roster-speed';
+        speedValue.textContent = (speed !== null ? speed : '--') + ' uu/s';
+        card.appendChild(speedValue);
+      }
       container.appendChild(card);
     }
   }
