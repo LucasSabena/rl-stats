@@ -1539,3 +1539,23 @@ pub async fn get_training_analytics(
     .await
     .map_err(|e| format!("task join error: {e}"))?
 }
+
+/// Career totals, personal records and best sessions for the Records page.
+#[tauri::command]
+pub async fn get_career_records(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let pool = state.db_pool.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = get_settings(&pool).unwrap_or_default();
+        let identity = settings.local_primary_id.clone().unwrap_or_default();
+        if identity.trim().is_empty() {
+            return Ok(serde_json::json!({ "available": false }));
+        }
+        storage::get_career_records(&pool, &identity, settings.session_gap_minutes)
+            .map(|records| {
+                serde_json::to_value(records).unwrap_or(serde_json::json!({ "available": false }))
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("task join error: {e}"))?
+}

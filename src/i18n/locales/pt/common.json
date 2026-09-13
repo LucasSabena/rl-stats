@@ -14,7 +14,9 @@
       "play": "Em jogo",
       "data": "Seus dados",
       "improve": "Melhorar"
-    }
+    },
+    "sessions": "Sessões",
+    "records": "Recordes"
   },
   "pageTitles": {
     "live": "Painel ao Vivo",
@@ -26,7 +28,9 @@
     "fallback": "RL Stats",
     "players": "Jogadores",
     "profile": "Minha carreira",
-    "matchDetail": "Detalhe da partida"
+    "matchDetail": "Detalhe da partida",
+    "sessions": "Sessões",
+    "records": "Recordes"
   },
   "connection": {
     "online": "Online",
@@ -86,7 +90,9 @@
     "overlayHidden": "Overlay oculto",
     "overlayHint": "Ative com Ctrl+Shift+O ou em Ajustes → Overlay",
     "exported": "Histórico exportado",
-    "commandFailed": "Não foi possível executar a ação"
+    "commandFailed": "Não foi possível executar a ação",
+    "sessions": "Sessões",
+    "records": "Recordes"
   },
   "status": {
     "live": "Ao vivo",

@@ -1,0 +1,61 @@
+{
+  "greeting": {
+    "morning": "Bom dia",
+    "afternoon": "Boa tarde",
+    "evening": "Boa noite",
+    "night": "Boa noite"
+  },
+  "subtitle": "Seu resumo de {{date}}",
+  "today": {
+    "title": "Hoje",
+    "matches": "Partidas",
+    "winRate": "Win rate",
+    "goals": "Gols",
+    "playtime": "Tempo jogado",
+    "empty": "Ainda não jogou hoje"
+  },
+  "streak": {
+    "current": "Sequência atual",
+    "best": "Melhor sequência",
+    "label": "Sequência"
+  },
+  "weeklyGoal": {
+    "title": "Meta semanal",
+    "matches": "Partidas",
+    "wins": "Vitórias",
+    "edit": "Editar",
+    "done": "Meta concluída!"
+  },
+  "mmr": {
+    "title": "MMR",
+    "current": "Atual",
+    "deltaUp": "Subiu {{delta}}",
+    "deltaDown": "Caiu {{delta}}",
+    "flat": "Sem mudanças",
+    "none": "Sem dados de MMR"
+  },
+  "recent": {
+    "title": "Últimas partidas",
+    "viewAll": "Ver histórico"
+  },
+  "recommendation": {
+    "title": "Sugestão",
+    "bestHour": "Sua melhor janela é por volta das {{hour}}:00 ({{rate}}% WR).",
+    "fatigue": "Seus resultados caem após {{games}} partidas: considere parar antes.",
+    "improve": "Seu win rate subiu {{delta}} pontos esta semana. Continue assim!"
+  },
+  "quick": {
+    "title": "Acesso rápido",
+    "live": "Ver ao vivo",
+    "history": "Histórico",
+    "analytics": "Análise",
+    "training": "Treinos",
+    "records": "Recordes"
+  },
+  "noData": {
+    "title": "Pronto para decolar",
+    "description": "Jogue sua primeira partida e você verá seu resumo, sequência e sugestões aqui.",
+    "cta": "Configurar Stats API"
+  },
+  "welcome": "Olá, {{name}}"
+}

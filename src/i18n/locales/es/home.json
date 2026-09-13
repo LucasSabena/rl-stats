@@ -1,0 +1,61 @@
+{
+  "greeting": {
+    "morning": "Buen día",
+    "afternoon": "Buenas tardes",
+    "evening": "Buenas noches",
+    "night": "Buenas noches"
+  },
+  "subtitle": "Tu resumen de {{date}}",
+  "today": {
+    "title": "Hoy",
+    "matches": "Partidas",
+    "winRate": "Win rate",
+    "goals": "Goles",
+    "playtime": "Tiempo jugado",
+    "empty": "Todavía no jugaste hoy"
+  },
+  "streak": {
+    "current": "Racha actual",
+    "best": "Mejor racha",
+    "label": "Racha"
+  },
+  "weeklyGoal": {
+    "title": "Objetivo semanal",
+    "matches": "Partidas",
+    "wins": "Victorias",
+    "edit": "Editar",
+    "done": "¡Objetivo cumplido!"
+  },
+  "mmr": {
+    "title": "MMR",
+    "current": "Actual",
+    "deltaUp": "Subiste {{delta}}",
+    "deltaDown": "Bajaste {{delta}}",
+    "flat": "Sin cambios",
+    "none": "Sin datos de MMR"
+  },
+  "recent": {
+    "title": "Últimas partidas",
+    "viewAll": "Ver historial"
+  },
+  "recommendation": {
+    "title": "Sugerencia",
+    "bestHour": "Tu mejor franja horaria es alrededor de las {{hour}}:00 ({{rate}}% WR).",
+    "fatigue": "Tus resultados caen después de {{games}} partidas: considerá cortar antes.",
+    "improve": "Tu win rate subió {{delta}} puntos esta semana. ¡Seguí así!"
+  },
+  "quick": {
+    "title": "Accesos rápidos",
+    "live": "Ver en vivo",
+    "history": "Historial",
+    "analytics": "Análisis",
+    "training": "Entrenamientos",
+    "records": "Récords"
+  },
+  "noData": {
+    "title": "Listo para despegar",
+    "description": "Jugá tu primera partida y acá vas a ver tu resumen, racha y sugerencias.",
+    "cta": "Configurar Stats API"
+  },
+  "welcome": "Hola, {{name}}"
+}

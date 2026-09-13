@@ -169,6 +169,7 @@ pub fn run() {
             commands::analytics::get_teammate_stats,
             commands::analytics::get_custom_breakdown,
             commands::analytics::get_training_analytics,
+            commands::analytics::get_career_records,
             commands::analytics::recompute_kickoff_goals,
             commands::prompt_window::show_prompt,
             commands::prompt_window::hide_prompt,

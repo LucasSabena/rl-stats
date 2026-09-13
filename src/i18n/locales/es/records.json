@@ -1,0 +1,106 @@
+{
+  "title": "Récords",
+  "subtitle": "Tu salón de la fama personal",
+  "career": {
+    "title": "Carrera",
+    "matches": "Partidas",
+    "winRate": "Win rate",
+    "goals": "Goles",
+    "assists": "Asistencias",
+    "saves": "Paradas",
+    "demos": "Demos",
+    "playtime": "Tiempo jugado",
+    "hatTricks": "Hat-tricks",
+    "overtime": "Victorias en OT",
+    "avgScore": "Puntuación media",
+    "avgBoost": "Boost promedio"
+  },
+  "records": {
+    "title": "Récords personales",
+    "score": "Mejor puntuación",
+    "goals": "Más goles",
+    "assists": "Más asistencias",
+    "saves": "Más paradas",
+    "demos": "Más demos",
+    "speed": "Velocidad máxima",
+    "viewMatch": "Ver partida"
+  },
+  "highlights": {
+    "title": "Momentos destacados",
+    "bestDay": "Mejor día",
+    "bestSession": "Mejor sesión",
+    "longestSession": "Sesión más larga",
+    "wins": "{{wins}} victorias",
+    "matches": "{{count}} partidas",
+    "duration": "{{minutes}} min"
+  },
+  "achievements": {
+    "title": "Logros",
+    "unlocked": "Desbloqueado",
+    "locked": "Bloqueado",
+    "progress": "{{current}} / {{target}}",
+    "items": {
+      "first_match": {
+        "title": "Primera partida",
+        "description": "Capturá tu primera partida."
+      },
+      "matches_100": {
+        "title": "Centenario",
+        "description": "Jugá 100 partidas."
+      },
+      "matches_1000": {
+        "title": "Veterano",
+        "description": "Jugá 1.000 partidas."
+      },
+      "goals_100": {
+        "title": "Goleador",
+        "description": "Marcá 100 goles."
+      },
+      "goals_1000": {
+        "title": "Máquina de goles",
+        "description": "Marcá 1.000 goles."
+      },
+      "assists_500": {
+        "title": "Cerebro",
+        "description": "Repartí 500 asistencias."
+      },
+      "saves_500": {
+        "title": "Muro",
+        "description": "Sumá 500 paradas."
+      },
+      "demos_500": {
+        "title": "Demoledor",
+        "description": "Hacé 500 demoliciones."
+      },
+      "hat_tricks_25": {
+        "title": "Coleccionista de hat-tricks",
+        "description": "Lográ 25 hat-tricks."
+      },
+      "streak_10": {
+        "title": "Imparable",
+        "description": "Ganá 10 partidas seguidas."
+      },
+      "ot_wins_50": {
+        "title": "Especialista en prórroga",
+        "description": "Ganá 50 partidas en tiempo extra."
+      },
+      "speed_2100": {
+        "title": "Supersóniko",
+        "description": "Alcanzá 2.100 uu/s."
+      },
+      "playtime_100h": {
+        "title": "Cien horas",
+        "description": "Acumulá 100 horas de juego registradas."
+      }
+    }
+  },
+  "summary": {
+    "since": "Jugando desde {{date}}",
+    "lastMatch": "Última partida {{date}}",
+    "noIdentity": "Este perfil todavía no tiene una identidad local configurada."
+  },
+  "empty": {
+    "title": "Todavía no hay récords",
+    "description": "Jugá algunas partidas para llenar tu salón de la fama."
+  }
+}

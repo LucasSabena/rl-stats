@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   BarChart3,
+  CalendarClock,
   Dumbbell,
   FileDown,
   Gamepad2,
@@ -24,6 +25,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  Trophy,
   User,
   Users,
   X,
@@ -210,6 +212,22 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         path: "/analytics",
         icon: BarChart3,
         keywords: "analytics estadisticas stats rendimiento analisis",
+      },
+      {
+        kind: "nav",
+        id: "nav-sessions",
+        label: t("common:commandPalette.sessions", { defaultValue: "Sesiones" }),
+        path: "/sessions",
+        icon: CalendarClock,
+        keywords: "sessions sesiones bloques fatiga",
+      },
+      {
+        kind: "nav",
+        id: "nav-records",
+        label: t("common:commandPalette.records", { defaultValue: "Récords" }),
+        path: "/records",
+        icon: Trophy,
+        keywords: "records récords logros achievements hall of fame",
       },
       {
         kind: "nav",

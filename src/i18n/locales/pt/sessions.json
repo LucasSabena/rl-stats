@@ -1,0 +1,40 @@
+{
+  "title": "Sessões",
+  "subtitle": "Seus blocos de jogo, com fadiga e melhor momento",
+  "count": "{{count}} sessões",
+  "sortLabel": "Ordenar",
+  "sort": {
+    "recent": "Recentes",
+    "best": "Melhores",
+    "longest": "Mais longas"
+  },
+  "list": {
+    "matches": "Partidas",
+    "winRate": "Win rate",
+    "duration": "Duração",
+    "goals": "Gols",
+    "open": "Ver detalhes"
+  },
+  "detail": {
+    "title": "Sessão de {{date}}",
+    "back": "Voltar às sessões",
+    "summary": "Resumo",
+    "matches": "Partidas da sessão",
+    "record": "Recorde",
+    "worse": "Pior",
+    "duration": "Duração",
+    "bestHour": "Melhor momento",
+    "empty": "Sessão não encontrada"
+  },
+  "empty": {
+    "title": "Nenhuma sessão ainda",
+    "description": "Jogue várias partidas seguidas e você verá cada sessão com seu desempenho aqui."
+  },
+  "best": {
+    "title": "Melhor sessão"
+  },
+  "summary": {
+    "wins": "Vitórias",
+    "losses": "Derrotas"
+  }
+}

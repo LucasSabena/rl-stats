@@ -222,6 +222,63 @@ export interface MatchSession {
   kickoff_goals_conceded?: number;
 }
 
+// ─── Career records ─────────────────────────────────────────────────────────
+
+export interface CareerRecord {
+  id: string;
+  value: number;
+  matchId: number | null;
+  matchGuid: string | null;
+  startTime: string | null;
+}
+
+export interface CareerSessionHighlight {
+  id: number;
+  startTime: string;
+  durationSeconds: number;
+  matchCount: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  goalsScored: number;
+  goalsConceded: number;
+}
+
+export interface CareerBestDay {
+  date: string;
+  wins: number;
+  matches: number;
+  winRate: number;
+}
+
+export interface CareerRecords {
+  /** Present and false when the profile has no local identity yet. */
+  available?: boolean;
+  totalMatches: number;
+  wins: number;
+  losses: number;
+  totalGoals: number;
+  totalAssists: number;
+  totalSaves: number;
+  totalShots: number;
+  totalDemos: number;
+  playtimeSeconds: number;
+  avgScore: number;
+  avgBoost: number;
+  peakSpeed: number;
+  hatTricks: number;
+  overtimeWins: number;
+  overtimeMatches: number;
+  firstMatch: string | null;
+  lastMatch: string | null;
+  bestStreak: number;
+  currentStreak: number;
+  records: CareerRecord[];
+  bestDay: CareerBestDay | null;
+  bestSession: CareerSessionHighlight | null;
+  longestSession: CareerSessionHighlight | null;
+}
+
 export interface SessionMatchPlayer {
   team_num: number;
   score: number;

@@ -20,6 +20,8 @@ const TITLE_KEYS: Record<string, string> = {
   "/": "pageTitles.live",
   "/history": "pageTitles.history",
   "/analytics": "pageTitles.analytics",
+  "/sessions": "pageTitles.sessions",
+  "/records": "pageTitles.records",
   "/players": "pageTitles.players",
   "/pro-configs": "pageTitles.proConfigs",
   "/training-packs": "pageTitles.trainingPacks",
@@ -30,6 +32,7 @@ const TITLE_KEYS: Record<string, string> = {
 function resolveTitleKey(pathname: string): string {
   if (TITLE_KEYS[pathname]) return TITLE_KEYS[pathname];
   if (pathname.startsWith("/history/")) return "pageTitles.matchDetail";
+  if (pathname.startsWith("/sessions/")) return "pageTitles.sessions";
   if (pathname.startsWith("/players/")) return "pageTitles.players";
   return "pageTitles.fallback";
 }

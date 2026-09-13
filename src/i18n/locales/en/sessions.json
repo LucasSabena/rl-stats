@@ -1,0 +1,40 @@
+{
+  "title": "Sessions",
+  "subtitle": "Your play blocks with fatigue and best moment",
+  "count": "{{count}} sessions",
+  "sortLabel": "Sort",
+  "sort": {
+    "recent": "Recent",
+    "best": "Best",
+    "longest": "Longest"
+  },
+  "list": {
+    "matches": "Matches",
+    "winRate": "Win rate",
+    "duration": "Duration",
+    "goals": "Goals",
+    "open": "View details"
+  },
+  "detail": {
+    "title": "Session on {{date}}",
+    "back": "Back to sessions",
+    "summary": "Summary",
+    "matches": "Session matches",
+    "record": "Best",
+    "worse": "Worst",
+    "duration": "Duration",
+    "bestHour": "Best moment",
+    "empty": "Session not found"
+  },
+  "empty": {
+    "title": "No sessions yet",
+    "description": "Play a few matches in a row and you will see every session with its performance here."
+  },
+  "best": {
+    "title": "Best session"
+  },
+  "summary": {
+    "wins": "Wins",
+    "losses": "Losses"
+  }
+}

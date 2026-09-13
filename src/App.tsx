@@ -80,6 +80,21 @@ const TrainingPacksPage = lazy(() =>
     default: module.TrainingPacksPage,
   })),
 );
+const SessionsPage = lazy(() =>
+  import("@/pages/SessionsPage").then((module) => ({
+    default: module.SessionsPage,
+  })),
+);
+const SessionDetailPage = lazy(() =>
+  import("@/pages/SessionDetailPage").then((module) => ({
+    default: module.SessionDetailPage,
+  })),
+);
+const RecordsPage = lazy(() =>
+  import("@/pages/RecordsPage").then((module) => ({
+    default: module.RecordsPage,
+  })),
+);
 const OnboardingOverlay = lazy(
   () => import("@/components/onboarding/OnboardingOverlay"),
 );
@@ -262,6 +277,9 @@ function AppContent() {
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/history/:matchId" element={<MatchDetailPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/sessions" element={<SessionsPage />} />
+              <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+              <Route path="/records" element={<RecordsPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/pro-configs" element={<ProConfigsPage />} />
               <Route path="/training-packs" element={<TrainingPacksPage />} />

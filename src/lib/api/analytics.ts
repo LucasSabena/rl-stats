@@ -2,6 +2,7 @@ import {
   type AnalyticsData,
   type AnalyticsPeriod,
   type BreakdownData,
+  type CareerRecords,
   type DailyRollup,
   type DataScope,
   type InsightsData,
@@ -361,4 +362,9 @@ export async function getTrainingAnalytics(
   return invokeCommand<TrainingStats>("get_training_analytics", {
     period: { days },
   });
+}
+
+// Career records / hall of fame
+export async function getCareerRecords(): Promise<CareerRecords> {
+  return invokeCommand<CareerRecords>("get_career_records", {});
 }

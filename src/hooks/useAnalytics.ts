@@ -9,6 +9,8 @@ import {
   getSessionCurve,
   getTeammateStats,
   getCustomBreakdown,
+  getCareerRecords,
+  getSessions,
   recomputeKickoffGoals,
   type PatternFilters,
 } from "@/lib/api";
@@ -165,6 +167,31 @@ export function usePlayerAnalyticsSummary(
         matchType: filters?.matchType,
       }),
     enabled: !!playerId,
+    staleTime: QUERY_STALE_TIME.analytics,
+  });
+}
+
+export function useCareerRecords() {
+  return useQuery({
+    queryKey: ["career-records"],
+    queryFn: () => getCareerRecords(),
+    staleTime: QUERY_STALE_TIME.analytics,
+  });
+}
+
+export function useSessionList(filters?: {
+  playlist?: PlaylistFilter;
+  matchType?: MatchTypeFilter;
+  scope?: DataScope;
+}) {
+  return useQuery({
+    queryKey: ["session-list", filters ?? {}],
+    queryFn: () =>
+      getSessions(undefined, {
+        playlist: filters?.playlist,
+        matchType: filters?.matchType,
+        scope: filters?.scope ?? "me",
+      }),
     staleTime: QUERY_STALE_TIME.analytics,
   });
 }

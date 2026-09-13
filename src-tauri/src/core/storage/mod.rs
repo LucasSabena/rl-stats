@@ -4764,6 +4764,274 @@ pub fn delete_user_preset(pool: &DbPool, id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// One career record: a label, the value, and the match it happened in.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CareerRecord {
+    pub id: String,
+    pub value: f64,
+    pub match_id: Option<i64>,
+    pub match_guid: Option<String>,
+    pub start_time: Option<String>,
+}
+
+/// Aggregated career numbers plus per-match records for the Records page.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CareerRecords {
+    pub total_matches: i32,
+    pub wins: i32,
+    pub losses: i32,
+    pub total_goals: i32,
+    pub total_assists: i32,
+    pub total_saves: i32,
+    pub total_shots: i32,
+    pub total_demos: i32,
+    pub playtime_seconds: i64,
+    pub avg_score: f64,
+    pub avg_boost: f64,
+    pub peak_speed: f64,
+    pub hat_tricks: i32,
+    pub overtime_wins: i32,
+    pub overtime_matches: i32,
+    pub first_match: Option<String>,
+    pub last_match: Option<String>,
+    pub best_streak: i32,
+    pub current_streak: i32,
+    pub records: Vec<CareerRecord>,
+    pub best_day: Option<serde_json::Value>,
+    pub best_session: Option<serde_json::Value>,
+    pub longest_session: Option<serde_json::Value>,
+}
+
+/// Career records for the local player, computed in one pass over their rows.
+pub fn get_career_records(
+    pool: &DbPool,
+    local_primary_id: &str,
+    session_gap_minutes: u32,
+) -> AppResult<CareerRecords> {
+    let conn = get_conn(pool)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.guid, m.start_time, m.duration_seconds, m.is_overtime, m.winner,
+                m.score_blue, m.score_orange, mp.team_num, mp.score, mp.goals, mp.assists,
+                mp.saves, mp.shots, mp.demos, mp.speed, mp.boost
+         FROM matches m
+         JOIN match_players mp ON m.id = mp.match_id
+         JOIN players p ON mp.player_id = p.id
+         WHERE p.primary_id = ?1
+           AND LOWER(COALESCE(m.match_type, '')) != 'training'
+         ORDER BY m.start_time ASC",
+    )?;
+
+    struct Row {
+        id: i64,
+        guid: Option<String>,
+        start_time: String,
+        duration: i32,
+        is_overtime: bool,
+        winner: Option<i32>,
+        team_num: i32,
+        score: i32,
+        goals: i32,
+        assists: i32,
+        saves: i32,
+        shots: i32,
+        demos: i32,
+        speed: f64,
+        boost: i32,
+    }
+
+    let rows = stmt
+        .query_map(params![local_primary_id], |row| {
+            Ok(Row {
+                id: row.get(0)?,
+                guid: row.get(1)?,
+                start_time: row.get(2)?,
+                duration: row.get(3)?,
+                is_overtime: row.get(4)?,
+                winner: row.get(5)?,
+                team_num: row.get(8)?,
+                score: row.get(9)?,
+                goals: row.get(10)?,
+                assists: row.get(11)?,
+                saves: row.get(12)?,
+                shots: row.get(13)?,
+                demos: row.get(14)?,
+                speed: row.get(15)?,
+                boost: row.get(16)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+
+    let mut records = CareerRecords {
+        total_matches: 0,
+        wins: 0,
+        losses: 0,
+        total_goals: 0,
+        total_assists: 0,
+        total_saves: 0,
+        total_shots: 0,
+        total_demos: 0,
+        playtime_seconds: 0,
+        avg_score: 0.0,
+        avg_boost: 0.0,
+        peak_speed: 0.0,
+        hat_tricks: 0,
+        overtime_wins: 0,
+        overtime_matches: 0,
+        first_match: None,
+        last_match: None,
+        best_streak: 0,
+        current_streak: 0,
+        records: Vec::new(),
+        best_day: None,
+        best_session: None,
+        longest_session: None,
+    };
+
+    // Per-record trackers: (value, match index)
+    let mut best: [Option<(f64, usize)>; 6] = [None, None, None, None, None, None];
+    let record_ids = ["score", "goals", "assists", "saves", "demos", "speed"];
+
+    for (index, row) in rows.iter().enumerate() {
+        records.total_matches += 1;
+        if row.winner == Some(row.team_num) {
+            records.wins += 1;
+        } else if row.winner.is_some() {
+            records.losses += 1;
+        }
+        records.total_goals += row.goals;
+        records.total_assists += row.assists;
+        records.total_saves += row.saves;
+        records.total_shots += row.shots;
+        records.total_demos += row.demos;
+        records.playtime_seconds += row.duration.max(0) as i64;
+        records.avg_score += row.score as f64;
+        records.avg_boost += row.boost as f64;
+        if row.goals >= 3 {
+            records.hat_tricks += 1;
+        }
+        if row.is_overtime {
+            records.overtime_matches += 1;
+            if row.winner == Some(row.team_num) {
+                records.overtime_wins += 1;
+            }
+        }
+        if row.speed > records.peak_speed {
+            records.peak_speed = row.speed;
+        }
+        if records.first_match.is_none() {
+            records.first_match = Some(row.start_time.clone());
+        }
+        records.last_match = Some(row.start_time.clone());
+
+        let values = [
+            row.score as f64,
+            row.goals as f64,
+            row.assists as f64,
+            row.saves as f64,
+            row.demos as f64,
+            row.speed,
+        ];
+        for (slot, value) in values.into_iter().enumerate() {
+            if best[slot].is_none_or(|(current, _)| value > current) {
+                best[slot] = Some((value, index));
+            }
+        }
+    }
+
+    if records.total_matches > 0 {
+        records.avg_score /= records.total_matches as f64;
+        records.avg_boost /= records.total_matches as f64;
+    }
+
+    for (slot, value) in best.iter().enumerate() {
+        if let Some((value, index)) = value {
+            let row = &rows[*index];
+            records.records.push(CareerRecord {
+                id: record_ids[slot].to_string(),
+                value: *value,
+                match_id: Some(row.id),
+                match_guid: row.guid.clone(),
+                start_time: Some(row.start_time.clone()),
+            });
+        }
+    }
+
+    // Streaks (all-time).
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    if let Ok(streak) = crate::core::metrics::calculate_streaks(
+        pool,
+        local_primary_id,
+        "1970-01-01",
+        &today,
+        None,
+        None,
+    ) {
+        records.best_streak = streak.best_streak as i32;
+        records.current_streak = streak.current_streak as i32;
+    }
+
+    // Best day by wins (minimum 3 matches).
+    if let Ok(rollups) = get_daily_rollups(pool, "1970-01-01", &today) {
+        if let Some(day) = rollups
+            .iter()
+            .filter(|r| r.matches_played >= 3)
+            .max_by_key(|r| r.wins)
+        {
+            records.best_day = Some(serde_json::json!({
+                "date": day.date,
+                "wins": day.wins,
+                "matches": day.matches_played,
+                "winRate": if day.matches_played > 0 {
+                    ((day.wins as f64 / day.matches_played as f64) * 100.0).round() as i32
+                } else { 0 },
+            }));
+        }
+    }
+
+    // Best / longest session (minimum 3 matches for "best").
+    if let Ok(sessions) = get_match_sessions(pool, session_gap_minutes, None, None, Some("me")) {
+        let session_json = |session: &MatchSession| {
+            serde_json::json!({
+                "id": session.id,
+                "startTime": session.start_time,
+                "durationSeconds": session.duration_seconds,
+                "matchCount": session.match_count,
+                "wins": session.wins,
+                "losses": session.losses,
+                "winRate": if session.match_count > 0 {
+                    ((session.wins as f64 / session.match_count as f64) * 100.0).round() as i32
+                } else { 0 },
+                "goalsScored": session.goals_scored,
+                "goalsConceded": session.goals_conceded,
+            })
+        };
+        if let Some(best) = sessions
+            .iter()
+            .filter(|s| s.match_count >= 3)
+            .max_by(|a, b| {
+                let rate_a = a.wins as f64 / a.match_count as f64;
+                let rate_b = b.wins as f64 / b.match_count as f64;
+                rate_a
+                    .partial_cmp(&rate_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    // Tie-break on volume so a 3-0 session doesn't beat 12-4.
+                    .then(a.match_count.cmp(&b.match_count))
+            })
+        {
+            records.best_session = Some(session_json(best));
+        }
+        if let Some(longest) = sessions.iter().max_by_key(|s| s.duration_seconds) {
+            records.longest_session = Some(session_json(longest));
+        }
+    }
+
+    Ok(records)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

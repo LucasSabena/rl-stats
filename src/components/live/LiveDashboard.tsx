@@ -6,7 +6,7 @@ import { PlayerCard } from "./PlayerCard";
 import { EventFeed } from "./EventFeed";
 import { ScoreDisplay } from "./ScoreDisplay";
 import { ConnectionStatus } from "./ConnectionStatus";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { HomeHub } from "@/components/home/HomeHub";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import { getMatches } from "@/lib/api";
@@ -14,7 +14,7 @@ import { useLiveMmr } from "@/hooks/useLiveMmr";
 import { useSettings } from "@/hooks/useSettings";
 import { useLiveHeadToHead } from "@/hooks/useLiveHeadToHead";
 import { cn, formatElapsedClock } from "@/lib/utils";
-import { Gauge, Radio, RefreshCw, X, Dumbbell } from "lucide-react";
+import { Gauge, RefreshCw, X, Dumbbell } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 function TrainingLiveCard({ elapsedSeconds }: { elapsedSeconds: number }) {
@@ -169,7 +169,6 @@ function MatchEndBanner() {
 
 export function LiveDashboard() {
   const { t } = useTranslation(["live", "common"]);
-  const navigate = useNavigate();
   const currentMatch = useLiveStore((state) => state.currentMatch);
   const connectionStatus = useLiveStore((state) => state.connectionStatus);
   const hydrated = useLiveStore((state) => state.hydrated);
@@ -181,7 +180,6 @@ export function LiveDashboard() {
   } = useLiveMmr();
   const { data: liveHeadToHead } = useLiveHeadToHead();
   const { data: settings } = useSettings();
-  const statsApiPort = settings?.port ?? 49123;
 
   const bluePlayers = currentMatch?.players.filter((player) => player.team === 0) ?? [];
   const orangePlayers = currentMatch?.players.filter((player) => player.team === 1) ?? [];
@@ -207,15 +205,7 @@ export function LiveDashboard() {
           <ConnectionStatus status={connectionStatus} />
         </div>
         <MatchEndBanner />
-        <div className="flex h-full items-center justify-center">
-          <EmptyState
-            icon={Radio}
-            title={t("live:emptyState.title")}
-            description={`${t("live:emptyState.description")} ${t("live:emptyState.hint", { port: statsApiPort })}`}
-            actionLabel={t("live:emptyState.openSettings")}
-            onAction={() => navigate("/settings?tab=game")}
-          />
-        </div>
+        <HomeHub />
       </div>
     );
   }

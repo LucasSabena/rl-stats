@@ -29,6 +29,9 @@ export const NAMESPACES = [
   "trainingPacks",
   "mood",
   "prompt",
+  "home",
+  "sessions",
+  "records",
 ] as const;
 
 type Bundle = Partial<Record<(typeof NAMESPACES)[number], Record<string, unknown>>>;
@@ -52,6 +55,9 @@ const LOCALE_LOADERS: Record<Lang, () => Promise<Bundle>> = {
     trainingPacks: (await import("./locales/es/training-packs.json")).default,
     mood: (await import("./locales/es/mood.json")).default,
     prompt: (await import("./locales/es/prompt.json")).default,
+    home: (await import("./locales/es/home.json")).default,
+    sessions: (await import("./locales/es/sessions.json")).default,
+    records: (await import("./locales/es/records.json")).default,
   }),
   en: async () => ({
     common: (await import("./locales/en/common.json")).default,
@@ -71,6 +77,9 @@ const LOCALE_LOADERS: Record<Lang, () => Promise<Bundle>> = {
     trainingPacks: (await import("./locales/en/training-packs.json")).default,
     mood: (await import("./locales/en/mood.json")).default,
     prompt: (await import("./locales/en/prompt.json")).default,
+    home: (await import("./locales/en/home.json")).default,
+    sessions: (await import("./locales/en/sessions.json")).default,
+    records: (await import("./locales/en/records.json")).default,
   }),
   pt: async () => ({
     common: (await import("./locales/pt/common.json")).default,
@@ -90,6 +99,9 @@ const LOCALE_LOADERS: Record<Lang, () => Promise<Bundle>> = {
     trainingPacks: (await import("./locales/pt/training-packs.json")).default,
     mood: (await import("./locales/pt/mood.json")).default,
     prompt: (await import("./locales/pt/prompt.json")).default,
+    home: (await import("./locales/pt/home.json")).default,
+    sessions: (await import("./locales/pt/sessions.json")).default,
+    records: (await import("./locales/pt/records.json")).default,
   }),
 };
 

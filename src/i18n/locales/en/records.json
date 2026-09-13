@@ -1,0 +1,106 @@
+{
+  "title": "Records",
+  "subtitle": "Your personal hall of fame",
+  "career": {
+    "title": "Career",
+    "matches": "Matches",
+    "winRate": "Win rate",
+    "goals": "Goals",
+    "assists": "Assists",
+    "saves": "Saves",
+    "demos": "Demos",
+    "playtime": "Time played",
+    "hatTricks": "Hat-tricks",
+    "overtime": "OT wins",
+    "avgScore": "Avg score",
+    "avgBoost": "Avg boost"
+  },
+  "records": {
+    "title": "Personal records",
+    "score": "Best score",
+    "goals": "Most goals",
+    "assists": "Most assists",
+    "saves": "Most saves",
+    "demos": "Most demos",
+    "speed": "Peak speed",
+    "viewMatch": "View match"
+  },
+  "highlights": {
+    "title": "Highlights",
+    "bestDay": "Best day",
+    "bestSession": "Best session",
+    "longestSession": "Longest session",
+    "wins": "{{wins}} wins",
+    "matches": "{{count}} matches",
+    "duration": "{{minutes}} min"
+  },
+  "achievements": {
+    "title": "Achievements",
+    "unlocked": "Unlocked",
+    "locked": "Locked",
+    "progress": "{{current}} / {{target}}",
+    "items": {
+      "first_match": {
+        "title": "First match",
+        "description": "Capture your first match."
+      },
+      "matches_100": {
+        "title": "Centurion",
+        "description": "Play 100 matches."
+      },
+      "matches_1000": {
+        "title": "Veteran",
+        "description": "Play 1,000 matches."
+      },
+      "goals_100": {
+        "title": "Scorer",
+        "description": "Score 100 goals."
+      },
+      "goals_1000": {
+        "title": "Goal machine",
+        "description": "Score 1,000 goals."
+      },
+      "assists_500": {
+        "title": "Playmaker",
+        "description": "Give 500 assists."
+      },
+      "saves_500": {
+        "title": "The wall",
+        "description": "Make 500 saves."
+      },
+      "demos_500": {
+        "title": "Demolition man",
+        "description": "Land 500 demos."
+      },
+      "hat_tricks_25": {
+        "title": "Hat-trick collector",
+        "description": "Score 25 hat-tricks."
+      },
+      "streak_10": {
+        "title": "Unstoppable",
+        "description": "Win 10 games in a row."
+      },
+      "ot_wins_50": {
+        "title": "Overtime specialist",
+        "description": "Win 50 overtime matches."
+      },
+      "speed_2100": {
+        "title": "Supersonic",
+        "description": "Reach 2,100 uu/s."
+      },
+      "playtime_100h": {
+        "title": "Hundred hours",
+        "description": "Accumulate 100 recorded hours."
+      }
+    }
+  },
+  "summary": {
+    "since": "Playing since {{date}}",
+    "lastMatch": "Last match {{date}}",
+    "noIdentity": "This profile has no local identity configured yet."
+  },
+  "empty": {
+    "title": "No records yet",
+    "description": "Play some matches to fill your hall of fame."
+  }
+}

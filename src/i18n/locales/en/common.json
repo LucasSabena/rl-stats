@@ -14,7 +14,9 @@
       "play": "In game",
       "data": "Your data",
       "improve": "Improve"
-    }
+    },
+    "sessions": "Sessions",
+    "records": "Records"
   },
   "pageTitles": {
     "live": "Live Dashboard",
@@ -26,7 +28,9 @@
     "fallback": "RL Stats",
     "players": "Players",
     "profile": "My career",
-    "matchDetail": "Match detail"
+    "matchDetail": "Match detail",
+    "sessions": "Sessions",
+    "records": "Records"
   },
   "connection": {
     "online": "Online",
@@ -86,7 +90,9 @@
     "overlayHidden": "Overlay hidden",
     "overlayHint": "Toggle it with Ctrl+Shift+O or in Settings → Overlay",
     "exported": "History exported",
-    "commandFailed": "The action could not be executed"
+    "commandFailed": "The action could not be executed",
+    "sessions": "Sessions",
+    "records": "Records"
   },
   "status": {
     "live": "Live",

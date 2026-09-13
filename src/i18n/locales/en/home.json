@@ -1,0 +1,61 @@
+{
+  "greeting": {
+    "morning": "Good morning",
+    "afternoon": "Good afternoon",
+    "evening": "Good evening",
+    "night": "Good night"
+  },
+  "subtitle": "Your summary for {{date}}",
+  "today": {
+    "title": "Today",
+    "matches": "Matches",
+    "winRate": "Win rate",
+    "goals": "Goals",
+    "playtime": "Time played",
+    "empty": "Nothing played today yet"
+  },
+  "streak": {
+    "current": "Current streak",
+    "best": "Best streak",
+    "label": "Streak"
+  },
+  "weeklyGoal": {
+    "title": "Weekly goal",
+    "matches": "Matches",
+    "wins": "Wins",
+    "edit": "Edit",
+    "done": "Goal completed!"
+  },
+  "mmr": {
+    "title": "MMR",
+    "current": "Current",
+    "deltaUp": "Up {{delta}}",
+    "deltaDown": "Down {{delta}}",
+    "flat": "No change",
+    "none": "No MMR data"
+  },
+  "recent": {
+    "title": "Recent matches",
+    "viewAll": "View history"
+  },
+  "recommendation": {
+    "title": "Insight",
+    "bestHour": "Your best window is around {{hour}}:00 ({{rate}}% WR).",
+    "fatigue": "Results drop after {{games}} games: consider stopping earlier.",
+    "improve": "Your win rate rose {{delta}} points this week. Keep it up!"
+  },
+  "quick": {
+    "title": "Quick actions",
+    "live": "View live",
+    "history": "History",
+    "analytics": "Analytics",
+    "training": "Training",
+    "records": "Records"
+  },
+  "noData": {
+    "title": "Ready for takeoff",
+    "description": "Play your first match and you will see your summary, streak and insights here.",
+    "cta": "Set up Stats API"
+  },
+  "welcome": "Hi, {{name}}"
+}

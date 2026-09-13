@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   BarChart3,
+  CalendarClock,
   Dumbbell,
   Gamepad2,
   List,
@@ -9,6 +10,7 @@ import {
   PanelLeftOpen,
   Radio,
   Settings,
+  Trophy,
   User,
   Users,
 } from "lucide-react";
@@ -38,7 +40,9 @@ const NAV_GROUPS: { labelKey: string | null; items: NavItem[] }[] = [
     items: [
       { path: "/history", labelKey: "sidebar.history", icon: List },
       { path: "/analytics", labelKey: "sidebar.analytics", icon: BarChart3 },
+      { path: "/sessions", labelKey: "sidebar.sessions", icon: CalendarClock },
       { path: "/players", labelKey: "sidebar.players", icon: Users },
+      { path: "/records", labelKey: "sidebar.records", icon: Trophy },
     ],
   },
   {

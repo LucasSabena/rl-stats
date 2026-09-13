@@ -14,7 +14,9 @@
       "play": "En partida",
       "data": "Tus datos",
       "improve": "Mejorar"
-    }
+    },
+    "sessions": "Sesiones",
+    "records": "Récords"
   },
   "pageTitles": {
     "live": "Live Dashboard",
@@ -26,7 +28,9 @@
     "fallback": "RL Stats",
     "players": "Jugadores",
     "profile": "Mi carrera",
-    "matchDetail": "Detalle de partida"
+    "matchDetail": "Detalle de partida",
+    "sessions": "Sesiones",
+    "records": "Récords"
   },
   "connection": {
     "online": "Online",
@@ -86,7 +90,9 @@
     "overlayHidden": "Overlay oculto",
     "overlayHint": "Activalo con Ctrl+Shift+O o desde Ajustes → Overlay",
     "exported": "Historial exportado",
-    "commandFailed": "No se pudo ejecutar la acción"
+    "commandFailed": "No se pudo ejecutar la acción",
+    "sessions": "Sesiones",
+    "records": "Récords"
   },
   "status": {
     "live": "En directo",
