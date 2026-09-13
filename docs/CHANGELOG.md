@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-09-13
+
+### Added
+- Session overlay widget (`session`) with today's played/W-L/win-rate/streak,
+  refreshed on every persisted match and via `/api/v2/session`.
+- The in-game overlay window adopts the design packs (automatic or fixed)
+  with live accent/surface/radius/typography updates.
+
 ## [3.6.0] - 2026-09-13
 
 ### Added

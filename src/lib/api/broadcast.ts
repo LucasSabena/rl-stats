@@ -5,6 +5,7 @@ import {
   type BroadcastTeam,
   type BroadcastToken,
   type ChatStatus,
+  type OverlayPackTokens,
   type PacksResponse,
   type RecordingStatus,
   type RecordingSummary,
@@ -397,6 +398,12 @@ export async function getTournamentSnapshot(
   return invokeCommand<TournamentSnapshot>("get_tournament_snapshot", {
     tournamentId: tournamentId ?? null,
   });
+}
+
+// ─── In-game overlay pack ───────────────────────────────────────────────────
+
+export async function getOverlayPackTokens(): Promise<OverlayPackTokens> {
+  return invokeCommand<OverlayPackTokens>("get_overlay_pack_tokens");
 }
 
 // ─── Discord notifications ──────────────────────────────────────────────────

@@ -57,6 +57,7 @@
     paused: false,
     visible: {},
     tournament: null,
+    session: null,
     alertQueue: [],
     activeAlerts: 0,
     sponsors: [],
@@ -522,6 +523,34 @@
       node.appendChild(wrap);
     },
 
+    session: function (node) {
+      var session = App.session;
+      var wrap = el('div', 'ov-upnext');
+      wrap.appendChild(el('div', 'ov-upnext-title', 'SESIÓN DE HOY'));
+      var match = el('div', 'ov-upnext-match');
+      if (!session || !session.available) {
+        match.appendChild(el('span', '', 'Sin partidas'));
+        wrap.appendChild(match);
+        clear(node);
+        node.appendChild(wrap);
+        return;
+      }
+      var summary = session.summary || {};
+      match.appendChild(el('span', '', (summary.wins || 0) + 'V – ' + (summary.losses || 0) + 'D'));
+      wrap.appendChild(match);
+      var played = summary.totalMatches || 0;
+      var rate = played > 0 ? Math.round(((summary.wins || 0) / played) * 100) : 0;
+      wrap.appendChild(
+        el(
+          'div',
+          'ov-player-stat',
+          played + ' PARTIDAS · ' + rate + '% · RACHA ' + (session.streak ? session.streak.current : 0)
+        )
+      );
+      clear(node);
+      node.appendChild(wrap);
+    },
+
     bracket: function (node) {
       var tournament = App.tournament;
       var wrap = el('div', 'ov-upnext');
@@ -772,6 +801,7 @@
     'replaybadge',
     'upnext',
     'focus',
+    'session',
     'bracket',
     'mvp',
     'info'
@@ -952,6 +982,9 @@
         App.tournament = data;
         requestRender();
         break;
+      case 'session_changed':
+        fetchSession();
+        break;
       case 'goal':
         pushEvent({ who: data.scorerName || '', what: 'GOL', team: data.teamNum });
         showGoal(data);
@@ -1039,6 +1072,22 @@
 
   // ------------------------------------------------------------------- boot
 
+  function fetchSession() {
+    var query = new URLSearchParams();
+    if (TOKEN) query.set('token', TOKEN);
+    fetch('/api/v2/session?' + query.toString())
+      .then(function (response) {
+        return response.json();
+      })
+      .then(function (payload) {
+        App.session = payload;
+        requestRender();
+      })
+      .catch(function () {
+        /* the overlay keeps the last known values */
+      });
+  }
+
   function fetchConfig() {
     var query = new URLSearchParams();
     if (TOKEN) query.set('token', TOKEN);
@@ -1073,7 +1122,10 @@
     requestRender();
   }, SPONSOR_INTERVAL);
 
-  fetchConfig().then(connect);
+  fetchConfig().then(function () {
+    fetchSession();
+    connect();
+  });
 
   window.RLOverlayEngine = {
     app: App,

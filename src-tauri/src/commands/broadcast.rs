@@ -484,6 +484,29 @@ pub async fn configure_chat(
     }))
 }
 
+/// Pack used by the in-game overlay window: the user-selected pack when set,
+/// otherwise the active broadcast scene's pack.
+#[tauri::command]
+pub async fn get_overlay_pack_tokens(state: State<'_, AppState>) -> Result<Value, String> {
+    let settings = get_settings(&state.db_pool).map_err(storage_error)?;
+    let mut pack_id = settings.overlay_pack_id.trim().to_string();
+    if pack_id.is_empty() {
+        pack_id = store::get_scene_for_state(&state.db_pool, &settings.broadcast_active_state)
+            .ok()
+            .flatten()
+            .map(|scene| scene.pack_id)
+            .unwrap_or_else(|| "prime-broadcast".to_string());
+    }
+    let (name, tokens) =
+        crate::core::broadcast::packs::resolve_pack_tokens(Some(&state.db_pool), &pack_id);
+    Ok(json!({
+        "id": pack_id,
+        "name": name,
+        "tokens": tokens,
+        "fonts": font_options(),
+    }))
+}
+
 #[tauri::command]
 pub async fn set_discord_webhook(state: State<'_, AppState>, url: String) -> Result<(), String> {
     let mut settings = get_settings(&state.db_pool).map_err(storage_error)?;

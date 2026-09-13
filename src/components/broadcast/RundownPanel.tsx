@@ -21,6 +21,7 @@ const MODULE_LABELS: Record<string, string> = {
   upnext: "Próximo",
   focus: "En cámara",
   bracket: "Llave",
+  session: "Sesión",
   mvp: "MVP",
   info: "Info",
 };

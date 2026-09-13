@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { getSettings } from "@/lib/api";
+import { getOverlayPackTokens, getSettings } from "@/lib/api";
+import type { OverlayPackTokens } from "@/lib/types";
 import { useLiveMatch } from "@/hooks/useLiveMatch";
 import { useLiveMmr } from "@/hooks/useLiveMmr";
 import { useLiveStore } from "@/stores/liveStore";
@@ -57,6 +58,7 @@ export function OverlayView() {
 
   const [display, setDisplay] = useState<OverlayDisplaySettings>(DEFAULT_DISPLAY);
   const [interactive, setInteractive] = useState(false);
+  const [pack, setPack] = useState<OverlayPackTokens | null>(null);
 
   useEffect(() => {
     // Cargar configuracion inicial (por si el evento de creacion llego antes de montar)
@@ -98,10 +100,60 @@ export function OverlayView() {
       setInteractive(!e.payload);
     }).then((fn) => unlisteners.push(fn));
 
+    // Design pack for the in-game overlay: fetched on mount and refreshed
+    // when the settings change or the broadcast state switches.
+    const loadPack = () => {
+      getOverlayPackTokens()
+        .then(setPack)
+        .catch(() => setPack(null));
+    };
+    loadPack();
+    listen("overlay-settings-updated", () => loadPack()).then((fn) =>
+      unlisteners.push(fn),
+    );
+    listen("broadcast-scene-changed", () => loadPack()).then((fn) =>
+      unlisteners.push(fn),
+    );
+
     return () => {
       unlisteners.forEach((fn) => fn());
     };
   }, []);
+
+  const packStyle = useMemo<React.CSSProperties>(() => {
+    if (!pack) return {};
+    const tokens = pack.tokens as Record<string, unknown>;
+    const asString = (key: string) =>
+      typeof tokens[key] === "string" ? (tokens[key] as string) : undefined;
+    const asNumber = (key: string) =>
+      typeof tokens[key] === "number" ? (tokens[key] as number) : undefined;
+    const resolveFont = (id?: string) => {
+      if (!id) return undefined;
+      const font = pack.fonts.find((candidate) => candidate.id === id);
+      return font ? font.stack : id;
+    };
+    const radius = asNumber("radius");
+    const style: Record<string, string | number | undefined> = {
+      "--accent": asString("accent"),
+      "--accent-hover": asString("accentAlt"),
+      "--surface": asString("surface") ?? asString("surfaceSolid"),
+      "--canvas": asString("surface") ?? asString("surfaceSolid"),
+      "--fg": asString("text"),
+      "--fg-secondary": asString("muted"),
+      "--fg-muted": asString("muted"),
+      "--line": asString("border"),
+      "--font-sans": resolveFont(asString("fontBody")),
+      "--font-body": resolveFont(asString("fontBody")),
+      "--font-display": resolveFont(asString("fontDisplay")),
+      "--font-mono": resolveFont(asString("fontNumeric")),
+    };
+    if (radius !== undefined) {
+      style["--radius-lg"] = `${radius}px`;
+      style["--radius-xl"] = `${radius + 4}px`;
+      style["--radius-2xl"] = `${radius + 8}px`;
+    }
+    return style as React.CSSProperties;
+  }, [pack]);
 
   const fs = FONT_SCALE[display.fontScale];
 
@@ -112,7 +164,7 @@ export function OverlayView() {
         fs.root,
         interactive && "pointer-events-auto bg-accent-primary/5 rounded-xl border border-accent-primary/20"
       )}
-      style={{ opacity: display.opacity }}
+      style={{ ...packStyle, opacity: display.opacity }}
     >
       {interactive && (
         <>

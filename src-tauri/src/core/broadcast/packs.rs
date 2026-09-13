@@ -246,6 +246,40 @@ pub fn builtin_packs() -> Vec<Value> {
     ]
 }
 
+/// Resolves the tokens for a pack id: custom packs first, then built-ins.
+/// Returns `(name, tokens)`; unknown ids fall back to the first built-in.
+pub fn resolve_pack_tokens(
+    pool: Option<&crate::core::storage::DbPool>,
+    pack_id: &str,
+) -> (String, Value) {
+    if let Some(pool) = pool {
+        if let Ok(Some(pack)) = crate::core::broadcast::store::get_user_pack(pool, pack_id) {
+            return (pack.name, pack.tokens);
+        }
+    }
+    builtin_packs()
+        .into_iter()
+        .find(|pack| pack["id"].as_str() == Some(pack_id))
+        .map(|pack| {
+            (
+                pack["name"].as_str().unwrap_or(pack_id).to_string(),
+                pack["tokens"].clone(),
+            )
+        })
+        .or_else(|| {
+            builtin_packs().into_iter().next().map(|pack| {
+                (
+                    pack["name"]
+                        .as_str()
+                        .unwrap_or("Prime Broadcast")
+                        .to_string(),
+                    pack["tokens"].clone(),
+                )
+            })
+        })
+        .unwrap_or_else(|| ("Prime Broadcast".to_string(), json!({})))
+}
+
 /// Default scene layout used when a scene has no stored layout. Modules are
 /// percentages of the overlay stage so they scale to any browser-source size.
 pub fn default_layout_for_state(state: &str) -> Value {
@@ -275,6 +309,7 @@ pub fn default_layout_for_state(state: &str) -> Value {
         ],
         "post" => vec![
             ("series", json!({ "x": 30, "y": 10, "w": 40, "h": 14 })),
+            ("session", json!({ "x": 2, "y": 10, "w": 24, "h": 16 })),
             ("mvp", json!({ "x": 30, "y": 26, "w": 40, "h": 22 })),
             ("bracket", json!({ "x": 30, "y": 50, "w": 40, "h": 26 })),
             ("socials", json!({ "x": 32, "y": 79, "w": 36, "h": 8 })),

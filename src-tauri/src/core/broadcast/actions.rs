@@ -21,13 +21,14 @@ pub fn spawn_action_listener(
     hub: BroadcastHub,
     pool: Arc<DbPool>,
     commands: Arc<Mutex<Option<CommandSender>>>,
+    app_handle: tauri::AppHandle,
 ) {
     let mut rx = hub.subscribe_actions();
     tauri::async_runtime::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(action) => {
-                    handle_action(&hub, &pool, &commands, action).await;
+                    handle_action(&hub, &pool, &commands, &app_handle, action).await;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     warn!(skipped, "Action listener lagging");
@@ -43,6 +44,7 @@ async fn handle_action(
     hub: &BroadcastHub,
     pool: &Arc<DbPool>,
     commands: &Arc<Mutex<Option<CommandSender>>>,
+    app_handle: &tauri::AppHandle,
     action: ActionRequest,
 ) {
     match action.action.as_str() {
@@ -61,7 +63,11 @@ async fn handle_action(
                 }
             }
             let payload = scene_for_state(pool, state, action.str_field("pack")).await;
-            hub.publish_typed("scene", Some(payload));
+            hub.publish_typed("scene", Some(payload.clone()));
+            {
+                use tauri::Emitter;
+                let _ = app_handle.emit("broadcast-scene-changed", payload);
+            }
             info!(state, "Broadcast state changed");
         }
         "take_graphic" | "out_graphic" => {

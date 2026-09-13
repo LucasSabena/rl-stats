@@ -57,6 +57,9 @@ pub struct AppSettings {
     pub overlay_show_stats: bool,
     pub overlay_show_timer: bool,
     pub overlay_font_scale: String,
+    /// Design pack used by the in-game overlay window ("" = classic look or
+    /// the active broadcast scene's pack).
+    pub overlay_pack_id: String,
     pub overlay_clickthrough: bool,
     pub overlay_player_scope: String,
     pub overlay_show_names: bool,
@@ -154,6 +157,7 @@ impl Default for AppSettings {
             overlay_show_stats: true,
             overlay_show_timer: true,
             overlay_font_scale: "medium".to_string(),
+            overlay_pack_id: String::new(),
             overlay_clickthrough: true,
             overlay_player_scope: "all".to_string(),
             overlay_show_names: true,
@@ -282,6 +286,7 @@ impl AppSettings {
             ("overlay_show_stats", self.overlay_show_stats.to_string()),
             ("overlay_show_timer", self.overlay_show_timer.to_string()),
             ("overlay_font_scale", self.overlay_font_scale.clone()),
+            ("overlay_pack_id", self.overlay_pack_id.clone()),
             (
                 "overlay_clickthrough",
                 self.overlay_clickthrough.to_string(),
@@ -519,6 +524,7 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             "overlay_show_stats" => settings.overlay_show_stats = value.parse().unwrap_or(true),
             "overlay_show_timer" => settings.overlay_show_timer = value.parse().unwrap_or(true),
             "overlay_font_scale" => settings.overlay_font_scale = value,
+            "overlay_pack_id" => settings.overlay_pack_id = value,
             "overlay_clickthrough" => settings.overlay_clickthrough = value.parse().unwrap_or(true),
             "overlay_player_scope" => settings.overlay_player_scope = value,
             "overlay_show_names" => settings.overlay_show_names = value.parse().unwrap_or(true),

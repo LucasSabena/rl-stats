@@ -271,6 +271,7 @@ pub fn run() {
             commands::broadcast::delete_series_cmd,
             commands::broadcast::configure_chat,
             commands::broadcast::get_chat_status,
+            commands::broadcast::get_overlay_pack_tokens,
             commands::broadcast::set_discord_webhook,
             commands::broadcast::test_discord_webhook,
             commands::tournament::list_tournaments,
@@ -748,6 +749,7 @@ pub fn run() {
                 broadcast_hub.clone(),
                 db_pool.clone(),
                 game_commands,
+                app.handle().clone(),
             );
 
             // Chat readers start automatically when the user left them on.
@@ -1231,6 +1233,13 @@ async fn persist_finished_session(
                 };
                 tally.last_was_win = Some(is_win);
                 obs_text::update_obs_files_win(is_win, tally.wins, tally.losses, tally.streak);
+            }
+
+            // Overlays keep the session widget fresh after every persisted
+            // match (the engine refetches `/api/v2/session`).
+            {
+                let hub = app_handle.state::<AppState>().broadcast_hub.clone();
+                hub.publish_typed("session_changed", None);
             }
 
             let _ = app_handle.emit("match-summary", &summary);

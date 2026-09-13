@@ -48,8 +48,8 @@ Lux, League Ops and Caster Board. Every pack defines colors, typography,
 corner style, shadow, texture and motion.
 
 Modules: `scorebug`, `series`, `roster`, `events`, `chat`, `brand`,
-`countdown`, `timer`, `socials`, `sponsors`, `replaybadge`, `upnext`, `mvp`,
-`info`.
+`countdown`, `timer`, `socials`, `sponsors`, `replaybadge`, `upnext`, `focus`,
+`session`, `bracket`, `mvp`, `info`.
 
 In the **Scene** tab you can pick a pack, add/remove modules, drag them over
 the live preview, fine-tune X/Y/W/H and save. Layouts persist in the
@@ -112,6 +112,13 @@ The **Tournament** tab runs events end to end:
 
 The `bracket` widget renders rounds, team tags, scores and winners on the
 overlay (included in the default waiting and post scenes).
+
+### In-game overlay
+
+The transparent window over the game uses the same design packs: pick
+**Automatic** (follows the active broadcast scene) or a fixed pack in
+**Settings → Overlay → Appearance**. Accent, surfaces, radius and typography
+are applied live, and the window refreshes when the broadcast state switches.
 
 ## 4. Chat (read-only)
 

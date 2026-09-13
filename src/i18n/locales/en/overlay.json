@@ -78,7 +78,9 @@
       "settingsSavedMessage": "The overlay has been updated.",
       "saveError": "Error saving"
     },
-    "fullscreenHint": "If Rocket League runs in exclusive fullscreen, Windows cannot draw the overlay on top. Switch the game display mode to Borderless."
+    "fullscreenHint": "If Rocket League runs in exclusive fullscreen, Windows cannot draw the overlay on top. Switch the game display mode to Borderless.",
+    "pack": "Design pack",
+    "packAuto": "Automatic (follows state)"
   },
   "streaming": {
     "title": "OBS Streaming",

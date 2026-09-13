@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
+import { listBroadcastPacks } from "@/lib/api";
+import type { BroadcastPack } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TFunction } from "i18next";
 import type { UseFormSetValue } from "react-hook-form";
@@ -11,6 +14,14 @@ interface OverlayAppearancePanelProps {
 }
 
 export function OverlayAppearancePanel({ watched, setValue, t }: OverlayAppearancePanelProps) {
+  const [packs, setPacks] = useState<BroadcastPack[]>([]);
+
+  useEffect(() => {
+    void listBroadcastPacks()
+      .then((response) => setPacks(response.packs))
+      .catch(() => setPacks([]));
+  }, []);
+
   return (
     <div className="rounded-xl border border-border-subtle bg-bg-panel/50 p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2 border-b border-border-subtle pb-3">
@@ -32,6 +43,26 @@ export function OverlayAppearancePanel({ watched, setValue, t }: OverlayAppearan
             aria-label={t("overlay:config.transparency")}
             className="w-full h-2 rounded-full appearance-none bg-border-highlight accent-accent-secondary outline-none"
           />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-text-secondary">
+            {t("overlay:config.pack")}
+          </label>
+          <select
+            value={watched.packId}
+            onChange={(event) => setValue("packId", event.target.value)}
+            aria-label={t("overlay:config.pack")}
+            className="w-full rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-secondary"
+          >
+            <option value="">{t("overlay:config.packAuto")}</option>
+            {packs.map((pack) => (
+              <option key={pack.id} value={pack.id}>
+                {pack.name}
+                {pack.builtIn ? "" : " · custom"}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="pt-2">

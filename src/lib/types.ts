@@ -864,6 +864,7 @@ export interface AppSettings {
   overlayShowStats?: boolean;
   overlayShowTimer?: boolean;
   overlayFontScale?: string;
+  overlayPackId?: string;
   overlayClickthrough?: boolean;
   overlayPlayerScope?: "all" | "team";
   overlayShowNames?: boolean;
@@ -946,6 +947,13 @@ export type OverlayPositionPreset =
   | "bottom-right"
   | "custom";
 
+export interface OverlayPackTokens {
+  id: string;
+  name: string;
+  tokens: Record<string, unknown>;
+  fonts: FontOption[];
+}
+
 export interface OverlayConfigForm {
   enabled: boolean;
   opacity: number;
@@ -959,6 +967,7 @@ export interface OverlayConfigForm {
   showStats: boolean;
   showTimer: boolean;
   fontScale: "small" | "medium" | "large";
+  packId: string;
   clickthrough: boolean;
   playerScope: "all" | "team";
   showNames: boolean;

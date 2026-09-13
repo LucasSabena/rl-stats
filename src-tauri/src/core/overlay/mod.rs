@@ -276,6 +276,7 @@ impl OverlayServer {
             .route("/api/v2/series", get(v2_series_handler))
             .route("/api/v2/teams", get(v2_teams_handler))
             .route("/api/v2/tournament", get(v2_tournament_handler))
+            .route("/api/v2/session", get(v2_session_handler))
             .route("/api/v2/action", post(v2_action_handler))
             .route("/sdk/rl-overlay.js", get(serve_sdk))
             .route("/assets/{*path}", get(serve_asset))
@@ -843,6 +844,8 @@ struct ApiQuery {
     pack: Option<String>,
     /// `/api/v2/tournament`: explicit tournament id.
     tournament: Option<String>,
+    /// `/api/v2/session`: how many days back to aggregate (default 1 = today).
+    period_days: Option<i32>,
 }
 
 fn json_response(status: StatusCode, body: serde_json::Value) -> Response {
@@ -1200,6 +1203,67 @@ async fn v2_series_handler(
         Ok(Err(error)) => json_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             serde_json::json!({ "error": error.to_string() }),
+        ),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
+/// `GET /api/v2/session` — today's live session record (played, W/L, win
+/// rate, streak) for the local player, used by the `session` overlay widget.
+async fn v2_session_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if authorize_api(&headers, &query, &state).is_none() {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+    let Some(pool) = state.db_pool.clone() else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            serde_json::json!({ "error": "database unavailable" }),
+        );
+    };
+    let days = query.period_days.unwrap_or(1).clamp(1, 365);
+
+    let task =
+        tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+            let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
+            let identity = settings.local_primary_id.clone().unwrap_or_default();
+            if identity.trim().is_empty() {
+                return Ok(serde_json::json!({ "available": false }));
+            }
+            let end = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let start = (chrono::Local::now() - chrono::Duration::days(days as i64 - 1))
+                .format("%Y-%m-%d")
+                .to_string();
+            let summary = storage::get_analytics_summary_for_identity(
+                &pool, &identity, &start, &end, None, None,
+            )
+            .map_err(|error| error.to_string())?;
+            let streak =
+                crate::core::metrics::calculate_streaks(&pool, &identity, &start, &end, None, None)
+                    .map_err(|error| error.to_string())?;
+            Ok(serde_json::json!({
+                "available": true,
+                "startDate": start,
+                "endDate": end,
+                "summary": serde_json::to_value(summary).unwrap_or(serde_json::json!(null)),
+                "streak": { "current": streak.current_streak, "best": streak.best_streak },
+            }))
+        });
+
+    match task.await {
+        Ok(Ok(value)) => json_response(StatusCode::OK, value),
+        Ok(Err(error)) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error }),
         ),
         Err(error) => json_response(
             StatusCode::INTERNAL_SERVER_ERROR,

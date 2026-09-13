@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.7.0 — Sesión en el overlay y packs en el overlay in-game
+
+### Nuevo
+
+- **Widget de sesión**: muestra partidas jugadas, V/D, winrate y racha del
+  día, actualizado al instante al terminar cada partida. Disponible en el
+  editor de escenas (por defecto en la escena de post-partido).
+- **El overlay in-game ahora usa los packs de diseño**: en
+  Ajustes → Overlay → Apariencia elegí un pack fijo o "Automático" (sigue al
+  estado de transmisión). Acento, superficies, radios y tipografías se aplican
+  en vivo sobre la ventana transparente.
+
 ## v3.6.0 — Doble eliminación, packs portables y Discord
 
 ### Nuevo — Doble eliminación
