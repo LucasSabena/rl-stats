@@ -17,7 +17,8 @@
     },
     "sessions": "Sessões",
     "records": "Recordes",
-    "studio": "Overlay Studio"
+    "studio": "Overlay Studio",
+    "broadcast": "Broadcast"
   },
   "pageTitles": {
     "live": "Painel ao Vivo",
@@ -153,7 +154,8 @@
     "help": "Mostrar esta ajuda",
     "close": "Fechar janelas e modais",
     "matchNavigate": "Partida anterior / próxima",
-    "theme": "Alternar tema"
+    "theme": "Alternar tema",
+    "overlayToggle": "Mostrar/ocultar overlay no jogo"
   },
   "dateRange": {
     "placeholder": "Intervalo de datas",

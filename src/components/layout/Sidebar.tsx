@@ -55,6 +55,7 @@ const NAV_GROUPS: { labelKey: string | null; items: NavItem[] }[] = [
         icon: Dumbbell,
       },
       { path: "/pro-configs", labelKey: "sidebar.proConfigs", icon: Gamepad2 },
+      { path: "/broadcast", labelKey: "sidebar.broadcast", icon: Radio },
       { path: "/studio", labelKey: "sidebar.studio", icon: Clapperboard },
     ],
   },

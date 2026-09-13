@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RL Stats · Dock</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0f19;
+        --card: #121826;
+        --border: #232c3f;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --accent: #3b82f6;
+        --green: #22c55e;
+        --orange: #f97316;
+      }
+      @font-face {
+        font-family: 'Geist Variable';
+        src: url('/overlays/fonts/geist-latin.woff2') format('woff2');
+        font-display: swap;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: 'Geist Variable', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 14px;
+        padding: 10px;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0;
+        letter-spacing: 0.04em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #64748b;
+      }
+      .dot.online {
+        background: var(--green);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .pill {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 3px 10px;
+        color: var(--muted);
+      }
+      .pill.live {
+        border-color: var(--green);
+        color: var(--green);
+      }
+      .pill.brb,
+      .pill.waiting {
+        border-color: var(--orange);
+        color: var(--orange);
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+      .card h2 {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .states {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      button {
+        font: inherit;
+        color: var(--text);
+        background: #1b2333;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 9px 10px;
+        cursor: pointer;
+        min-height: 38px;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+        font-weight: 600;
+      }
+      button.ghost {
+        background: transparent;
+      }
+      button.danger {
+        border-color: #7f1d1d;
+        color: #fca5a5;
+      }
+      button.big {
+        width: 100%;
+      }
+      .team-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 0;
+      }
+      .team-name {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      }
+      .score {
+        font-family: 'Geist Mono Variable', monospace;
+        font-size: 22px;
+        font-weight: 700;
+        min-width: 26px;
+        text-align: center;
+      }
+      .stepper {
+        display: flex;
+        gap: 4px;
+      }
+      .stepper button {
+        min-height: 30px;
+        padding: 4px 9px;
+      }
+      .blue {
+        color: #60a5fa;
+      }
+      .orange {
+        color: #fb923c;
+      }
+      .rundown-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(35, 44, 63, 0.6);
+      }
+      .rundown-item:last-child {
+        border-bottom: none;
+      }
+      .rundown-item button {
+        min-height: 28px;
+        padding: 3px 10px;
+        font-size: 12px;
+      }
+      input[type='number'],
+      input[type='text'] {
+        font: inherit;
+        background: #0e1421;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        padding: 8px;
+        width: 100%;
+        min-height: 36px;
+      }
+      .chat-line {
+        font-size: 13px;
+        line-height: 1.3;
+        padding: 2px 0;
+        word-wrap: break-word;
+      }
+      .chat-line b {
+        margin-right: 6px;
+      }
+      .log {
+        font-size: 12px;
+        color: var(--muted);
+        min-height: 16px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      @media (min-width: 520px) {
+        body {
+          padding: 14px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><span class="dot" id="status-dot"></span> RL Stats · Control</h1>
+      <span class="pill" id="state-pill">—</span>
+    </header>
+
+    <section class="card">
+      <h2>Estado de transmisión</h2>
+      <div class="states" id="states"></div>
+    </section>
+
+    <section class="card">
+      <h2>Serie</h2>
+      <div id="series"></div>
+      <div class="row" style="margin-top: 8px">
+        <button id="series-reset" class="ghost">Reiniciar serie</button>
+        <button id="series-next" class="ghost">Siguiente mapa</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Rundown</h2>
+      <div id="rundown"><span class="muted">Cargando escena…</span></div>
+    </section>
+
+    <section class="card">
+      <h2>Timer y delay</h2>
+      <div class="grid2">
+        <div>
+          <input type="number" id="timer-seconds" value="120" min="5" max="3600" />
+        </div>
+        <div class="row">
+          <button id="timer-start">Iniciar</button>
+          <button id="timer-stop" class="ghost">Parar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 8px">
+        <input type="number" id="delay-seconds" value="0" min="0" max="600" />
+        <button id="delay-apply">Aplicar delay</button>
+      </div>
+      <p class="muted" style="margin: 6px 0 0">
+        El delay retrasa los gráficos para alinearlos con el video del torneo.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Chat</h2>
+      <div id="chat"><span class="muted">Sin mensajes.</span></div>
+    </section>
+
+    <p class="log" id="log"></p>
+
+    <script>
+      (function () {
+        'use strict';
+        var params = new URLSearchParams(window.location.search);
+        var TOKEN = params.get('token') || '';
+        var STATES = [
+          ['waiting', 'Esperando'],
+          ['live', 'En vivo'],
+          ['replay', 'Replay'],
+          ['post', 'Post'],
+          ['brb', 'BRB'],
+          ['timer', 'Timer']
+        ];
+        var MODULE_LABELS = {
+          scorebug: 'Marcador',
+          series: 'Serie',
+          roster: 'Roster',
+          events: 'Eventos',
+          chat: 'Chat',
+          brand: 'Logo',
+          countdown: 'Countdown',
+          timer: 'Timer',
+          socials: 'Sociales',
+          sponsors: 'Sponsors',
+          replaybadge: 'Replay',
+          upnext: 'Próximo',
+          mvp: 'MVP',
+          info: 'Info'
+        };
+        var scene = null;
+        var series = null;
+        var graphics = {};
+        var currentState = 'waiting';
+        var socket = null;
+        var backoff = 1000;
+
+        function el(tag, className, text) {
+          var node = document.createElement(tag);
+          if (className) node.className = className;
+          if (text !== undefined && text !== null) node.textContent = String(text);
+          return node;
+        }
+
+        function clear(node) {
+          while (node.firstChild) node.removeChild(node.firstChild);
+        }
+
+        function log(message) {
+          document.getElementById('log').textContent = message;
+        }
+
+        function api(path) {
+          return fetch(path + (path.indexOf('?') === -1 ? '?' : '&') + 'token=' + encodeURIComponent(TOKEN), {
+            headers: { 'x-rl-token': TOKEN }
+          });
+        }
+
+        function act(action, data) {
+          return fetch('/api/v2/action?token=' + encodeURIComponent(TOKEN), {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-rl-token': TOKEN },
+            body: JSON.stringify({ action: action, data: data || {} })
+          })
+            .then(function (response) {
+              if (!response.ok) throw new Error('HTTP ' + response.status);
+              log('OK · ' + action);
+            })
+            .catch(function (error) {
+              log('Error · ' + action + ' · ' + error.message);
+            });
+        }
+
+        // ------------------------------------------------------------ states
+
+        function renderStates() {
+          var wrap = document.getElementById('states');
+          clear(wrap);
+          STATES.forEach(function (entry) {
+            var key = entry[0];
+            if (key === 'timer') {
+              var button = el('button', '', entry[1]);
+              button.addEventListener('click', function () {
+                act('timer', { op: 'start', seconds: 300, label: 'VOLVEMOS EN' });
+              });
+              wrap.appendChild(button);
+              return;
+            }
+            var node = el('button', currentState === key ? 'active' : '', entry[1]);
+            node.addEventListener('click', function () {
+              currentState = key;
+              renderStates();
+              act('set_state', { state: key });
+            });
+            wrap.appendChild(node);
+          });
+        }
+
+        function renderStatePill() {
+          var pill = document.getElementById('state-pill');
+          pill.textContent = currentState.toUpperCase();
+          pill.className = 'pill ' + currentState;
+        }
+
+        // ------------------------------------------------------------ series
+
+        function teamLabel(team) {
+          if (!team) return '—';
+          return team.tag || team.name || '—';
+        }
+
+        function renderSeries() {
+          var wrap = document.getElementById('series');
+          clear(wrap);
+          if (!series || !series.available) {
+            wrap.appendChild(el('span', 'muted', 'No hay serie activa. Creala desde la app.'));
+            return;
+          }
+          [['A', 'blue', series.teamA], ['B', 'orange', series.teamB]].forEach(function (entry) {
+            var row = el('div', 'team-row');
+            row.appendChild(el('div', 'team-name ' + entry[1], teamLabel(entry[2])));
+            var score = el('div', 'score ' + entry[1], entry[0] === 'A' ? series.scoreA : series.scoreB);
+            row.appendChild(score);
+            var stepper = el('div', 'stepper');
+            var minus = el('button', '', '−');
+            minus.addEventListener('click', function () {
+              var scoreA = entry[0] === 'A' ? Math.max(0, series.scoreA - 1) : series.scoreA;
+              var scoreB = entry[0] === 'B' ? Math.max(0, series.scoreB - 1) : series.scoreB;
+              act('series_score', { scoreA: scoreA, scoreB: scoreB });
+            });
+            var plus = el('button', '', '+');
+            plus.addEventListener('click', function () {
+              var scoreA = entry[0] === 'A' ? series.scoreA + 1 : series.scoreA;
+              var scoreB = entry[0] === 'B' ? series.scoreB + 1 : series.scoreB;
+              act('series_score', { scoreA: scoreA, scoreB: scoreB });
+            });
+            stepper.appendChild(minus);
+            stepper.appendChild(plus);
+            row.appendChild(stepper);
+            wrap.appendChild(row);
+          });
+          var played = series.games ? series.games.length : 0;
+          wrap.appendChild(
+            el('div', 'muted', 'BO' + (series.format || 3) + ' · ' + played + ' mapas jugados · ' + series.status)
+          );
+        }
+
+        // ----------------------------------------------------------- rundown
+
+        function renderRundown() {
+          var wrap = document.getElementById('rundown');
+          clear(wrap);
+          var layout = (scene && scene.layout) || {};
+          var keys = Object.keys(layout);
+          if (!keys.length) {
+            wrap.appendChild(el('span', 'muted', 'Sin módulos en esta escena.'));
+            return;
+          }
+          keys.forEach(function (key) {
+            var spec = layout[key] || {};
+            var row = el('div', 'rundown-item');
+            row.appendChild(el('span', '', MODULE_LABELS[spec.module] || spec.module || key));
+            var visible = graphics[key] !== false;
+            var button = el('button', visible ? '' : 'ghost', visible ? 'OUT' : 'TAKE');
+            button.addEventListener('click', function () {
+              var next = graphics[key] === false;
+              graphics[key] = next;
+              act(next ? 'take_graphic' : 'out_graphic', { id: key });
+              renderRundown();
+            });
+            row.appendChild(button);
+            wrap.appendChild(row);
+          });
+        }
+
+        // --------------------------------------------------------------- ws
+
+        function connect() {
+          var protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+          var url = protocol + '://' + window.location.host + '/ws?token=' + encodeURIComponent(TOKEN);
+          var ws;
+          try {
+            ws = new WebSocket(url);
+          } catch (error) {
+            window.setTimeout(connect, backoff);
+            return;
+          }
+          socket = ws;
+          ws.onopen = function () {
+            backoff = 1000;
+            document.getElementById('status-dot').classList.add('online');
+          };
+          ws.onmessage = function (event) {
+            var message;
+            try {
+              message = JSON.parse(event.data);
+            } catch (error) {
+              return;
+            }
+            handle(message);
+          };
+          ws.onclose = function () {
+            document.getElementById('status-dot').classList.remove('online');
+            window.setTimeout(connect, backoff);
+            backoff = Math.min(backoff * 2, 10000);
+          };
+        }
+
+        function handle(message) {
+          var data = message.data || {};
+          switch (message.type) {
+            case 'scene':
+              scene = data;
+              currentState = data.state || currentState;
+              renderStates();
+              renderStatePill();
+              renderRundown();
+              break;
+            case 'series':
+              series = data;
+              renderSeries();
+              break;
+            case 'chat':
+              pushChat(data);
+              break;
+            default:
+              break;
+          }
+        }
+
+        var chatLines = [];
+        function pushChat(message) {
+          chatLines.unshift(message);
+          chatLines = chatLines.slice(0, 8);
+          var wrap = document.getElementById('chat');
+          clear(wrap);
+          if (!chatLines.length) {
+            wrap.appendChild(el('span', 'muted', 'Sin mensajes.'));
+            return;
+          }
+          chatLines.forEach(function (line) {
+            var row = el('div', 'chat-line');
+            var user = el('b', '', line.user);
+            user.style.color = line.color || '#93c5fd';
+            row.appendChild(user);
+            row.appendChild(document.createTextNode(line.text));
+            wrap.appendChild(row);
+          });
+        }
+
+        // -------------------------------------------------------------- boot
+
+        document.getElementById('series-reset').addEventListener('click', function () {
+          act('series_reset', {});
+        });
+        document.getElementById('series-next').addEventListener('click', function () {
+          act('set_state', { state: 'waiting' });
+          act('timer', { op: 'start', seconds: 120, label: 'PRÓXIMO MAPA' });
+        });
+        document.getElementById('timer-start').addEventListener('click', function () {
+          var seconds = parseInt(document.getElementById('timer-seconds').value, 10) || 120;
+          act('timer', { op: 'start', seconds: seconds, label: 'COMIENZA EN' });
+        });
+        document.getElementById('timer-stop').addEventListener('click', function () {
+          act('timer', { op: 'stop' });
+        });
+        document.getElementById('delay-apply').addEventListener('click', function () {
+          var seconds = parseInt(document.getElementById('delay-seconds').value, 10) || 0;
+          act('set_delay', { seconds: seconds });
+        });
+
+        renderStates();
+        renderStatePill();
+
+        api('/api/v2/scene')
+          .then(function (response) {
+            return response.json();
+          })
+          .then(function (payload) {
+            scene = payload;
+            currentState = payload.state || currentState;
+            renderStates();
+            renderStatePill();
+            renderRundown();
+          })
+          .catch(function () {
+            log('No se pudo cargar la escena (¿servidor detenido?)');
+          });
+
+        api('/api/v2/series')
+          .then(function (response) {
+            return response.json();
+          })
+          .then(function (payload) {
+            series = payload;
+            renderSeries();
+          })
+          .catch(function () {
+            /* series are optional */
+          });
+
+        connect();
+      })();
+    </script>
+  </body>
+</html>

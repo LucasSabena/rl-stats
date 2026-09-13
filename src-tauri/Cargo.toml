@@ -1,6 +1,6 @@
 [package]
 name = "rl-stats"
-version = "3.0.0"
+version = "3.1.0"
 description = "Local-first desktop companion for Rocket League Stats API"
 authors = ["Lucas Sabena"]
 edition = "2021"
@@ -39,6 +39,9 @@ axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
 mime_guess = "2"
 form_urlencoded = "1"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+base64 = "0.22"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"

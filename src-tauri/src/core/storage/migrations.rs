@@ -338,6 +338,89 @@ pub static MIGRATIONS: &[Migration] = &[
         sql: "ALTER TABLE matches ADD COLUMN notes TEXT;
               ALTER TABLE matches ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';",
     },
+    Migration {
+        version: 28,
+        name: "create_broadcast_tables",
+        // Broadcast Studio storage: uploaded assets (logos/fonts/images),
+        // design packs, scenes (layout + state), teams, series and the
+        // role-scoped access tokens used by the local HTTP server.
+        sql: "CREATE TABLE IF NOT EXISTS broadcast_assets (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            name TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            mime TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS broadcast_packs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            base_id TEXT,
+            tokens_json TEXT NOT NULL DEFAULT '{}',
+            layouts_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS broadcast_scenes (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            pack_id TEXT NOT NULL DEFAULT 'prime-broadcast',
+            state TEXT NOT NULL DEFAULT 'live',
+            layout_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS teams (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            tag TEXT NOT NULL DEFAULT '',
+            color_primary TEXT NOT NULL DEFAULT '',
+            color_secondary TEXT NOT NULL DEFAULT '',
+            logo_asset_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS series (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            format INTEGER NOT NULL DEFAULT 3,
+            team_a_id TEXT,
+            team_b_id TEXT,
+            score_a INTEGER NOT NULL DEFAULT 0,
+            score_b INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'live',
+            winner_team_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS series_games (
+            id TEXT PRIMARY KEY,
+            series_id TEXT NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+            index_no INTEGER NOT NULL,
+            winner_team_id TEXT,
+            score_a INTEGER NOT NULL DEFAULT 0,
+            score_b INTEGER NOT NULL DEFAULT 0,
+            arena TEXT,
+            duration_seconds INTEGER NOT NULL DEFAULT 0,
+            match_id INTEGER,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_series_games_series ON series_games(series_id, index_no);
+
+        CREATE TABLE IF NOT EXISTS broadcast_tokens (
+            id TEXT PRIMARY KEY,
+            token TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            label TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_broadcast_tokens_token ON broadcast_tokens(token);",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

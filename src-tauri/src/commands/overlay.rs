@@ -4,7 +4,9 @@
 //! HTTP server, query its status, and retrieve the URLs of available
 //! overlay pages that can be pasted into OBS as browser sources.
 
-use crate::core::overlay::{OverlayServer, OverlayServerStatus};
+use crate::core::broadcast::store;
+use crate::core::overlay::assets::AssetStore;
+use crate::core::overlay::{AuthToken, OverlayServer, OverlayServerStatus};
 use crate::core::settings::{get_settings, set_settings};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
@@ -29,7 +31,7 @@ pub struct OverlayUrl {
     pub url: String,
 }
 
-/// Query-string customization for the enhanced overlay.
+/// Query-string customization for the legacy enhanced overlay.
 ///
 /// Empty values are omitted so the overlay keeps its defaults.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -104,14 +106,9 @@ fn scene_query(config: &OverlaySceneConfig, token: &str) -> String {
 
 /// Starts the overlay HTTP/WebSocket server on the given port.
 ///
-/// The server handle is stored in [`AppState::overlay_server`] so it can
-/// be accessed by other commands and the event-processing loop. The port and
-/// the enabled flag are persisted so the server can auto-start next launch.
-///
-/// # Errors
-///
-/// Returns `Err` if the server is already running or if the TCP port
-/// cannot be bound.
+/// Loads the persistent role tokens, the uploaded-assets directory, the LAN
+/// binding preference and the broadcast delay before binding, so restarting
+/// the server never breaks the URLs already pasted into OBS.
 #[tauri::command]
 pub async fn start_overlay_server(
     state: State<'_, AppState>,
@@ -119,8 +116,29 @@ pub async fn start_overlay_server(
 ) -> Result<OverlayServerStatus, String> {
     info!(port, "Starting overlay server");
 
-    let mut server = OverlayServer::new(port);
+    let settings = get_settings(&state.db_pool).unwrap_or_default();
+    let admin_token = store::ensure_admin_token(&state.db_pool).map_err(|e| e.to_string())?;
+    let tokens: Vec<AuthToken> = store::list_tokens(&state.db_pool)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|token| AuthToken {
+            token: token.token,
+            role: token.role,
+        })
+        .collect();
+
+    let mut server = OverlayServer::with_hub(port, state.broadcast_hub.clone());
     server.set_db_pool(state.db_pool.clone());
+    server.set_tokens(tokens);
+    server.set_bind_lan(settings.overlay_bind_lan);
+    server.set_delay_seconds(settings.overlay_delay_seconds as u64);
+    server.set_active_state(&settings.broadcast_active_state);
+    let assets_dir = state.broadcast_assets_dir.clone();
+    if let Err(error) = AssetStore::new(assets_dir.clone()).ensure() {
+        tracing::warn!(error = %error, "Could not create broadcast assets directory");
+    }
+    server.set_assets_dir(assets_dir);
+    let _ = admin_token;
     server.start().await?;
 
     let status = server.status();
@@ -139,9 +157,6 @@ pub async fn start_overlay_server(
 }
 
 /// Stops a running overlay server.
-///
-/// Sends a graceful-shutdown signal and clears the stored handle.
-/// Idempotent — safe to call even when no server is running.
 #[tauri::command]
 pub async fn stop_overlay_server(state: State<'_, AppState>) -> Result<(), String> {
     info!("Stopping overlay server");
@@ -164,9 +179,6 @@ pub async fn stop_overlay_server(state: State<'_, AppState>) -> Result<(), Strin
 }
 
 /// Returns the current status of the overlay server.
-///
-/// When no server has been started, returns `running: false, port: 0,
-/// connected_clients: 0`.
 #[tauri::command]
 pub async fn get_overlay_server_status(
     state: State<'_, AppState>,
@@ -174,24 +186,25 @@ pub async fn get_overlay_server_status(
     let guard = state.overlay_server.lock().await;
     match &*guard {
         Some(server) => Ok(server.status()),
-        None => Ok(OverlayServerStatus {
-            running: false,
-            port: 0,
-            connected_clients: 0,
-            token: String::new(),
-        }),
+        None => {
+            let settings = get_settings(&state.db_pool).unwrap_or_default();
+            Ok(OverlayServerStatus {
+                running: false,
+                port: 0,
+                connected_clients: 0,
+                token: String::new(),
+                bind_lan: settings.overlay_bind_lan,
+                delay_seconds: settings.overlay_delay_seconds as u64,
+                active_state: settings.broadcast_active_state,
+            })
+        }
     }
 }
 
-/// Returns a list of available overlay URLs for use as OBS browser sources.
+/// Returns the ready-to-paste OBS browser sources.
 ///
-/// Each URL carries the server token plus any configured scene
-/// customization (title, team names, series length) so one click in
-/// Settings yields a ready-to-paste browser source.
-///
-/// # Errors
-///
-/// Returns `Err` if the overlay server is not running.
+/// The universal `live` engine renders whatever scene is active, so it is
+/// listed first; the legacy pages remain for existing setups.
 #[tauri::command]
 pub async fn get_overlay_urls(
     state: State<'_, AppState>,
@@ -199,7 +212,7 @@ pub async fn get_overlay_urls(
 ) -> Result<Vec<OverlayUrl>, String> {
     let guard = state.overlay_server.lock().await;
     let (port, token) = match &*guard {
-        Some(server) => (server.port(), server.token().to_string()),
+        Some(server) => (server.port(), server.token()),
         None => return Err("Overlay server is not running".into()),
     };
     drop(guard);
@@ -209,12 +222,14 @@ pub async fn get_overlay_urls(
 
     #[rustfmt::skip]
     let overlays: &[(&str, &str, &str)] = &[
-        ("enhanced",      "Enhanced",      "Broadcast scorebug with rosters, events and goal alerts"),
-        ("scoreboard",    "Scoreboard",    "Compact score and clock"),
-        ("player-stats",  "Player Stats",  "Live scoreboard table for both teams"),
-        ("event-feed",    "Event Feed",    "Goals, saves, assists and demos as they happen"),
-        ("alerts",        "Alerts",        "Full-screen goal and play alerts for scene switches"),
-        ("all-in-one",    "All-in-One",    "Scoreboard, stats and event feed in a single source"),
+        ("live",          "Live (Universal)", "Motor de packs: scorebug, roster, eventos, chat y series según el estado"),
+        ("chat",          "Chat",         "Chat de Twitch y Kick con badges y emotes"),
+        ("enhanced",      "Enhanced",     "Scorebug clásico con rosters, eventos y alertas de gol"),
+        ("scoreboard",    "Scoreboard",   "Marcador compacto con reloj"),
+        ("player-stats",  "Player Stats", "Tabla de estadísticas de ambos equipos"),
+        ("event-feed",    "Event Feed",   "Goles, saves, asistencias y demos en vivo"),
+        ("alerts",        "Alerts",       "Alertas a pantalla completa para cambios de escena"),
+        ("all-in-one",    "All-in-One",   "Marcador, stats y feed de eventos en una sola fuente"),
     ];
 
     Ok(overlays
@@ -228,20 +243,58 @@ pub async fn get_overlay_urls(
         .collect())
 }
 
+/// URL of the operator dock (also works inside an OBS Custom Browser Dock).
+#[tauri::command]
+pub async fn get_dock_url(state: State<'_, AppState>) -> Result<String, String> {
+    let guard = state.overlay_server.lock().await;
+    match &*guard {
+        Some(server) => Ok(format!(
+            "http://127.0.0.1:{}/dock?token={}",
+            server.port(),
+            server.token()
+        )),
+        None => Err("Overlay server is not running".into()),
+    }
+}
+
+/// URL other machines on the LAN can use when LAN mode is enabled.
+#[tauri::command]
+pub async fn get_lan_url(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let guard = state.overlay_server.lock().await;
+    let Some(server) = &*guard else {
+        return Err("Overlay server is not running".into());
+    };
+    if !server.status().bind_lan {
+        return Ok(None);
+    }
+    let host = local_ipv4().unwrap_or_else(|| "127.0.0.1".to_string());
+    Ok(Some(format!(
+        "http://{}:{}/dock?token={}",
+        host,
+        server.port(),
+        server.token()
+    )))
+}
+
+/// Best-effort local IPv4 discovery for LAN hints (no external traffic).
+fn local_ipv4() -> Option<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("192.0.2.1:80").ok()?;
+    socket
+        .local_addr()
+        .ok()
+        .map(|address| address.ip().to_string())
+}
+
 /// Returns the current live match state as a JSON string.
-/// Useful for OBS URL/API source plugins that poll for data.
 #[tauri::command]
 pub async fn get_overlay_state(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = state.overlay_server.lock().await;
     match &*guard {
-        Some(server) => {
-            let cached = server.latest_state_handle();
-            let value = cached.read().await;
-            match &*value {
-                Some(json) => serde_json::from_str(json).map_err(|e| e.to_string()),
-                None => Ok(serde_json::json!({})),
-            }
-        }
+        Some(server) => match server.hub().cached_state() {
+            Some(json) => serde_json::from_str(&json).map_err(|e| e.to_string()),
+            None => Ok(serde_json::json!({})),
+        },
         None => Err("Overlay server is not running".into()),
     }
 }

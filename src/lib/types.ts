@@ -392,8 +392,166 @@ export interface OverlayServerStatus {
   running: boolean;
   port: number;
   connected_clients: number;
-  /** Bearer token for custom (file://) overlays; empty when stopped. */
+  /** Persistent admin token used to build overlay URLs; empty when stopped. */
   token?: string;
+  /** LAN tournament mode (server listens on all interfaces). */
+  bind_lan?: boolean;
+  /** Broadcast delay applied to the overlay feed, in seconds. */
+  delay_seconds?: number;
+  active_state?: string;
+}
+
+// ─── Broadcast Studio ───────────────────────────────────────────────────────
+
+export interface BroadcastToken {
+  id: string;
+  token: string;
+  role: "admin" | "referee" | "viewer" | string;
+  label: string;
+  createdAt: string;
+}
+
+export interface BroadcastAsset {
+  id: string;
+  kind: "logo" | "image" | "font" | "audio" | string;
+  name: string;
+  fileName: string;
+  mime: string;
+  sizeBytes: number;
+  createdAt: string;
+  url: string;
+}
+
+export interface FontOption {
+  id: string;
+  label: string;
+  stack: string;
+  bundled: boolean;
+  vibe: string;
+}
+
+export interface BroadcastPack {
+  id: string;
+  name: string;
+  baseId?: string | null;
+  builtIn: boolean;
+  description?: string;
+  tokens: Record<string, unknown>;
+}
+
+export interface PacksResponse {
+  packs: BroadcastPack[];
+  fonts: FontOption[];
+}
+
+/** One entry in a scene layout: position/size in % of the 16:9 stage. */
+export interface SceneModule {
+  module: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  enabled?: boolean;
+  team?: "blue" | "orange";
+  [key: string]: unknown;
+}
+
+export interface BroadcastScene {
+  id: string;
+  name: string;
+  packId: string;
+  state: "waiting" | "live" | "replay" | "post" | "brb" | string;
+  layout: Record<string, SceneModule>;
+  updatedAt: string;
+}
+
+export interface BroadcastTeam {
+  id: string;
+  name: string;
+  tag: string;
+  colorPrimary: string;
+  colorSecondary: string;
+  logoAssetId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamSnapshot {
+  id: string;
+  name: string;
+  tag: string;
+  colorPrimary: string;
+  colorSecondary: string;
+  logoUrl: string;
+}
+
+export interface SeriesGame {
+  index: number;
+  winnerTeamId?: string | null;
+  scoreA: number;
+  scoreB: number;
+  arena?: string | null;
+  durationSeconds: number;
+}
+
+export interface SeriesSnapshot {
+  available: boolean;
+  id?: string;
+  name?: string;
+  format?: number;
+  winsNeeded?: number;
+  scoreA?: number;
+  scoreB?: number;
+  status?: string;
+  winnerTeamId?: string | null;
+  teamA?: TeamSnapshot | null;
+  teamB?: TeamSnapshot | null;
+  games?: SeriesGame[];
+}
+
+export interface ChatStatus {
+  running: string[];
+  enabled?: boolean;
+}
+
+export interface ChatEmote {
+  name: string;
+  url: string;
+}
+
+export interface ChatMessage {
+  platform: string;
+  user: string;
+  text: string;
+  color?: string | null;
+  badges: string[];
+  emotes: ChatEmote[];
+  timestamp: number;
+}
+
+/** Camel-case live match payload as broadcast by the overlay WebSocket. */
+export interface OverlayMatchState {
+  matchGuid?: string | null;
+  arena?: string | null;
+  isOnline?: boolean;
+  isOvertime?: boolean;
+  timeRemaining?: number;
+  scoreBlue?: number;
+  scoreOrange?: number;
+  players?: Array<{
+    name: string;
+    team: number;
+    score?: number;
+    goals?: number;
+    shots?: number;
+    assists?: number;
+    saves?: number;
+    boost?: number | null;
+    speed?: number | null;
+  }>;
+  ballSpeed?: number;
+  playerCount?: number;
+  matchType?: string | null;
 }
 
 // ─── Session-pattern analytics ─────────────────────────────────────────────
@@ -636,6 +794,22 @@ export interface AppSettings {
   overlayShowSpeed?: boolean;
   overlayServerEnabled?: boolean;
   overlayServerPort?: number;
+  overlayBindLan?: boolean;
+  overlayDelaySeconds?: number;
+  broadcastActiveState?: string;
+  chatEnabled?: boolean;
+  chatTwitchChannel?: string;
+  chatKickChannel?: string;
+  chatShowBadges?: boolean;
+  chatMaxMessages?: number;
+  obsWsEnabled?: boolean;
+  obsWsUrl?: string;
+  obsWsPassword?: string;
+  obsAutoSwitch?: boolean;
+  obsSceneWaiting?: string;
+  obsSceneLive?: string;
+  obsSceneReplay?: string;
+  obsScenePost?: string;
   gameRunning?: boolean;
   warnOnProfileMismatch?: boolean;
   autoSwitchProfileOnExactMatch?: boolean;

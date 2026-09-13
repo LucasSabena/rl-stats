@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Modal } from "@/components/ui/Modal";
 import { useUIStore } from "@/stores/uiStore";
+import { toggleOverlayEnabled } from "@/lib/api";
 import { Keyboard } from "lucide-react";
 
 const ROUTE_BY_NUMBER: Record<string, string> = {
@@ -40,6 +41,11 @@ export function GlobalShortcuts() {
           navigate("/settings");
           return;
         }
+        if (event.shiftKey && (event.key === "o" || event.key === "O")) {
+          event.preventDefault();
+          void toggleOverlayEnabled();
+          return;
+        }
         const route = ROUTE_BY_NUMBER[event.key];
         if (route) {
           event.preventDefault();
@@ -73,6 +79,7 @@ export function GlobalShortcuts() {
     { keys: "Ctrl + ,", label: t("common:shortcuts.settings") },
     { keys: "J / K", label: t("common:shortcuts.historyNavigate") },
     { keys: "[ / ]", label: t("common:shortcuts.matchNavigate") },
+    { keys: "Ctrl + Shift + O", label: t("common:shortcuts.overlayToggle") },
     { keys: "T", label: t("common:shortcuts.theme") },
     { keys: "?", label: t("common:shortcuts.help") },
     { keys: "Esc", label: t("common:shortcuts.close") },

@@ -100,6 +100,11 @@ const StudioPage = lazy(() =>
     default: module.StudioPage,
   })),
 );
+const BroadcastPage = lazy(() =>
+  import("@/pages/BroadcastPage").then((module) => ({
+    default: module.BroadcastPage,
+  })),
+);
 const OnboardingOverlay = lazy(
   () => import("@/components/onboarding/OnboardingOverlay"),
 );
@@ -286,6 +291,7 @@ function AppContent() {
               <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
               <Route path="/records" element={<RecordsPage />} />
               <Route path="/studio" element={<StudioPage />} />
+              <Route path="/broadcast" element={<BroadcastPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/pro-configs" element={<ProConfigsPage />} />
               <Route path="/pro-configs/:slug" element={<ProConfigsPage />} />

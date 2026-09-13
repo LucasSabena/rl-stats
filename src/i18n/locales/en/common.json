@@ -17,7 +17,8 @@
     },
     "sessions": "Sessions",
     "records": "Records",
-    "studio": "Overlay Studio"
+    "studio": "Overlay Studio",
+    "broadcast": "Broadcast"
   },
   "pageTitles": {
     "live": "Live Dashboard",
@@ -153,7 +154,8 @@
     "help": "Show this help",
     "close": "Close windows and modals",
     "matchNavigate": "Previous / next match",
-    "theme": "Toggle theme"
+    "theme": "Toggle theme",
+    "overlayToggle": "Show/hide the in-game overlay"
   },
   "dateRange": {
     "placeholder": "Date range",

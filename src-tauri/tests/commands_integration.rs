@@ -65,6 +65,12 @@ fn create_app(pool: Arc<DbPool>) -> tauri::App<MockRuntime> {
         session_tally: Arc::new(tokio::sync::Mutex::new(SessionTally::default())),
         overlay_server: Arc::new(tokio::sync::Mutex::new(None)),
         overlay_handle: Arc::new(std::sync::Mutex::new(None)),
+        broadcast_hub: rl_stats_lib::core::broadcast::BroadcastHub::new(),
+        chat: rl_stats_lib::core::broadcast::chat::ChatManager::new(
+            rl_stats_lib::core::broadcast::BroadcastHub::new(),
+        ),
+        broadcast_assets_dir: std::env::temp_dir(),
+        game_commands: Arc::new(std::sync::Mutex::new(None)),
         rlstats_scraper: None,
     });
 

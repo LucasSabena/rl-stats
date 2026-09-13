@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod broadcast;
 pub mod cloud;
 pub mod detect;
 pub mod diagnostics;

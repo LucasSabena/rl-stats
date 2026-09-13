@@ -1,5 +1,81 @@
 # Changelog
 
+## v3.1.0 — Broadcast Studio: packs de diseño, Control Room y chat
+
+La app deja de ser solo un visor de estadísticas y se convierte en una
+consola de producción para streamers y torneos. Todo el sistema de overlays
+se reconstruyó sobre un motor único con **packs de diseño**, y aparece la
+**Control Room** en `/broadcast` para manejar estados, series, equipos, chat
+y el servidor de OBS desde un solo lugar.
+
+### Nuevo — Motor de overlays con packs
+
+- **Motor único** (`/overlays/live`): los overlays ya no son páginas
+  duplicadas. El layout y el pack de diseño viajan desde la base de datos y
+  el motor escala cualquier resolución (720p, 1080p, 1440p).
+- **7 packs de diseño** listos para usar: Prime Broadcast, Neon Circuit,
+  Minimal Ink, Grid Retro, Glass Lux, League Ops y Caster Board. Cada pack
+  define color, tipografía, bordes, textura, sombras y velocidad de
+  animación.
+- **Módulos combinables**: marcador, serie, roster con barras de boost,
+  feed de eventos, chat, brand bug con logo fijo, countdown, timer,
+  sponsors rotativos, sociales, badge de replay, próximo partido, MVP e
+  info de partida.
+- **Tipografías por slot** (display, cuerpo y números) con subida de
+  fuentes propias, y **logos/imágenes subibles** que quedan fijos en el
+  overlay (brand bug) y en los equipos.
+- **Overlay de chat dedicado** (`/overlays/chat`) con badges, colores y
+  emotes de Twitch y Kick.
+- Los overlays clásicos (enhanced, scoreboard, player-stats, event-feed,
+  alerts, all-in-one) siguen disponibles.
+
+### Nuevo — Control Room (`/broadcast`)
+
+- **Máquina de estados en un clic**: Esperando → En vivo → Replay → Post →
+  BRB, con transición de todos los gráficos a la vez.
+- **Timer de intermisión** y **delay de transmisión de 0 a 600 s** para
+  alinear los gráficos con el video retrasado de un torneo.
+- **Series**: formato BO, marcador con auto-ganador, log de mapas y
+  biblioteca de **equipos** con nombre, tag, colores y logo.
+- **Rundown TAKE/OUT**: mostrar u ocultar cualquier módulo del overlay en
+  vivo.
+- **Editor de escenas y packs**: elegir pack, agregar/quitar módulos,
+  arrastrarlos sobre la vista previa en vivo y guardar la escena por
+  estado. Todo queda en SQLite (adiós a las URLs base64).
+- **Herramientas de juego** vía los comandos oficiales de la Stats API:
+  pausar/reanudar, mostrar/ocultar HUD, cambiar POV, cargar y buscar
+  replay, y velocidad de reproducción.
+- **Dock de operador** (`/dock`) para docketar dentro de OBS, usar desde el
+  celular o un segundo monitor.
+
+### Nuevo — Streaming
+
+- **Tokens persistentes con roles** (admin / árbitro / viewer): las URLs
+  pegadas en OBS ya no se rompen al reiniciar la app.
+- **Modo LAN opcional** para torneos con OBS en otra PC (requiere token).
+- **API v2**: `/api/v2/scene`, `/packs`, `/series`, `/teams` y
+  `/api/v2/action` para Stream Deck, bots y automatizaciones; los assets
+  subidos se sirven en `/assets`.
+- **Chat de solo lectura** de Twitch y Kick integrado al overlay y a la
+  Control Room.
+- **Integración con OBS Studio**: con obs-websocket se cambia la escena
+  automáticamente al pasar de estado.
+
+### Mejorado
+
+- La vista previa embebida de overlays dejó de bloquearse (CSP y
+  `X-Frame-Options`).
+- Atajo **Ctrl+Shift+O** para mostrar/ocultar el overlay del juego, y el
+  evento de click-through ahora se aplica en la ventana.
+- El servidor de overlays se auto-inicia con la app y recuerda el puerto,
+  el delay y el estado activo.
+
+### En camino
+
+- Brackets, inscripción y programación completa de torneos, y datos en
+  vivo adicionales (colores de equipo reales, cámara del observador,
+  boost y crossbar).
+
 ## v3.0.0 — Overlay Studio, Inicio, Récords, notas y personalización
 
 La actualización más grande desde que existe la app: páginas nuevas,

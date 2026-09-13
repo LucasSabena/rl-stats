@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-09-13
+
+### Added
+- Broadcast Studio engine: one overlay runtime with 7 design packs, scene
+  states, modular widgets, custom fonts, logos and a chat overlay.
+- Control Room page (`/broadcast`): state machine, intermission timer,
+  broadcast delay, series management, team library, rundown TAKE/OUT, scene
+  and pack editor with live preview, and game tools (pause, HUD, POV,
+  replay, playback speed).
+- Operator dock (`/dock`) usable inside OBS, on a phone or a second monitor.
+- Persistent role-scoped access tokens (admin/referee/viewer) and an
+  optional LAN mode for multi-PC tournaments.
+- Overlay API v2 (`/api/v2/scene|packs|series|teams|action`) and uploaded
+  assets served from `/assets`.
+- Read-only Twitch and Kick chat with badges, colors and emotes.
+- obs-websocket integration for automatic OBS scene switching.
+- Migration 28: broadcast assets, packs, scenes, teams, series and tokens.
+
+### Changed
+- Overlay URLs are now stable across restarts (persistent token).
+- Overlay preview iframes are no longer blocked by `X-Frame-Options`.
+- `Ctrl+Shift+O` toggles the in-game overlay and click-through events are
+  applied by the overlay window.
+
 ## [2.16.6] - 2026-09-12
 
 ### Fixed

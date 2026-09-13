@@ -92,6 +92,12 @@ export function OverlayView() {
       setInteractive(e.payload);
     }).then((fn) => unlisteners.push(fn));
 
+    // Click-through is the inverse of interactive mode: when Rust toggles it
+    // (tray, settings or the test-position button) the window must reflect it.
+    listen<boolean>("overlay-clickthrough-changed", (e) => {
+      setInteractive(!e.payload);
+    }).then((fn) => unlisteners.push(fn));
+
     return () => {
       unlisteners.forEach((fn) => fn());
     };

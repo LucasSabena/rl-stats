@@ -25,10 +25,14 @@ static EXIT_FLUSH_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomi
 const TRACKER_REFRESH_MAX_FAILURES: u32 = 5;
 
 use crate::core::autostart::configure_autostart;
-use crate::core::ingestor::{start_ingestor, IngestorHandle};
+use crate::core::broadcast::chat::ChatManager;
+use crate::core::broadcast::store as broadcast_store;
+use crate::core::broadcast::BroadcastHub;
+use crate::core::ingestor::{start_ingestor, CommandSender, IngestorHandle};
 use crate::core::models::RlEvent;
 use crate::core::obs_text;
-use crate::core::overlay::OverlayServer;
+use crate::core::overlay::assets::AssetStore;
+use crate::core::overlay::{AuthToken, OverlayServer};
 use crate::core::process_watcher::ProcessWatcher;
 use crate::core::profiles::{
     find_matching_profile, find_profile_by_primary_id, get_active_profile, get_db_path_for_profile,
@@ -52,6 +56,16 @@ pub struct AppState {
     pub session_tally: Arc<tokio::sync::Mutex<SessionTally>>,
     pub overlay_server: Arc<tokio::sync::Mutex<Option<OverlayServer>>>,
     pub overlay_handle: Arc<std::sync::Mutex<Option<tauri::WebviewWindow>>>,
+    /// Shared broadcast fan-out: overlay server, chat and the action
+    /// orchestrator all publish on the same channel.
+    pub broadcast_hub: BroadcastHub,
+    /// Read-only Twitch/Kick chat readers.
+    pub chat: ChatManager,
+    /// Where uploaded broadcast assets (logos, fonts) live on disk.
+    pub broadcast_assets_dir: PathBuf,
+    /// Sender for Stats API commands (pause, POV, replay, …). `None` until the
+    /// ingestor starts.
+    pub game_commands: Arc<std::sync::Mutex<Option<CommandSender>>>,
     /// Hidden WebView2-backed rlstats.net scraper used by the primary MMR
     /// provider. Lazily creates its window on first lookup. `None` in tests
     /// and in builds where the scraper could not be created: the scraper is
@@ -220,6 +234,37 @@ pub fn run() {
             commands::overlay::get_overlay_server_status,
             commands::overlay::get_overlay_urls,
             commands::overlay::get_overlay_state,
+            commands::overlay::get_dock_url,
+            commands::overlay::get_lan_url,
+            commands::broadcast::set_broadcast_state,
+            commands::broadcast::set_broadcast_delay,
+            commands::broadcast::control_broadcast_timer,
+            commands::broadcast::set_graphic_visibility,
+            commands::broadcast::send_game_command,
+            commands::broadcast::refresh_broadcast,
+            commands::broadcast::list_broadcast_tokens,
+            commands::broadcast::create_broadcast_token,
+            commands::broadcast::revoke_broadcast_token,
+            commands::broadcast::list_broadcast_assets,
+            commands::broadcast::upload_broadcast_asset,
+            commands::broadcast::delete_broadcast_asset,
+            commands::broadcast::list_broadcast_packs,
+            commands::broadcast::save_broadcast_pack,
+            commands::broadcast::delete_broadcast_pack,
+            commands::broadcast::list_broadcast_scenes,
+            commands::broadcast::save_broadcast_scene,
+            commands::broadcast::delete_broadcast_scene,
+            commands::broadcast::list_teams,
+            commands::broadcast::save_team,
+            commands::broadcast::delete_team,
+            commands::broadcast::get_series_state,
+            commands::broadcast::create_series,
+            commands::broadcast::update_series_score,
+            commands::broadcast::record_series_game,
+            commands::broadcast::reset_series,
+            commands::broadcast::delete_series_cmd,
+            commands::broadcast::configure_chat,
+            commands::broadcast::get_chat_status,
             commands::overlay_window::create_overlay_window,
             commands::overlay_window::destroy_overlay_window,
             commands::overlay_window::get_overlay_window_state,
@@ -592,6 +637,24 @@ pub fn run() {
 
             let ingestor = start_ingestor(port, Arc::clone(&game_running_flag));
             let ingestor_status = Arc::clone(&ingestor.status);
+            let game_commands = Arc::new(std::sync::Mutex::new(Some(ingestor.commands.clone())));
+
+            // Broadcast Studio: shared hub, chat readers and uploaded assets.
+            let broadcast_hub = BroadcastHub::new();
+            let chat = ChatManager::new(broadcast_hub.clone());
+            let broadcast_assets_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::env::temp_dir())
+                .join("broadcast_assets");
+            if let Err(error) = AssetStore::new(broadcast_assets_dir.clone()).ensure() {
+                tracing::warn!(error = %error, "Could not create broadcast assets directory");
+            }
+            // Persist (or load) the admin token immediately so the frontend can
+            // show stable overlay URLs even before the server starts.
+            if let Err(error) = broadcast_store::ensure_admin_token(&db_pool) {
+                tracing::warn!(error = %error, "Could not ensure broadcast admin token");
+            }
 
             let session_manager = Arc::new(RwLock::new(SessionManager::new(
                 settings.kickoff_goal_threshold_seconds,
@@ -631,10 +694,32 @@ pub fn run() {
                 session_tally,
                 overlay_server: Arc::new(tokio::sync::Mutex::new(None)),
                 overlay_handle: Arc::new(std::sync::Mutex::new(None)),
+                broadcast_hub: broadcast_hub.clone(),
+                chat: chat.clone(),
+                broadcast_assets_dir: broadcast_assets_dir.clone(),
+                game_commands: Arc::clone(&game_commands),
                 rlstats_scraper: Some(core::mmr::webview::RlstatsScraper::new(
                     app.handle().clone(),
                 )),
             });
+
+            // Operator actions (Tauri commands, dock, Stream Deck) are handled
+            // by a single listener that also owns their persistence.
+            core::broadcast::actions::spawn_action_listener(
+                broadcast_hub.clone(),
+                db_pool.clone(),
+                game_commands,
+            );
+
+            // Chat readers start automatically when the user left them on.
+            if settings.chat_enabled {
+                if !settings.chat_twitch_channel.trim().is_empty() {
+                    chat.start_twitch(&settings.chat_twitch_channel);
+                }
+                if !settings.chat_kick_channel.trim().is_empty() {
+                    chat.start_kick(&settings.chat_kick_channel);
+                }
+            }
 
             // Restore the OBS overlay server when the user left it running.
             // It used to require a manual start on every launch, so streamers
@@ -643,9 +728,25 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 let port = settings.overlay_server_port;
                 tauri::async_runtime::spawn(async move {
-                    let mut server = OverlayServer::new(port);
                     let state = app_handle.state::<AppState>();
+                    let settings = get_settings(&state.db_pool).unwrap_or_default();
+                    let _ = broadcast_store::ensure_admin_token(&state.db_pool);
+                    let tokens: Vec<AuthToken> = broadcast_store::list_tokens(&state.db_pool)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|token| AuthToken {
+                            token: token.token,
+                            role: token.role,
+                        })
+                        .collect();
+                    let mut server =
+                        OverlayServer::with_hub(port, state.broadcast_hub.clone());
                     server.set_db_pool(state.db_pool.clone());
+                    server.set_tokens(tokens);
+                    server.set_bind_lan(settings.overlay_bind_lan);
+                    server.set_delay_seconds(settings.overlay_delay_seconds as u64);
+                    server.set_active_state(&settings.broadcast_active_state);
+                    server.set_assets_dir(state.broadcast_assets_dir.clone());
                     match server.start().await {
                         Ok(()) => {
                             *state.overlay_server.lock().await = Some(server);

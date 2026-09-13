@@ -1,58 +1,56 @@
 //! OBS overlay streaming server.
 //!
-//! Provides an HTTP server with WebSocket support that broadcasts
-//! live Rocket League match data to overlay clients (OBS browser sources).
+//! Provides an HTTP server with WebSocket support that broadcasts live
+//! Rocket League match data, chat and broadcast-state events to overlay
+//! clients (OBS browser sources), the Control Room dock and third-party tools.
 //!
 //! Architecture:
-//! - Axum HTTP server bound to 127.0.0.1 on a configurable port
+//! - Axum HTTP server bound to 127.0.0.1 (or 0.0.0.0 in LAN mode)
 //! - WebSocket endpoint at `/ws` for real-time event streaming
 //! - Static overlay HTML files served via `rust-embed` at `/overlays/{*path}`
-//! - `tokio::sync::broadcast` channel for event fan-out to all connected clients
+//! - Uploaded assets served at `/assets/{*path}` from the app data directory
+//! - A [`BroadcastHub`](crate::core::broadcast::BroadcastHub) owns the
+//!   fan-out channel so chat, tournament state and the game loop all feed the
+//!   same stream
 //! - `tokio::sync::watch` for graceful shutdown signaling
 //!
 //! # Wire contract
 //!
 //! Every message is a JSON object with a `type` and an optional `data`
-//! payload. The canonical full-state event is `state` (camelCase payload);
-//! the SDK also accepts the legacy `snapshot` alias so overlays written
-//! against the old server keep working:
-//!
-//! ```json
-//! { "type": "state", "data": { "scoreBlue": 2, "timeRemaining": 143, ... } }
-//! ```
+//! payload, wrapped in a v2 envelope (`v`, `seq`, `ts`) that legacy clients
+//! ignore. The canonical full-state event is `state` (camelCase payload).
 //!
 //! # Security
 //!
-//! The server is loopback-only, but a malicious page could still open a
-//! WebSocket to `127.0.0.1`. Browsers always send an `Origin` header on
-//! WebSocket handshakes, so:
+//! Browser pages can open a WebSocket to `127.0.0.1`, so:
 //! - requests from one of our own overlay origins are accepted;
-//! - browser requests from any other origin are rejected;
-//! - non-browser clients (no `Origin`) are accepted, and
-//! - a per-run bearer token (`?token=...`) is accepted from any origin and
-//!   is required for `file://` overlays, whose origin is sent as `null`.
-//!
-//! Responses served to browser sources carry a strict CSP plus `nosniff`
-//! and `frame-ancestors 'none'`.
+//! - browser requests from any other origin need a valid token;
+//! - non-browser clients (no `Origin`) are trusted as local;
+//! - tokens are role-scoped (`admin`, `referee`, `viewer`) and persisted, so
+//!   OBS URLs do not break across restarts.
+
+pub mod assets;
 
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Query, State,
+        Json, Path, Query, State,
     },
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, watch, RwLock};
 use tracing::{error, info, warn};
 
+use crate::core::broadcast::packs::{builtin_packs, default_layout_for_state, font_options};
+use crate::core::broadcast::{store, ActionRequest, BroadcastHub};
 use crate::core::models::{LiveMatchState, LivePlayer};
+use crate::core::overlay::assets::AssetStore;
 use crate::core::storage::{self, DbPool};
 
 // ---------------------------------------------------------------------------
@@ -72,8 +70,6 @@ struct OverlayAssets;
 // ---------------------------------------------------------------------------
 
 /// Read-only status snapshot of the overlay server.
-///
-/// Returned by Tauri commands so the frontend can display server state.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OverlayServerStatus {
@@ -83,9 +79,22 @@ pub struct OverlayServerStatus {
     pub port: u16,
     /// Number of WebSocket clients currently connected.
     pub connected_clients: usize,
-    /// Bearer token for custom (`file://`) overlays. Empty when stopped.
+    /// Persistent admin token used to build overlay URLs.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub token: String,
+    /// Whether the server listens on all interfaces (LAN tournament mode).
+    pub bind_lan: bool,
+    /// Broadcast delay applied to the overlay feed, in seconds.
+    pub delay_seconds: u64,
+    /// Currently active broadcast state (`waiting`, `live`, ...).
+    pub active_state: String,
+}
+
+/// A role-scoped access token.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AuthToken {
+    pub token: String,
+    pub role: String,
 }
 
 /// Canonical overlay payload. Mirrors [`LiveMatchState`] but serializes to
@@ -135,16 +144,6 @@ impl<'a> From<&'a LiveMatchState> for OverlayState<'a> {
 // ---------------------------------------------------------------------------
 
 /// Manages the lifecycle of the overlay HTTP/WebSocket server.
-///
-/// # Example
-///
-/// ```ignore
-/// let mut server = OverlayServer::new(9528);
-/// server.start().await?;
-/// server.broadcast_state(&live_match_state);
-/// // ... later
-/// server.stop();
-/// ```
 pub struct OverlayServer {
     /// TCP port the server binds to.
     port: u16,
@@ -153,55 +152,82 @@ pub struct OverlayServer {
     /// started or has already been stopped.
     shutdown_tx: Option<watch::Sender<bool>>,
 
-    /// Broadcast channel for pushing events to all connected WebSocket
-    /// clients simultaneously.
-    event_tx: broadcast::Sender<String>,
+    /// Shared event fan-out (also used by chat and the Control Room).
+    hub: BroadcastHub,
 
-    /// Atomically-tracked connected client count (incremented on connect,
-    /// decremented on disconnect).
-    client_count: Arc<AtomicUsize>,
+    /// Role-scoped tokens accepted by protected endpoints.
+    tokens: Arc<RwLock<Vec<AuthToken>>>,
 
-    /// Cached latest match state as JSON (updated by broadcast_state).
-    latest_state: Arc<RwLock<Option<String>>>,
+    /// Uploaded assets directory. `None` disables `/assets`.
+    assets_dir: Option<std::path::PathBuf>,
 
-    /// Per-run bearer token accepted by `/ws` and `/api/state`. Required for
-    /// overlays loaded from `file://` (their browser origin is `null`).
-    token: Arc<String>,
+    /// Whether to bind on all interfaces instead of loopback only.
+    bind_lan: bool,
+
+    /// Active broadcast state, published to overlays on change.
+    active_state: Arc<RwLock<String>>,
 
     /// Cached status that mirrors the shutdown signal + port.
     running: bool,
 
-    /// Profile database handle for the read-only local API. `None` in tests.
+    /// Profile database handle for the local API. `None` in tests.
     db_pool: Option<Arc<DbPool>>,
 }
 
 impl OverlayServer {
-    /// Creates a new overlay server bound to `port`.
-    ///
-    /// The server is **not** started automatically; call [`start`](Self::start).
+    /// Creates a new overlay server bound to `port` with a private hub.
     pub fn new(port: u16) -> Self {
-        let (event_tx, _) = broadcast::channel::<String>(256);
+        Self::with_hub(port, BroadcastHub::new())
+    }
+
+    /// Creates a server that shares the application-wide broadcast hub.
+    pub fn with_hub(port: u16, hub: BroadcastHub) -> Self {
         Self {
             port,
             shutdown_tx: None,
-            event_tx,
-            client_count: Arc::new(AtomicUsize::new(0)),
-            latest_state: Arc::new(RwLock::new(None)),
-            token: Arc::new(uuid::Uuid::new_v4().simple().to_string()),
+            hub,
+            tokens: Arc::new(RwLock::new(Vec::new())),
+            assets_dir: None,
+            bind_lan: false,
+            active_state: Arc::new(RwLock::new("waiting".to_string())),
             running: false,
             db_pool: None,
         }
     }
 
-    /// Attaches the profile database used by the read-only `/api/v1` routes.
+    /// Attaches the profile database used by the local API routes.
     pub fn set_db_pool(&mut self, pool: Arc<DbPool>) {
         self.db_pool = Some(pool);
     }
 
-    /// Starts the HTTP server on `127.0.0.1:{port}`.
-    ///
-    /// Spawns a background task that runs until [`stop`](Self::stop) is called
-    /// or the shutdown signal is triggered.
+    /// Replaces the accepted tokens (persisted tokens live in the database).
+    pub fn set_tokens(&mut self, tokens: Vec<AuthToken>) {
+        if let Ok(mut guard) = self.tokens.try_write() {
+            *guard = tokens;
+        }
+    }
+
+    /// Enables `/assets` serving from `dir`.
+    pub fn set_assets_dir(&mut self, dir: std::path::PathBuf) {
+        self.assets_dir = Some(dir);
+    }
+
+    pub fn set_bind_lan(&mut self, bind_lan: bool) {
+        self.bind_lan = bind_lan;
+    }
+
+    pub fn set_active_state(&self, state: &str) {
+        if let Ok(mut guard) = self.active_state.try_write() {
+            *guard = state.to_string();
+        }
+    }
+
+    /// The shared hub, so other subsystems can publish on the same stream.
+    pub fn hub(&self) -> &BroadcastHub {
+        &self.hub
+    }
+
+    /// Starts the HTTP server.
     ///
     /// # Errors
     ///
@@ -215,28 +241,39 @@ impl OverlayServer {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         self.shutdown_tx = Some(shutdown_tx);
 
-        let event_tx = self.event_tx.clone();
-        let client_count = Arc::clone(&self.client_count);
         let port = self.port;
-        let addr = format!("127.0.0.1:{}", port);
+        let host = if self.bind_lan {
+            "0.0.0.0"
+        } else {
+            "127.0.0.1"
+        };
+        let addr = format!("{host}:{port}");
 
-        // Build the router.
+        let assets = self.assets_dir.clone().map(AssetStore::new);
+
         let shared_state = Arc::new(AppContext {
-            event_tx: event_tx.clone(),
-            client_count: client_count.clone(),
-            latest_state: self.latest_state_handle(),
-            token: Arc::clone(&self.token),
+            hub: self.hub.clone(),
             port,
+            tokens: Arc::clone(&self.tokens),
+            assets,
             db_pool: self.db_pool.clone(),
+            active_state: Arc::clone(&self.active_state),
         });
 
         let app = Router::new()
             .route("/ws", get(ws_handler))
             .route("/health", get(health_handler))
+            .route("/dock", get(serve_dock))
             .route("/api/state", get(get_state_handler))
             .route("/api/v1/matches", get(v1_matches_handler))
             .route("/api/v1/stats", get(v1_stats_handler))
+            .route("/api/v2/packs", get(v2_packs_handler))
+            .route("/api/v2/scene", get(v2_scene_handler))
+            .route("/api/v2/series", get(v2_series_handler))
+            .route("/api/v2/teams", get(v2_teams_handler))
+            .route("/api/v2/action", post(v2_action_handler))
             .route("/sdk/rl-overlay.js", get(serve_sdk))
+            .route("/assets/{*path}", get(serve_asset))
             .route("/overlays/{*path}", get(serve_overlay))
             .with_state(shared_state);
 
@@ -245,12 +282,28 @@ impl OverlayServer {
             .map_err(|e| format!("Failed to bind to {}: {}", addr, e))?;
 
         self.running = true;
+        info!(%addr, lan = self.bind_lan, "Overlay server started");
 
-        // Log before spawning so the caller gets immediate feedback.
-        info!(%addr, "Overlay server started");
+        // Delay flusher: re-emits events queued by the broadcast delay.
+        {
+            let hub = self.hub.clone();
+            let mut shutdown_rx = shutdown_rx.clone();
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(tokio::time::Duration::from_millis(200));
+                tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    tokio::select! {
+                        _ = tick.tick() => {
+                            hub.flush_due();
+                        }
+                        _ = shutdown_rx.changed() => break,
+                    }
+                }
+            });
+        }
 
-        // Spawn the server on its own task so `start` returns immediately.
         let spawn_addr = addr.clone();
+        let hub = self.hub.clone();
         tokio::spawn(async move {
             info!(%spawn_addr, "Overlay server listening");
 
@@ -258,12 +311,10 @@ impl OverlayServer {
                 .with_graceful_shutdown(async move {
                     let mut rx = shutdown_rx;
                     loop {
-                        // Check current value first, then wait for change.
                         if *rx.borrow() {
                             break;
                         }
                         if rx.changed().await.is_err() {
-                            // Sender dropped — treat as shutdown.
                             break;
                         }
                     }
@@ -273,15 +324,13 @@ impl OverlayServer {
                 error!(%spawn_addr, error = %e, "Overlay server error");
             }
 
+            hub.publish_typed("server_stopped", None);
             info!(%spawn_addr, "Overlay server shut down");
         });
         Ok(())
     }
 
     /// Signals the running server to shut down gracefully.
-    ///
-    /// Idempotent — calling this multiple times or when the server is not
-    /// running is a no-op.
     pub fn stop(&mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
             let _ = tx.send(true);
@@ -290,51 +339,24 @@ impl OverlayServer {
         info!("Overlay server stop signal sent");
     }
 
-    /// Broadcasts an arbitrary JSON payload to all connected WebSocket
-    /// clients.
-    ///
-    /// The event is serialized to a string and pushed onto the internal
-    /// broadcast channel. Lagged clients see a warning but stay connected.
+    /// Broadcasts an arbitrary JSON payload through the shared hub.
     pub fn broadcast_event(&self, event: serde_json::Value) {
-        // Cache full-state events so late joiners and `GET /api/state`
-        // consumers get the current match immediately.
-        if event.get("type").and_then(|v| v.as_str()) == Some("state") {
-            if let Ok(json) = serde_json::to_string(&event["data"]) {
-                if let Ok(mut guard) = self.latest_state.try_write() {
-                    *guard = Some(json);
-                }
-            }
-        }
-
-        match serde_json::to_string(&event) {
-            Ok(msg) => {
-                // `send` returns `Err` only when there are no receivers,
-                // which is harmless.
-                let _ = self.event_tx.send(msg);
-            }
-            Err(e) => {
-                warn!(error = %e, "Failed to serialize overlay broadcast event");
-            }
-        }
+        self.hub.publish(event);
     }
 
     /// Convenience wrapper that broadcasts a full `LiveMatchState` snapshot.
-    ///
-    /// The payload sent on the wire is `{ "type": "state", "data": <camelCase state> }`.
     pub fn broadcast_state(&self, state: &LiveMatchState) {
-        let event = serde_json::json!({
+        self.hub.publish(serde_json::json!({
             "type": "state",
             "data": OverlayState::from(state)
-        });
-        self.broadcast_event(event);
+        }));
     }
 
     pub fn broadcast_goal(&self, scorer_name: &str, team_num: i32) {
-        let event = serde_json::json!({
+        self.hub.publish(serde_json::json!({
             "type": "goal",
             "data": { "scorerName": scorer_name, "teamNum": team_num }
-        });
-        self.broadcast_event(event);
+        }));
     }
 
     pub fn broadcast_statfeed(
@@ -356,81 +378,85 @@ impl OverlayServer {
                 }))
             }
         });
-        self.broadcast_event(event);
+        self.hub.publish(event);
     }
 
-    /// Broadcasts a ball touch. `team_num` is the team that made the touch
-    /// (`-1` when the stream did not report one).
     pub fn broadcast_ball_hit(&self, team_num: i32) {
-        let event = serde_json::json!({
+        self.hub.publish(serde_json::json!({
             "type": "ball_hit",
             "data": { "teamNum": team_num }
-        });
-        self.broadcast_event(event);
+        }));
     }
 
     pub fn broadcast_clock(&self, time: i32) {
-        let event = serde_json::json!({
+        self.hub.publish(serde_json::json!({
             "type": "clock",
             "data": { "time": time }
-        });
-        self.broadcast_event(event);
+        }));
     }
 
     pub fn broadcast_match_started(&self) {
-        let event = serde_json::json!({ "type": "match_started" });
-        self.broadcast_event(event);
+        self.hub.publish_typed("match_started", None);
     }
 
     pub fn broadcast_match_ended(&self, winner_team_num: Option<i32>) {
-        let event = serde_json::json!({
+        self.hub.publish(serde_json::json!({
             "type": "match_ended",
             "data": { "winnerTeamNum": winner_team_num }
-        });
-        self.broadcast_event(event);
+        }));
     }
 
     pub fn broadcast_replay_start(&self) {
-        let event = serde_json::json!({ "type": "replay_start" });
-        self.broadcast_event(event);
+        self.hub.publish_typed("replay_start", None);
     }
 
     pub fn broadcast_replay_end(&self) {
-        let event = serde_json::json!({ "type": "replay_end" });
-        self.broadcast_event(event);
+        self.hub.publish_typed("replay_end", None);
     }
 
     pub fn broadcast_match_paused(&self) {
-        let event = serde_json::json!({ "type": "match_paused" });
-        self.broadcast_event(event);
+        self.hub.publish_typed("match_paused", None);
     }
 
     pub fn broadcast_match_unpaused(&self) {
-        let event = serde_json::json!({ "type": "match_unpaused" });
-        self.broadcast_event(event);
+        self.hub.publish_typed("match_unpaused", None);
     }
 
     /// Signals a kickoff countdown so overlays can play their intro.
     pub fn broadcast_countdown_begin(&self) {
-        let event = serde_json::json!({ "type": "countdown_begin" });
-        self.broadcast_event(event);
+        self.hub.publish_typed("countdown_begin", None);
     }
 
     /// Returns a clone of the cached state handle for REST API access.
-    pub fn latest_state_handle(&self) -> Arc<RwLock<Option<String>>> {
-        Arc::clone(&self.latest_state)
+    pub fn latest_state_handle(&self) -> &BroadcastHub {
+        &self.hub
     }
 
     pub fn status(&self) -> OverlayServerStatus {
+        let token = self
+            .tokens
+            .try_read()
+            .ok()
+            .and_then(|tokens| {
+                tokens
+                    .iter()
+                    .find(|token| token.role == "admin")
+                    .map(|token| token.token.clone())
+            })
+            .unwrap_or_default();
+        let active_state = self
+            .active_state
+            .try_read()
+            .map(|state| state.clone())
+            .unwrap_or_else(|_| "waiting".to_string());
         OverlayServerStatus {
             running: self.running,
             port: self.port,
-            connected_clients: self.client_count.load(Ordering::SeqCst),
-            token: if self.running {
-                (*self.token).clone()
-            } else {
-                String::new()
-            },
+            connected_clients: self.hub.client_count(),
+            token: if self.running { token } else { String::new() },
+            bind_lan: self.bind_lan,
+            delay_seconds: self.hub.delay_seconds(),
+            active_state,
         }
     }
 
@@ -438,8 +464,26 @@ impl OverlayServer {
         self.port
     }
 
-    pub fn token(&self) -> &str {
-        &self.token
+    /// The first admin token, used by the frontend to build overlay URLs.
+    pub fn token(&self) -> String {
+        self.tokens
+            .try_read()
+            .ok()
+            .and_then(|tokens| {
+                tokens
+                    .iter()
+                    .find(|token| token.role == "admin")
+                    .map(|token| token.token.clone())
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn delay_seconds(&self) -> u64 {
+        self.hub.delay_seconds()
+    }
+
+    pub fn set_delay_seconds(&self, seconds: u64) {
+        self.hub.set_delay_seconds(seconds);
     }
 }
 
@@ -449,18 +493,12 @@ impl OverlayServer {
 
 /// Shared application state injected into every Axum handler.
 struct AppContext {
-    /// Broadcast sender cloned from the `OverlayServer`.
-    event_tx: broadcast::Sender<String>,
-    /// Shared atomic counter for connected WebSocket clients.
-    client_count: Arc<AtomicUsize>,
-    /// Cached latest match state for REST API consumers.
-    latest_state: Arc<RwLock<Option<String>>>,
-    /// Bearer token accepted by protected endpoints.
-    token: Arc<String>,
-    /// Bound port, used to build the same-origin allowlist.
+    hub: BroadcastHub,
     port: u16,
-    /// Profile database for the read-only API. `None` in tests.
+    tokens: Arc<RwLock<Vec<AuthToken>>>,
+    assets: Option<AssetStore>,
     db_pool: Option<Arc<DbPool>>,
+    active_state: Arc<RwLock<String>>,
 }
 
 /// Optional `?token=` query parameter.
@@ -480,25 +518,54 @@ fn is_self_origin(origin: &str, port: u16) -> bool {
     )
 }
 
-/// Authorizes a request against the token + origin allowlist.
-///
-/// - A valid `?token=` always authorizes (needed for `file://` overlays).
-/// - A browser `Origin` header must be one of our own origins.
-/// - Requests without an `Origin` header are non-browser clients (OBS API
-///   sources, curl, the SDK from a local process) and are allowed.
-/// - `Origin: null` (sandboxed iframes, data: URLs, `file://`) is rejected
-///   unless the token matches.
-fn authorize(headers: &HeaderMap, query: &AuthQuery, ctx: &AppContext) -> bool {
-    if let Some(token) = &query.token {
-        return token == &*ctx.token;
+/// Resolves the calling role: `Some("local")` for own-origin/no-origin
+/// requests, the token role for valid tokens, `None` when unauthorized.
+fn authorize(headers: &HeaderMap, query: &AuthQuery, ctx: &AppContext) -> Option<String> {
+    let header_token = headers
+        .get("x-rl-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let token = query.token.clone().or(header_token);
+
+    if let Some(token) = token {
+        if let Ok(tokens) = ctx.tokens.try_read() {
+            if let Some(found) = tokens.iter().find(|candidate| candidate.token == token) {
+                return Some(found.role.clone());
+            }
+        }
+        return None;
     }
+
     match headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
-        Some(origin) => is_self_origin(origin, ctx.port),
-        None => true,
+        Some(origin) => is_self_origin(origin, ctx.port).then(|| "local".to_string()),
+        None => Some("local".to_string()),
+    }
+}
+
+/// Whether a role may dispatch an operator action.
+fn role_can_act(role: &str, action: &str) -> bool {
+    match role {
+        "local" | "admin" => true,
+        "referee" => matches!(
+            action,
+            "set_state"
+                | "series_score"
+                | "series_game"
+                | "set_delay"
+                | "take_graphic"
+                | "out_graphic"
+                | "timer"
+                | "game_command"
+        ),
+        _ => false,
     }
 }
 
 /// Attaches hardening headers to an HTML/JS response.
+///
+/// `frame-ancestors` allows our own pages only (the Tauri app previews
+/// overlays in an iframe), which replaces the old blanket
+/// `X-Frame-Options: DENY` that blocked the in-app preview.
 fn with_security_headers(mut response: Response, content_type: &str) -> Response {
     let headers = response.headers_mut();
     headers.insert(
@@ -514,26 +581,22 @@ fn with_security_headers(mut response: Response, content_type: &str) -> Response
         HeaderValue::from_static("no-store, max-age=0"),
     );
     if content_type.starts_with("text/html") {
-        // Overlays are self-contained and inline their scripts/styles, so
-        // inline execution is allowed; everything remote is not. The
-        // `ws://127.0.0.1:*` source keeps WebSocket connections working
-        // across ports even when a custom port is configured.
         headers.insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
                 "default-src 'self'; \
                  script-src 'self' 'unsafe-inline'; \
                  style-src 'self' 'unsafe-inline'; \
-                 img-src 'self' data:; \
-                 font-src 'self'; \
+                 img-src 'self' data: https://static-cdn.jtvnw.net https://files.kick.com; \
+                 font-src 'self' data:; \
                  connect-src 'self' ws://127.0.0.1:* ws://localhost:*; \
                  media-src 'self'; \
                  object-src 'none'; \
                  base-uri 'none'; \
-                 frame-ancestors 'none'",
+                 frame-ancestors 'self' http://tauri.localhost https://tauri.localhost \
+                 tauri://localhost http://localhost:1420 http://127.0.0.1:1420",
             ),
         );
-        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     response
 }
@@ -549,59 +612,53 @@ async fn ws_handler(
     headers: HeaderMap,
     State(state): State<Arc<AppContext>>,
 ) -> impl IntoResponse {
-    if !authorize(&headers, &query, &state) {
+    let Some(role) = authorize(&headers, &query, &state) else {
         warn!("Rejected overlay WebSocket connection (origin/token mismatch)");
         return StatusCode::FORBIDDEN.into_response();
-    }
-    ws.on_upgrade(move |socket| handle_ws(socket, state))
+    };
+    ws.on_upgrade(move |socket| handle_ws(socket, state, role))
         .into_response()
 }
 
 /// Manages the lifecycle of a single WebSocket client.
-///
-/// On connect the client receives a `{"type":"connected"}` handshake message
-/// followed by the cached `state` (if any), then all subsequent broadcast
-/// events are streamed to it. The connection stays open until the client
-/// disconnects or the broadcast channel closes.
-async fn handle_ws(mut socket: WebSocket, state: Arc<AppContext>) {
-    state.client_count.fetch_add(1, Ordering::SeqCst);
+async fn handle_ws(mut socket: WebSocket, state: Arc<AppContext>, role: String) {
+    state.hub.client_connected();
     info!(
-        total = state.client_count.load(Ordering::SeqCst),
+        total = state.hub.client_count(),
+        %role,
         "WebSocket client connected"
     );
 
-    // Handshake message so the client knows the connection is live.
-    let connected = serde_json::json!({"type": "connected"});
+    let connected = serde_json::json!({
+        "type": "connected",
+        "data": { "role": role, "delay": state.hub.delay_seconds() }
+    });
     if let Ok(msg) = serde_json::to_string(&connected) {
         if socket.send(Message::Text(msg.into())).await.is_err() {
-            state.client_count.fetch_sub(1, Ordering::SeqCst);
+            state.hub.client_disconnected();
             return;
         }
     }
 
     // Late joiners get the current match immediately instead of waiting for
     // the next snapshot (OBS scenes re-load browser sources on every switch).
-    {
-        let cached = state.latest_state.read().await;
-        if let Some(data) = &*cached {
-            let event = serde_json::json!({
-                "type": "state",
-                "data": serde_json::from_str::<serde_json::Value>(data).unwrap_or_default()
-            });
-            if let Ok(msg) = serde_json::to_string(&event) {
-                if socket.send(Message::Text(msg.into())).await.is_err() {
-                    state.client_count.fetch_sub(1, Ordering::SeqCst);
-                    return;
-                }
+    if let Some(data) = state.hub.cached_state() {
+        let event = serde_json::json!({
+            "type": "state",
+            "data": serde_json::from_str::<serde_json::Value>(&data).unwrap_or_default()
+        });
+        if let Ok(msg) = serde_json::to_string(&event) {
+            if socket.send(Message::Text(msg.into())).await.is_err() {
+                state.hub.client_disconnected();
+                return;
             }
         }
     }
 
-    let mut rx = state.event_tx.subscribe();
+    let mut rx = state.hub.subscribe();
 
     loop {
         tokio::select! {
-            // Broadcast relay — forward every event from the channel.
             result = rx.recv() => {
                 match result {
                     Ok(msg) => {
@@ -616,37 +673,50 @@ async fn handle_ws(mut socket: WebSocket, state: Arc<AppContext>) {
                 }
             }
 
-            // Client frames — handle pings and detect disconnects.
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(Message::Ping(data))) if socket.send(Message::Pong(data.clone())).await.is_err() => {
                         break;
                     }
+                    Some(Ok(Message::Text(text))) => {
+                        // Overlay pages and the dock can dispatch operator
+                        // actions over the socket they already have open.
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if value.get("type").and_then(|v| v.as_str()) == Some("action") {
+                                let action = ActionRequest {
+                                    action: value
+                                        .get("action")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default()
+                                        .to_string(),
+                                    data: value.get("data").cloned().unwrap_or_default(),
+                                };
+                                if role_can_act(&role, &action.action) {
+                                    state.hub.dispatch(action);
+                                }
+                            }
+                        }
+                    }
                     Some(Ok(Message::Close(_))) | None => break,
-                    // Ignore other message types (text, binary, pong).
                     _ => {}
                 }
             }
         }
     }
 
-    state.client_count.fetch_sub(1, Ordering::SeqCst);
+    state.hub.client_disconnected();
     info!(
-        total = state.client_count.load(Ordering::SeqCst),
+        total = state.hub.client_count(),
         "WebSocket client disconnected"
     );
 }
 
 /// Serves embedded overlay files from `overlays/` at `/overlays/{*path}`.
-///
-/// File extensions are inferred from the path; if a file is not found, we
-/// try appending `.html` before returning a 404.
 async fn serve_overlay(
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> impl IntoResponse {
     let path = path.trim_start_matches('/');
 
-    // Direct match first.
     if let Some(content) = OverlayAssets::get(path) {
         let mime = mime_guess::from_path(path).first_or_octet_stream();
         let response = (
@@ -657,7 +727,6 @@ async fn serve_overlay(
         return with_security_headers(response, mime.as_ref());
     }
 
-    // Fallback: try appending .html for clean URLs.
     let html_path = format!("{}.html", path);
     if let Some(content) = OverlayAssets::get(&html_path) {
         let response =
@@ -668,17 +737,48 @@ async fn serve_overlay(
     (StatusCode::NOT_FOUND, "Overlay not found").into_response()
 }
 
+/// Serves the operator dock (`/dock`) — the same Control Room in a compact
+/// page that fits an OBS Custom Browser Dock, a phone or a second monitor.
+async fn serve_dock() -> impl IntoResponse {
+    match OverlayAssets::get("dock.html") {
+        Some(content) => {
+            let response =
+                ([(header::CONTENT_TYPE, "text/html")], content.data.to_vec()).into_response();
+            with_security_headers(response, "text/html")
+        }
+        None => (StatusCode::NOT_FOUND, "Dock not found").into_response(),
+    }
+}
+
+/// Serves uploaded assets (logos, fonts, images) from the app data directory.
+async fn serve_asset(Path(path): Path<String>, State(state): State<Arc<AppContext>>) -> Response {
+    let Some(store) = &state.assets else {
+        return (StatusCode::NOT_FOUND, "Assets disabled").into_response();
+    };
+    match store.read(&path) {
+        Some((bytes, mime)) => (
+            [
+                (header::CONTENT_TYPE, mime.as_str()),
+                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, "Asset not found").into_response(),
+    }
+}
+
 /// Returns the latest cached match state as JSON at `GET /api/state`.
 async fn get_state_handler(
     Query(query): Query<AuthQuery>,
     headers: HeaderMap,
     State(state): State<Arc<AppContext>>,
 ) -> impl IntoResponse {
-    if !authorize(&headers, &query, &state) {
+    if authorize(&headers, &query, &state).is_none() {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let guard = state.latest_state.read().await;
-    let body = guard.clone().unwrap_or_else(|| "{}".to_string());
+    let body = state.hub.cached_state().unwrap_or_else(|| "{}".to_string());
     (
         StatusCode::OK,
         [
@@ -695,8 +795,9 @@ async fn health_handler(State(state): State<Arc<AppContext>>) -> impl IntoRespon
     let body = serde_json::json!({
         "status": "ok",
         "port": state.port,
-        "clients": state.client_count.load(Ordering::SeqCst),
+        "clients": state.hub.client_count(),
         "version": env!("CARGO_PKG_VERSION"),
+        "delay": state.hub.delay_seconds(),
     });
     (
         StatusCode::OK,
@@ -721,6 +822,12 @@ struct ApiQuery {
     result: Option<String>,
     search: Option<String>,
     days: Option<i32>,
+    /// `/api/v2/scene`: explicit scene id.
+    scene: Option<String>,
+    /// `/api/v2/scene`: state to resolve when no scene id is given.
+    state: Option<String>,
+    /// `/api/v2/scene`: design-pack override.
+    pack: Option<String>,
 }
 
 fn json_response(status: StatusCode, body: serde_json::Value) -> Response {
@@ -735,7 +842,7 @@ fn json_response(status: StatusCode, body: serde_json::Value) -> Response {
         .into_response()
 }
 
-fn authorize_api(headers: &HeaderMap, query: &ApiQuery, state: &AppContext) -> bool {
+fn authorize_api(headers: &HeaderMap, query: &ApiQuery, state: &AppContext) -> Option<String> {
     authorize(
         headers,
         &AuthQuery {
@@ -746,13 +853,13 @@ fn authorize_api(headers: &HeaderMap, query: &ApiQuery, state: &AppContext) -> b
 }
 
 /// `GET /api/v1/matches` — recent matches as JSON for scripts, bots and
-/// Stream Deck integrations. Requires the per-run `?token=`.
+/// Stream Deck integrations.
 async fn v1_matches_handler(
     Query(query): Query<ApiQuery>,
     headers: HeaderMap,
     State(state): State<Arc<AppContext>>,
 ) -> Response {
-    if !authorize_api(&headers, &query, &state) {
+    if authorize_api(&headers, &query, &state).is_none() {
         return json_response(
             StatusCode::FORBIDDEN,
             serde_json::json!({ "error": "forbidden" }),
@@ -809,14 +916,13 @@ async fn v1_matches_handler(
     }
 }
 
-/// `GET /api/v1/stats?days=N` — aggregated stats for the local player
-/// (career totals/records when `days=0`). Requires `?token=`.
+/// `GET /api/v1/stats?days=N` — aggregated stats for the local player.
 async fn v1_stats_handler(
     Query(query): Query<ApiQuery>,
     headers: HeaderMap,
     State(state): State<Arc<AppContext>>,
 ) -> Response {
-    if !authorize_api(&headers, &query, &state) {
+    if authorize_api(&headers, &query, &state).is_none() {
         return json_response(
             StatusCode::FORBIDDEN,
             serde_json::json!({ "error": "forbidden" }),
@@ -882,6 +988,273 @@ async fn v1_stats_handler(
     }
 }
 
+/// `GET /api/v2/packs` — built-in and custom design packs plus fonts.
+async fn v2_packs_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if authorize_api(&headers, &query, &state).is_none() {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+
+    let mut packs = builtin_packs();
+    if let Some(pool) = state.db_pool.clone() {
+        let user_packs =
+            tauri::async_runtime::spawn_blocking(move || store::list_user_packs(&pool))
+                .await
+                .ok()
+                .and_then(Result::ok)
+                .unwrap_or_default();
+        for pack in user_packs {
+            packs.push(serde_json::json!({
+                "id": pack.id,
+                "name": pack.name,
+                "baseId": pack.base_id,
+                "builtIn": false,
+                "description": "Pack personalizado",
+                "tokens": pack.tokens,
+            }));
+        }
+    }
+
+    json_response(
+        StatusCode::OK,
+        serde_json::json!({ "packs": packs, "fonts": font_options() }),
+    )
+}
+
+/// Builds the payload the overlay engine renders from.
+pub fn scene_payload(
+    pool: Option<&Arc<DbPool>>,
+    scene_id: Option<&str>,
+    state: &str,
+    pack_override: Option<&str>,
+) -> serde_json::Value {
+    let mut scene_value = serde_json::json!(null);
+    let mut pack_id = pack_override
+        .filter(|value| !value.is_empty())
+        .unwrap_or("prime-broadcast")
+        .to_string();
+    let mut layout = default_layout_for_state(state);
+
+    if let Some(pool) = pool {
+        if let Ok(Some(scene)) = scene_id
+            .filter(|value| !value.is_empty())
+            .map(|id| store::get_scene(pool, id))
+            .unwrap_or_else(|| store::get_scene_for_state(pool, state))
+        {
+            pack_id = pack_override
+                .filter(|value| !value.is_empty())
+                .unwrap_or(&scene.pack_id)
+                .to_string();
+            if scene.layout.as_object().is_some_and(|map| !map.is_empty()) {
+                layout = scene.layout.clone();
+            }
+            scene_value = serde_json::json!({
+                "id": scene.id,
+                "name": scene.name,
+                "state": scene.state,
+                "packId": pack_id,
+            });
+        }
+    }
+
+    // Resolve pack tokens: custom packs win over built-ins; unknown ids fall
+    // back to the default pack so overlays never render unstyled.
+    let tokens = pool
+        .and_then(|pool| store::get_user_pack(pool, &pack_id).ok().flatten())
+        .map(|pack| (pack.name, pack.tokens))
+        .or_else(|| {
+            builtin_packs()
+                .into_iter()
+                .find(|pack| pack["id"].as_str() == Some(pack_id.as_str()))
+                .map(|pack| {
+                    (
+                        pack["name"].as_str().unwrap_or(&pack_id).to_string(),
+                        pack["tokens"].clone(),
+                    )
+                })
+        })
+        .or_else(|| {
+            builtin_packs().into_iter().next().map(|pack| {
+                (
+                    pack["name"]
+                        .as_str()
+                        .unwrap_or("Prime Broadcast")
+                        .to_string(),
+                    pack["tokens"].clone(),
+                )
+            })
+        })
+        .unwrap_or_else(|| ("Prime Broadcast".to_string(), serde_json::json!({})));
+
+    let series = pool
+        .and_then(|pool| store::series_snapshot(pool, None).ok())
+        .unwrap_or_else(|| serde_json::json!({ "available": false }));
+    let teams = pool
+        .and_then(|pool| store::list_teams_with_logos(pool).ok())
+        .unwrap_or_default();
+    let custom_fonts: Vec<serde_json::Value> = pool
+        .and_then(|pool| store::list_assets(pool, Some("font")).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|asset| serde_json::json!({ "name": asset.name, "url": asset.url }))
+        .collect();
+
+    serde_json::json!({
+        "scene": scene_value,
+        "state": state,
+        "pack": { "id": pack_id, "name": tokens.0, "tokens": tokens.1 },
+        "layout": layout,
+        "series": series,
+        "teams": teams,
+        "fonts": font_options(),
+        "customFonts": custom_fonts,
+    })
+}
+
+/// `GET /api/v2/scene` — scene + pack + layout + series for the engine.
+async fn v2_scene_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if authorize_api(&headers, &query, &state).is_none() {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+
+    let default_state = state
+        .active_state
+        .try_read()
+        .map(|value| value.clone())
+        .unwrap_or_else(|_| "waiting".to_string());
+    let requested_state = query.state.clone().unwrap_or(default_state);
+    let scene_id = query.scene.clone();
+    let pack = query.pack.clone();
+    let pool = state.db_pool.clone();
+
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        scene_payload(
+            pool.as_ref(),
+            scene_id.as_deref(),
+            &requested_state,
+            pack.as_deref(),
+        )
+    });
+    match task.await {
+        Ok(value) => json_response(StatusCode::OK, value),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
+/// `GET /api/v2/series` — active series snapshot.
+async fn v2_series_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if authorize_api(&headers, &query, &state).is_none() {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+    let Some(pool) = state.db_pool.clone() else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            serde_json::json!({ "error": "database unavailable" }),
+        );
+    };
+    let task = tauri::async_runtime::spawn_blocking(move || store::series_snapshot(&pool, None));
+    match task.await {
+        Ok(Ok(value)) => json_response(StatusCode::OK, value),
+        Ok(Err(error)) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
+/// `GET /api/v2/teams` — team library with resolved logo URLs.
+async fn v2_teams_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if authorize_api(&headers, &query, &state).is_none() {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+    let Some(pool) = state.db_pool.clone() else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            serde_json::json!({ "error": "database unavailable" }),
+        );
+    };
+    let task = tauri::async_runtime::spawn_blocking(move || store::list_teams_with_logos(&pool));
+    match task.await {
+        Ok(Ok(teams)) => json_response(StatusCode::OK, serde_json::json!({ "teams": teams })),
+        Ok(Err(error)) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
+/// Payload for `POST /api/v2/action`.
+#[derive(Debug, Deserialize)]
+struct ActionBody {
+    action: String,
+    #[serde(default)]
+    data: serde_json::Value,
+}
+
+/// `POST /api/v2/action` — operator actions from the dock or Stream Deck.
+async fn v2_action_handler(
+    Query(query): Query<AuthQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+    Json(body): Json<ActionBody>,
+) -> Response {
+    let Some(role) = authorize(&headers, &query, &state) else {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    };
+    if !role_can_act(&role, &body.action) {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "role_not_allowed" }),
+        );
+    }
+    state.hub.dispatch(ActionRequest {
+        action: body.action,
+        data: body.data,
+    });
+    json_response(StatusCode::OK, serde_json::json!({ "ok": true }))
+}
+
 /// Serves the overlay SDK JavaScript file at `GET /sdk/rl-overlay.js`.
 async fn serve_sdk() -> impl IntoResponse {
     match OverlayAssets::get("rl-overlay-sdk.js") {
@@ -902,15 +1275,22 @@ mod tests {
     use super::*;
     use crate::core::models::LivePlayer;
 
-    fn context(port: u16, token: &str) -> AppContext {
-        let (event_tx, _) = broadcast::channel::<String>(16);
+    fn context(port: u16, tokens: &[(&str, &str)]) -> AppContext {
         AppContext {
-            event_tx,
-            client_count: Arc::new(AtomicUsize::new(0)),
-            latest_state: Arc::new(RwLock::new(None)),
-            token: Arc::new(token.to_string()),
+            hub: BroadcastHub::new(),
             port,
+            tokens: Arc::new(RwLock::new(
+                tokens
+                    .iter()
+                    .map(|(token, role)| AuthToken {
+                        token: token.to_string(),
+                        role: role.to_string(),
+                    })
+                    .collect(),
+            )),
+            assets: None,
             db_pool: None,
+            active_state: Arc::new(RwLock::new("waiting".to_string())),
         }
     }
 
@@ -934,18 +1314,24 @@ mod tests {
     }
 
     #[test]
-    fn token_is_generated_and_exposed_while_running() {
+    fn token_is_exposed_while_running_and_never_empty() {
         let mut server = OverlayServer::new(9528);
+        server.set_tokens(vec![AuthToken {
+            token: "admin-token".into(),
+            role: "admin".into(),
+        }]);
         server.running = true;
         let status = server.status();
-        assert!(!status.token.is_empty());
-        assert_eq!(status.token, server.token());
+        assert_eq!(status.token, "admin-token");
+        assert_eq!(server.token(), "admin-token");
+        assert_eq!(status.active_state, "waiting");
     }
 
     #[test]
     fn status_reports_connected_client_count() {
         let server = OverlayServer::new(0);
-        let _ = server.client_count.fetch_add(2, Ordering::SeqCst);
+        server.hub().client_connected();
+        server.hub().client_connected();
         assert_eq!(server.status().connected_clients, 2);
     }
 
@@ -966,49 +1352,66 @@ mod tests {
     }
 
     #[test]
-    fn authorize_allows_token_and_self_origin_and_bare_clients() {
-        let ctx = context(9528, "secret");
+    fn authorize_allows_token_self_origin_and_bare_clients() {
+        let ctx = context(9528, &[("secret", "admin"), ("ref", "referee")]);
         let token = AuthQuery {
             token: Some("secret".into()),
         };
-        assert!(authorize(&headers(Some("https://evil.com")), &token, &ctx));
+        assert_eq!(
+            authorize(&headers(Some("https://evil.com")), &token, &ctx).as_deref(),
+            Some("admin")
+        );
+
+        let referee = AuthQuery {
+            token: Some("ref".into()),
+        };
+        assert_eq!(
+            authorize(&headers(None), &referee, &ctx).as_deref(),
+            Some("referee")
+        );
 
         let none = AuthQuery::default();
-        assert!(authorize(
-            &headers(Some("http://127.0.0.1:9528")),
-            &none,
-            &ctx
-        ));
-        assert!(authorize(
-            &headers(Some("http://localhost:9528")),
-            &none,
-            &ctx
-        ));
-        assert!(authorize(&headers(None), &none, &ctx));
+        assert_eq!(
+            authorize(&headers(Some("http://127.0.0.1:9528")), &none, &ctx).as_deref(),
+            Some("local")
+        );
+        assert_eq!(
+            authorize(&headers(Some("http://localhost:9528")), &none, &ctx).as_deref(),
+            Some("local")
+        );
+        assert_eq!(
+            authorize(&headers(None), &none, &ctx).as_deref(),
+            Some("local")
+        );
     }
 
     #[test]
-    fn authorize_rejects_foreign_origin_and_null_origin_without_token() {
-        let ctx = context(9528, "secret");
+    fn authorize_rejects_foreign_origin_null_origin_and_bad_tokens() {
+        let ctx = context(9528, &[("secret", "admin")]);
         let none = AuthQuery::default();
-        assert!(!authorize(&headers(Some("https://evil.com")), &none, &ctx));
-        assert!(!authorize(
-            &headers(Some("http://127.0.0.1:9999")),
-            &none,
-            &ctx
-        ));
-        assert!(!authorize(&headers(Some("null")), &none, &ctx));
+        assert!(authorize(&headers(Some("https://evil.com")), &none, &ctx).is_none());
+        assert!(authorize(&headers(Some("http://127.0.0.1:9999")), &none, &ctx).is_none());
+        assert!(authorize(&headers(Some("null")), &none, &ctx).is_none());
 
         let wrong = AuthQuery {
             token: Some("nope".into()),
         };
-        assert!(!authorize(&headers(Some("null")), &wrong, &ctx));
+        assert!(authorize(&headers(None), &wrong, &ctx).is_none());
+    }
+
+    #[test]
+    fn role_permissions_are_scoped() {
+        assert!(role_can_act("admin", "anything"));
+        assert!(role_can_act("local", "set_state"));
+        assert!(role_can_act("referee", "series_score"));
+        assert!(!role_can_act("referee", "delete_everything"));
+        assert!(!role_can_act("viewer", "set_state"));
     }
 
     #[test]
     fn broadcast_goal_reaches_subscribers_with_payload() {
         let server = OverlayServer::new(0);
-        let mut rx = server.event_tx.subscribe();
+        let mut rx = server.hub().subscribe();
         server.broadcast_goal("Alice", 1);
 
         let message = rx
@@ -1018,12 +1421,13 @@ mod tests {
         assert_eq!(value["type"], "goal");
         assert_eq!(value["data"]["scorerName"], "Alice");
         assert_eq!(value["data"]["teamNum"], 1);
+        assert_eq!(value["v"], 2);
     }
 
     #[test]
     fn broadcast_statfeed_serializes_optional_secondary_target() {
         let server = OverlayServer::new(0);
-        let mut rx = server.event_tx.subscribe();
+        let mut rx = server.hub().subscribe();
 
         server.broadcast_statfeed("Save", "Bob", 0, None, None);
         let without_secondary: serde_json::Value =
@@ -1042,7 +1446,7 @@ mod tests {
     #[test]
     fn broadcast_ball_hit_carries_team() {
         let server = OverlayServer::new(0);
-        let mut rx = server.event_tx.subscribe();
+        let mut rx = server.hub().subscribe();
         server.broadcast_ball_hit(1);
         let value: serde_json::Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(value["type"], "ball_hit");
@@ -1052,7 +1456,7 @@ mod tests {
     #[test]
     fn broadcast_countdown_begin_emits_type() {
         let server = OverlayServer::new(0);
-        let mut rx = server.event_tx.subscribe();
+        let mut rx = server.hub().subscribe();
         server.broadcast_countdown_begin();
         let value: serde_json::Value = serde_json::from_str(&rx.try_recv().unwrap()).unwrap();
         assert_eq!(value["type"], "countdown_begin");
@@ -1061,7 +1465,7 @@ mod tests {
     #[tokio::test]
     async fn broadcast_state_emits_camel_case_state_event() {
         let server = OverlayServer::new(0);
-        let mut rx = server.event_tx.subscribe();
+        let mut rx = server.hub().subscribe();
         let state = LiveMatchState {
             match_guid: Some("guid-1".into()),
             score_blue: 2,
@@ -1087,9 +1491,8 @@ mod tests {
         assert_eq!(event["data"]["players"][0]["name"], "Alice");
 
         // The cached payload is exactly the `data` object (REST consumer shape).
-        let handle = server.latest_state_handle();
-        let cached = handle.read().await;
-        let cached: serde_json::Value = serde_json::from_str(cached.as_deref().unwrap()).unwrap();
+        let cached = server.hub().cached_state().unwrap();
+        let cached: serde_json::Value = serde_json::from_str(&cached).unwrap();
         assert_eq!(cached["scoreBlue"], 2);
         assert!(cached.get("type").is_none());
     }
@@ -1098,8 +1501,22 @@ mod tests {
     async fn unrelated_event_does_not_touch_cached_state() {
         let server = OverlayServer::new(0);
         server.broadcast_ball_hit(0);
+        assert!(server.hub().cached_state().is_none());
+    }
 
-        let handle = server.latest_state_handle();
-        assert!(handle.read().await.is_none());
+    #[test]
+    fn scene_payload_without_database_uses_defaults() {
+        let payload = scene_payload(None, None, "waiting", None);
+        assert_eq!(payload["state"], "waiting");
+        assert_eq!(payload["pack"]["id"], "prime-broadcast");
+        assert!(!payload["layout"].as_object().unwrap().is_empty());
+        assert_eq!(payload["series"]["available"], false);
+    }
+
+    #[test]
+    fn scene_payload_honors_pack_override_and_unknown_state() {
+        let payload = scene_payload(None, None, "unknown-state", Some("neon-circuit"));
+        assert_eq!(payload["pack"]["id"], "neon-circuit");
+        assert!(!payload["layout"].as_object().unwrap().is_empty());
     }
 }

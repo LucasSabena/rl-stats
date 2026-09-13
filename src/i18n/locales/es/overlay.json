@@ -201,5 +201,168 @@
       "ball": "Velocidad del balón",
       "info": "Información"
     }
+  },
+  "broadcast": {
+    "title": "Control de transmisión",
+    "subtitle": "Estados, serie, escenas, packs, equipos, chat y servidor de OBS en un solo lugar.",
+    "tabs": {
+      "control": "Control",
+      "scene": "Escena",
+      "teams": "Equipos",
+      "chat": "Chat",
+      "server": "Servidor"
+    },
+    "states": {
+      "label": "Estado",
+      "waiting": "Esperando",
+      "live": "En vivo",
+      "replay": "Replay",
+      "post": "Post",
+      "brb": "BRB"
+    },
+    "timer": {
+      "label": "Timer (seg)",
+      "start": "Iniciar",
+      "stop": "Parar",
+      "running": "En curso",
+      "started": "Timer iniciado",
+      "incoming": "COMIENZA EN"
+    },
+    "delay": {
+      "label": "Delay (seg)",
+      "hint": "Alinea los gráficos con el video retrasado del torneo.",
+      "apply": "Aplicar",
+      "applied": "Delay aplicado: {{seconds}} s"
+    },
+    "series": {
+      "title": "Serie",
+      "none": "No hay serie activa. Creá una para mostrarla en el overlay.",
+      "create": "Nueva serie",
+      "name": "Nombre",
+      "format": "Formato (BO)",
+      "teamA": "Equipo A",
+      "teamB": "Equipo B",
+      "selectTeam": "Sin equipo",
+      "start": "Crear serie",
+      "reset": "Reiniciar",
+      "nextMap": "+ Juego",
+      "played": "Mapas jugados: {{played}}",
+      "finished": "Finalizada",
+      "live": "En curso",
+      "delete": "Eliminar serie",
+      "deleteConfirm": "Se borrarán la serie y su historial de mapas.",
+      "created": "Serie creada"
+    },
+    "rundown": {
+      "title": "Rundown",
+      "take": "TAKE",
+      "out": "OUT",
+      "hint": "TAKE muestra el módulo en el overlay; OUT lo oculta al instante.",
+      "empty": "La escena no tiene módulos."
+    },
+    "scene": {
+      "pack": "Pack de diseño",
+      "save": "Guardar escena",
+      "saved": "Escena guardada",
+      "preview": "Vista previa",
+      "noServer": "Iniciá el servidor para ver la vista previa.",
+      "dragHint": "Arrastrá los módulos para moverlos. Seleccioná uno para editar su tamaño con precisión.",
+      "modules": "Agregar módulo",
+      "layerList": "Capas",
+      "empty": "Agregá módulos para armar la escena."
+    },
+    "teams": {
+      "title": "Equipos",
+      "add": "Nuevo equipo",
+      "edit": "Editar equipo",
+      "name": "Nombre",
+      "tag": "Tag",
+      "colorPrimary": "Color 1",
+      "colorSecondary": "Color 2",
+      "logo": "Logo",
+      "noLogo": "Sin logo",
+      "upload": "Subir logo",
+      "uploaded": "Logo subido",
+      "save": "Guardar",
+      "saved": "Equipo guardado",
+      "delete": "Eliminar equipo",
+      "deleteConfirm": "El equipo se quitará de la biblioteca.",
+      "empty": "Todavía no hay equipos."
+    },
+    "chat": {
+      "title": "Fuentes de chat",
+      "enabled": "Activar lectura de chat",
+      "connect": "Conectar",
+      "disconnect": "Desconectar",
+      "connected": "Chat conectado",
+      "disconnected": "Chat detenido",
+      "hint": "Solo lectura: se muestran mensajes, badges y emotes. No se envían mensajes.",
+      "stopped": "Detenido",
+      "live": "Chat en vivo",
+      "empty": "Sin mensajes todavía."
+    },
+    "server": {
+      "title": "Servidor de overlays",
+      "running": "Activo en :{{port}}",
+      "stopped": "Detenido",
+      "port": "Puerto",
+      "start": "Iniciar",
+      "stop": "Detener",
+      "clients": "{{count}} cliente(s)",
+      "urls": "Fuentes para OBS",
+      "urlsEmpty": "Iniciá el servidor para obtener las URLs.",
+      "dock": "Dock de operador (OBS → Docks → Custom Browser Docks)",
+      "lan": "Modo LAN (multi-PC)",
+      "lanHint": "Escucha en toda la red local. Requiere token; revisá el firewall.",
+      "lanOn": "Modo LAN activado",
+      "lanOff": "Modo LAN desactivado",
+      "copied": "Copiado",
+      "create": "Crear token",
+      "tokenLabel": "Etiqueta",
+      "tokens": "Tokens de acceso",
+      "tokensHint": "Árbitros y viewers usan tokens con permisos limitados. El dock acepta ?token= en la URL.",
+      "tokenCreated": "Token creado",
+      "connected": "Conectado",
+      "disconnected": "Desconectado"
+    },
+    "toasts": {
+      "error": "No se pudo completar la acción",
+      "copyError": "No se pudo copiar"
+    },
+    "tools": {
+      "title": "Herramientas de juego",
+      "hint": "La app está conectada al socket del juego: solo funciona en partidas donde sos espectador/admin.",
+      "match": "Partida",
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "hideHud": "Ocultar HUD",
+      "showHud": "Mostrar HUD",
+      "pov": "Cámara (POV)",
+      "ball": "Pelota",
+      "applyPov": "Aplicar",
+      "replay": "Replay",
+      "replayFile": "Archivo de replay",
+      "load": "Cargar",
+      "playback": "Reproducción",
+      "seek": "Ir a (seg)",
+      "seekButton": "Buscar",
+      "speed": "Velocidad",
+      "sent": "Comando enviado: {{command}}"
+    },
+    "obs": {
+      "title": "OBS Studio",
+      "hint": "Conectá obs-websocket (OBS 28+) para cambiar de escena automáticamente según el estado.",
+      "enabled": "Conectar OBS",
+      "url": "URL de obs-websocket",
+      "password": "Contraseña",
+      "autoSwitch": "Cambiar escena automáticamente",
+      "sceneWaiting": "Escena: esperando",
+      "sceneLive": "Escena: en vivo",
+      "sceneReplay": "Escena: replay",
+      "scenePost": "Escena: post",
+      "connected": "OBS conectado",
+      "disconnected": "OBS desconectado",
+      "switched": "Escena de OBS: {{scene}}"
+    }
   }
 }

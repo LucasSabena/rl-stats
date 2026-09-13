@@ -1,5 +1,6 @@
 pub mod app_sync;
 pub mod autostart;
+pub mod broadcast;
 pub mod cloud;
 pub mod ingestor;
 pub mod metrics;

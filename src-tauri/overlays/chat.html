@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RL Stats · Chat</title>
+    <style>
+      @font-face {
+        font-family: 'Geist Variable';
+        src: url('/overlays/fonts/geist-latin.woff2') format('woff2');
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Geist Mono Variable';
+        src: url('/overlays/fonts/geist-mono-latin.woff2') format('woff2');
+        font-display: swap;
+      }
+      /* The chat-only page pins the chat module to the whole source. */
+      #ov-stage .ov-module[data-module='chat'] {
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 100% !important;
+        transform: none !important;
+        display: flex;
+      }
+      #ov-stage .ov-chat {
+        flex: 1;
+        width: 100%;
+      }
+    </style>
+    <link rel="stylesheet" href="/overlays/engine.css" />
+  </head>
+  <body>
+    <div id="ov-stage"></div>
+    <div id="ov-alerts" class="position-top"></div>
+    <div id="ov-goal"></div>
+    <script>
+      // Force chat-only mode before the engine boots.
+      var chatParams = new URLSearchParams(window.location.search);
+      chatParams.set('only', 'chat');
+      var originalSearch = window.location.search;
+      if (originalSearch.indexOf('only=') === -1) {
+        window.history.replaceState(null, '', window.location.pathname + '?' + chatParams.toString());
+      }
+    </script>
+    <script src="/overlays/engine.js"></script>
+  </body>
+</html>

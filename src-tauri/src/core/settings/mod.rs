@@ -68,6 +68,30 @@ pub struct AppSettings {
     pub overlay_server_enabled: bool,
     /// TCP port for the OBS overlay server (default 9528).
     pub overlay_server_port: u16,
+    // ─── Broadcast Studio ────────────────────────────────────────────────
+    /// When true the server binds to 0.0.0.0 instead of 127.0.0.1. LAN mode
+    /// always requires the token (tournament dual-PC setups).
+    pub overlay_bind_lan: bool,
+    /// Broadcast delay in seconds applied to the overlay feed (0 = off).
+    /// Tournaments use it to align graphics with a delayed video feed.
+    pub overlay_delay_seconds: u32,
+    /// Active broadcast state (waiting | live | replay | post | brb).
+    pub broadcast_active_state: String,
+    // ─── Chat (read-only) ────────────────────────────────────────────────
+    pub chat_enabled: bool,
+    pub chat_twitch_channel: String,
+    pub chat_kick_channel: String,
+    pub chat_show_badges: bool,
+    pub chat_max_messages: u32,
+    // ─── OBS Studio (obs-websocket) ──────────────────────────────────────
+    pub obs_ws_enabled: bool,
+    pub obs_ws_url: String,
+    pub obs_ws_password: String,
+    pub obs_auto_switch: bool,
+    pub obs_scene_waiting: String,
+    pub obs_scene_live: String,
+    pub obs_scene_replay: String,
+    pub obs_scene_post: String,
     pub game_running: bool,
     pub warn_on_profile_mismatch: bool,
     pub auto_switch_profile_on_exact_match: bool,
@@ -136,6 +160,22 @@ impl Default for AppSettings {
             overlay_show_speed: false,
             overlay_server_enabled: false,
             overlay_server_port: 9528,
+            overlay_bind_lan: false,
+            overlay_delay_seconds: 0,
+            broadcast_active_state: "waiting".to_string(),
+            chat_enabled: false,
+            chat_twitch_channel: String::new(),
+            chat_kick_channel: String::new(),
+            chat_show_badges: true,
+            chat_max_messages: 30,
+            obs_ws_enabled: false,
+            obs_ws_url: "ws://127.0.0.1:4455".to_string(),
+            obs_ws_password: String::new(),
+            obs_auto_switch: true,
+            obs_scene_waiting: String::new(),
+            obs_scene_live: String::new(),
+            obs_scene_replay: String::new(),
+            obs_scene_post: String::new(),
             game_running: false,
             warn_on_profile_mismatch: true,
             auto_switch_profile_on_exact_match: false,
@@ -256,6 +296,28 @@ impl AppSettings {
                 self.overlay_server_enabled.to_string(),
             ),
             ("overlay_server_port", self.overlay_server_port.to_string()),
+            ("overlay_bind_lan", self.overlay_bind_lan.to_string()),
+            (
+                "overlay_delay_seconds",
+                self.overlay_delay_seconds.to_string(),
+            ),
+            (
+                "broadcast_active_state",
+                self.broadcast_active_state.clone(),
+            ),
+            ("chat_enabled", self.chat_enabled.to_string()),
+            ("chat_twitch_channel", self.chat_twitch_channel.clone()),
+            ("chat_kick_channel", self.chat_kick_channel.clone()),
+            ("chat_show_badges", self.chat_show_badges.to_string()),
+            ("chat_max_messages", self.chat_max_messages.to_string()),
+            ("obs_ws_enabled", self.obs_ws_enabled.to_string()),
+            ("obs_ws_url", self.obs_ws_url.clone()),
+            ("obs_ws_password", self.obs_ws_password.clone()),
+            ("obs_auto_switch", self.obs_auto_switch.to_string()),
+            ("obs_scene_waiting", self.obs_scene_waiting.clone()),
+            ("obs_scene_live", self.obs_scene_live.clone()),
+            ("obs_scene_replay", self.obs_scene_replay.clone()),
+            ("obs_scene_post", self.obs_scene_post.clone()),
             ("game_running", self.game_running.to_string()),
             (
                 "warn_on_profile_mismatch",
@@ -287,6 +349,7 @@ impl AppSettings {
         settings.tracker_api_key = None;
         settings.rapidapi_key = None;
         settings.parsebot_api_key = None;
+        settings.obs_ws_password = String::new();
         settings
     }
 
@@ -308,6 +371,16 @@ impl AppSettings {
         merged.overlay_position_y = self.overlay_position_y;
         merged.overlay_server_enabled = self.overlay_server_enabled;
         merged.overlay_server_port = self.overlay_server_port;
+        merged.overlay_bind_lan = self.overlay_bind_lan;
+        merged.overlay_delay_seconds = self.overlay_delay_seconds;
+        merged.obs_ws_enabled = self.obs_ws_enabled;
+        merged.obs_ws_url = self.obs_ws_url.clone();
+        merged.obs_ws_password = self.obs_ws_password.clone();
+        merged.obs_auto_switch = self.obs_auto_switch;
+        merged.obs_scene_waiting = self.obs_scene_waiting.clone();
+        merged.obs_scene_live = self.obs_scene_live.clone();
+        merged.obs_scene_replay = self.obs_scene_replay.clone();
+        merged.obs_scene_post = self.obs_scene_post.clone();
         merged.tracker_api_key = self.tracker_api_key.clone();
         merged.rapidapi_key = self.rapidapi_key.clone();
         merged.parsebot_api_key = self.parsebot_api_key.clone();
@@ -452,6 +525,22 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
                 settings.overlay_server_enabled = value.parse().unwrap_or(false)
             }
             "overlay_server_port" => settings.overlay_server_port = value.parse().unwrap_or(9528),
+            "overlay_bind_lan" => settings.overlay_bind_lan = value.parse().unwrap_or(false),
+            "overlay_delay_seconds" => settings.overlay_delay_seconds = value.parse().unwrap_or(0),
+            "broadcast_active_state" => settings.broadcast_active_state = value,
+            "chat_enabled" => settings.chat_enabled = value.parse().unwrap_or(false),
+            "chat_twitch_channel" => settings.chat_twitch_channel = value,
+            "chat_kick_channel" => settings.chat_kick_channel = value,
+            "chat_show_badges" => settings.chat_show_badges = value.parse().unwrap_or(true),
+            "chat_max_messages" => settings.chat_max_messages = value.parse().unwrap_or(30),
+            "obs_ws_enabled" => settings.obs_ws_enabled = value.parse().unwrap_or(false),
+            "obs_ws_url" => settings.obs_ws_url = value,
+            "obs_ws_password" => settings.obs_ws_password = value,
+            "obs_auto_switch" => settings.obs_auto_switch = value.parse().unwrap_or(true),
+            "obs_scene_waiting" => settings.obs_scene_waiting = value,
+            "obs_scene_live" => settings.obs_scene_live = value,
+            "obs_scene_replay" => settings.obs_scene_replay = value,
+            "obs_scene_post" => settings.obs_scene_post = value,
             "game_running" => settings.game_running = value.parse().unwrap_or(false),
             "warn_on_profile_mismatch" => {
                 settings.warn_on_profile_mismatch = value.parse().unwrap_or(true)

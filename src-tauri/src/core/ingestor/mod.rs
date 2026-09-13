@@ -4,7 +4,7 @@ use crate::error::AppResult;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{sleep, Duration};
@@ -15,17 +15,43 @@ pub const DEFAULT_RL_PORT: u16 = 49123;
 pub const DEFAULT_RL_HOST: &str = "127.0.0.1";
 const MAX_PENDING_BYTES: usize = 4 * 1024 * 1024;
 
+/// Handle used to send Stats API commands (`ChangePOV`, `SetMatchPaused`, …)
+/// to the game over the same TCP socket the events arrive on.
+///
+/// Commands can only be delivered while a match is streaming; when the game
+/// is closed `try_send` reports a closed/full channel instead of blocking.
+#[derive(Clone)]
+pub struct CommandSender {
+    tx: mpsc::Sender<String>,
+}
+
+impl CommandSender {
+    /// Non-blocking send. Returns `false` when the game is not streaming.
+    pub fn send(&self, command_json: String) -> bool {
+        self.tx.try_send(command_json).is_ok()
+    }
+
+    pub async fn send_async(&self, command_json: String) -> Result<(), String> {
+        self.tx
+            .send(command_json)
+            .await
+            .map_err(|_| "Rocket League is not streaming".to_string())
+    }
+}
+
 /// Ingestor handle returned to the application layer.
 pub struct IngestorHandle {
     pub event_rx: mpsc::Receiver<RlEvent>,
     pub status: Arc<RwLock<ConnectionStatus>>,
     pub game_running: Arc<AtomicBool>,
+    pub commands: CommandSender,
 }
 
 /// Start the TCP ingestor as a background Tokio task.
 /// Returns a channel receiver for parsed events and a shared connection status.
 pub fn start_ingestor(port: u16, game_running: Arc<AtomicBool>) -> IngestorHandle {
     let (event_tx, event_rx) = mpsc::channel::<RlEvent>(1024);
+    let (command_tx, mut command_rx) = mpsc::channel::<String>(64);
     let status = Arc::new(RwLock::new(ConnectionStatus {
         connected: false,
         address: format!("{}:{}", DEFAULT_RL_HOST, port),
@@ -45,7 +71,15 @@ pub fn start_ingestor(port: u16, game_running: Arc<AtomicBool>) -> IngestorHandl
             }
         };
         rt.block_on(async move {
-            if let Err(e) = ingestor_loop(status_clone, event_tx, port, game_running_clone).await {
+            if let Err(e) = ingestor_loop(
+                status_clone,
+                event_tx,
+                &mut command_rx,
+                port,
+                game_running_clone,
+            )
+            .await
+            {
                 error!(error = %e, "Ingestor loop terminated unexpectedly");
             }
         });
@@ -55,12 +89,14 @@ pub fn start_ingestor(port: u16, game_running: Arc<AtomicBool>) -> IngestorHandl
         event_rx,
         status,
         game_running,
+        commands: CommandSender { tx: command_tx },
     }
 }
 
 async fn ingestor_loop(
     status: Arc<RwLock<ConnectionStatus>>,
     event_tx: mpsc::Sender<RlEvent>,
+    command_rx: &mut mpsc::Receiver<String>,
     port: u16,
     game_running: Arc<AtomicBool>,
 ) -> AppResult<()> {
@@ -103,7 +139,7 @@ async fn ingestor_loop(
                 }
                 backoff_seconds = 1;
 
-                if let Err(e) = read_events(stream, &event_tx, &status).await {
+                if let Err(e) = read_events(stream, &event_tx, command_rx, &status).await {
                     warn!(error = %e, "Connection lost, will reconnect");
                     {
                         let mut s = status.write().await;
@@ -134,47 +170,63 @@ async fn ingestor_loop(
 async fn read_events(
     stream: TcpStream,
     event_tx: &mpsc::Sender<RlEvent>,
+    command_rx: &mut mpsc::Receiver<String>,
     status: &Arc<RwLock<ConnectionStatus>>,
 ) -> AppResult<()> {
-    let mut stream = stream;
+    let (mut reader, mut writer) = stream.into_split();
     let mut read_buffer = [0u8; 8192];
     let mut pending = String::new();
 
     loop {
-        let bytes_read = stream.read(&mut read_buffer).await?;
-        if bytes_read == 0 {
-            break;
-        }
-
-        let chunk = String::from_utf8_lossy(&read_buffer[..bytes_read]);
-        debug!(bytes_read, "Received stats API chunk");
-        pending.push_str(&chunk);
-
-        if pending.len() > MAX_PENDING_BYTES {
-            warn!(
-                pending_bytes = pending.len(),
-                "Discarding oversized incomplete Stats API payload"
-            );
-            if let Some(last_object) = pending.rfind('{') {
-                pending.drain(..last_object);
-            } else {
-                pending.clear();
+        tokio::select! {
+            // Outbound Stats API commands (`SetMatchPaused`, `ChangePOV`, …)
+            // share the same socket the game streams events on.
+            Some(command) = command_rx.recv() => {
+                let payload = format!("{command}\n");
+                if let Err(error) = writer.write_all(payload.as_bytes()).await {
+                    warn!(error = %error, "Failed to write Stats API command");
+                } else {
+                    debug!(bytes = payload.len(), "Sent Stats API command");
+                }
             }
-        }
 
-        let messages = extract_json_messages(&mut pending);
-        for message in messages {
-            match parse_event(&message) {
-                Ok(event) => {
-                    if event_tx.send(event).await.is_err() {
-                        error!("Event channel closed, stopping ingestor read loop");
-                        return Err(crate::error::AppError::ConnectionError(
-                            "Event channel closed".into(),
-                        ));
+            result = reader.read(&mut read_buffer) => {
+                let bytes_read = result?;
+                if bytes_read == 0 {
+                    break;
+                }
+
+                let chunk = String::from_utf8_lossy(&read_buffer[..bytes_read]);
+                debug!(bytes_read, "Received stats API chunk");
+                pending.push_str(&chunk);
+
+                if pending.len() > MAX_PENDING_BYTES {
+                    warn!(
+                        pending_bytes = pending.len(),
+                        "Discarding oversized incomplete Stats API payload"
+                    );
+                    if let Some(last_object) = pending.rfind('{') {
+                        pending.drain(..last_object);
+                    } else {
+                        pending.clear();
                     }
                 }
-                Err(e) => {
-                    warn!(error = %e, payload_bytes = message.len(), "Failed to parse event");
+
+                let messages = extract_json_messages(&mut pending);
+                for message in messages {
+                    match parse_event(&message) {
+                        Ok(event) => {
+                            if event_tx.send(event).await.is_err() {
+                                error!("Event channel closed, stopping ingestor read loop");
+                                return Err(crate::error::AppError::ConnectionError(
+                                    "Event channel closed".into(),
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            warn!(error = %e, payload_bytes = message.len(), "Failed to parse event");
+                        }
+                    }
                 }
             }
         }
@@ -339,6 +391,7 @@ mod tests {
         });
 
         let (event_tx, mut event_rx) = mpsc::channel::<RlEvent>(16);
+        let (_command_tx, mut command_rx) = mpsc::channel::<String>(4);
         let status = Arc::new(RwLock::new(ConnectionStatus {
             connected: true,
             address: "test".into(),
@@ -348,7 +401,9 @@ mod tests {
         }));
 
         let stream = TcpStream::connect(addr).await.unwrap();
-        read_events(stream, &event_tx, &status).await.unwrap();
+        read_events(stream, &event_tx, &mut command_rx, &status)
+            .await
+            .unwrap();
         writer.await.unwrap();
 
         let first = event_rx.recv().await.unwrap();

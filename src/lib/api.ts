@@ -13,6 +13,7 @@ export * from "./api/players";
 export * from "./api/settings";
 export * from "./api/cloud";
 export * from "./api/overlay";
+export * from "./api/broadcast";
 export * from "./api/tracker";
 export * from "./api/trainingPacks";
 export * from "./api/updates";

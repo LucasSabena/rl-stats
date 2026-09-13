@@ -1,0 +1,715 @@
+/* RL Stats overlay engine.
+ *
+ * Every visual decision comes from CSS variables the runtime injects from the
+ * active design pack (colors, typography, radius, shadow, motion). Modules are
+ * laid out on a 1920x1080 design canvas and scaled to the actual browser
+ * source size, so the same scene looks identical in a 720p preview and a 4K
+ * OBS source.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--ov-font-body, sans-serif);
+  color: var(--ov-text, #fff);
+}
+
+#ov-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.ov-module {
+  position: absolute;
+  transform-origin: top left;
+  pointer-events: none;
+  transition: opacity calc(var(--ov-motion, 220) * 1ms) ease-out;
+}
+
+.ov-hidden {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.ov-uppercase {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ---------------------------------------------------------------- scorebug */
+
+.ov-scorebug {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  box-shadow: var(--ov-shadow);
+  backdrop-filter: var(--ov-blur, none);
+  overflow: hidden;
+  min-width: 720px;
+}
+
+.corner-cut .ov-scorebug {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+}
+
+.ov-scorebug-team {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 22px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ov-scorebug-team.blue {
+  border-left: 6px solid var(--ov-team-blue, #3b82f6);
+}
+
+.ov-scorebug-team.orange {
+  border-right: 6px solid var(--ov-team-orange, #f97316);
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.ov-scorebug-logo {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.4));
+}
+
+.ov-scorebug-name {
+  font-family: var(--ov-font-display, sans-serif);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-scorebug-meta {
+  font-size: 15px;
+  color: var(--ov-muted);
+  font-family: var(--ov-font-numeric, monospace);
+  white-space: nowrap;
+}
+
+.ov-scorebug-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 26px;
+  background: color-mix(in srgb, var(--ov-surface-solid) 82%, transparent);
+  border-left: 1px solid var(--ov-border);
+  border-right: 1px solid var(--ov-border);
+  min-width: 190px;
+}
+
+.ov-score {
+  font-family: var(--ov-font-numeric, monospace);
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.ov-score .blue {
+  color: var(--ov-team-blue, #3b82f6);
+}
+
+.ov-score .orange {
+  color: var(--ov-team-orange, #f97316);
+}
+
+.ov-clock {
+  font-family: var(--ov-font-numeric, monospace);
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-clock.overtime {
+  color: var(--ov-accent-alt, #f59e0b);
+  animation: ov-pulse 1.2s ease-in-out infinite;
+}
+
+.ov-sub {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--ov-muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ov-online {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.ov-online.offline {
+  background: #64748b;
+}
+
+/* ----------------------------------------------------------------- series */
+
+.ov-series {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 6px 14px;
+  box-shadow: var(--ov-shadow);
+  font-family: var(--ov-font-numeric, monospace);
+  font-size: 18px;
+  backdrop-filter: var(--ov-blur, none);
+}
+
+.ov-series-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--ov-muted);
+  display: inline-block;
+}
+
+.ov-series-dot.won {
+  background: var(--ov-accent);
+  border-color: var(--ov-accent);
+}
+
+.ov-series-score {
+  font-weight: 800;
+  font-size: 22px;
+}
+
+/* ----------------------------------------------------------------- roster */
+
+.ov-roster {
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  box-shadow: var(--ov-shadow);
+  backdrop-filter: var(--ov-blur, none);
+  overflow: hidden;
+  min-width: 380px;
+}
+
+.ov-roster-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  font-family: var(--ov-font-display, sans-serif);
+  font-size: 19px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--ov-surface-solid) 85%, transparent);
+  border-bottom: 1px solid var(--ov-border);
+}
+
+.ov-roster-header.blue {
+  border-left: 5px solid var(--ov-team-blue, #3b82f6);
+}
+
+.ov-roster-header.orange {
+  border-right: 5px solid var(--ov-team-orange, #f97316);
+}
+
+.ov-player {
+  display: grid;
+  grid-template-columns: 34px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ov-border) 55%, transparent);
+  font-size: 19px;
+}
+
+.ov-player:last-child {
+  border-bottom: none;
+}
+
+.ov-player.boost-bar {
+  grid-template-columns: 34px 1fr 110px auto;
+}
+
+.ov-player-index {
+  font-family: var(--ov-font-numeric, monospace);
+  color: var(--ov-muted);
+  font-size: 15px;
+}
+
+.ov-player-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-player-boost {
+  height: 12px;
+  background: color-mix(in srgb, var(--ov-border) 60%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ov-player-boost-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ov-accent), var(--ov-accent-alt));
+  transition: width 120ms linear;
+}
+
+.ov-player-stat {
+  font-family: var(--ov-font-numeric, monospace);
+  font-size: 16px;
+  color: var(--ov-muted);
+  white-space: nowrap;
+}
+
+.ov-player-stat b {
+  color: var(--ov-text);
+  font-weight: 700;
+}
+
+/* ----------------------------------------------------------------- events */
+
+.ov-events {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 340px;
+}
+
+.ov-event {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-left: 5px solid var(--ov-accent);
+  border-radius: var(--ov-radius);
+  padding: 7px 14px;
+  font-size: 19px;
+  box-shadow: var(--ov-shadow);
+  animation: ov-slide-in 220ms ease-out;
+}
+
+.ov-event .who {
+  font-weight: 700;
+}
+
+.ov-event .what {
+  color: var(--ov-muted);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ov-event.team-blue {
+  border-left-color: var(--ov-team-blue, #3b82f6);
+}
+
+.ov-event.team-orange {
+  border-left-color: var(--ov-team-orange, #f97316);
+}
+
+/* ------------------------------------------------------------------- chat */
+
+.ov-chat {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 10px 12px;
+  box-shadow: var(--ov-shadow);
+  backdrop-filter: var(--ov-blur, none);
+  overflow: hidden;
+}
+
+.ov-chat-title {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--ov-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.ov-chat-msg {
+  font-size: 18px;
+  line-height: 1.25;
+  word-wrap: break-word;
+  animation: ov-slide-in 180ms ease-out;
+}
+
+.ov-chat-user {
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.ov-chat-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-family: var(--ov-font-numeric, monospace);
+  border: 1px solid var(--ov-border);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 5px;
+  color: var(--ov-muted);
+  vertical-align: middle;
+}
+
+.ov-chat-emote {
+  height: 22px;
+  vertical-align: middle;
+}
+
+.ov-chat-fade {
+  opacity: 0.45;
+}
+
+/* ------------------------------------------------------------ brand/count */
+
+.ov-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 8px 14px;
+  box-shadow: var(--ov-shadow);
+  backdrop-filter: var(--ov-blur, none);
+}
+
+.ov-brand-logo {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}
+
+.ov-brand-text {
+  font-family: var(--ov-font-display, sans-serif);
+  font-weight: 700;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.ov-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 18px 30px;
+  box-shadow: var(--ov-shadow);
+  backdrop-filter: var(--ov-blur, none);
+}
+
+.ov-countdown-label {
+  font-size: 16px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ov-muted);
+}
+
+.ov-countdown-value {
+  font-family: var(--ov-font-numeric, monospace);
+  font-size: 64px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ov-socials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 8px 18px;
+  font-size: 18px;
+  color: var(--ov-muted);
+  box-shadow: var(--ov-shadow);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ov-sponsor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 10px 18px;
+  box-shadow: var(--ov-shadow);
+}
+
+.ov-sponsor img {
+  max-height: 56px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.ov-replay {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ov-accent-alt);
+  color: #0b0b0b;
+  font-family: var(--ov-font-display, sans-serif);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 6px 14px;
+  border-radius: var(--ov-radius);
+  font-size: 18px;
+}
+
+.ov-upnext {
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 12px 16px;
+  box-shadow: var(--ov-shadow);
+  min-width: 420px;
+}
+
+.ov-upnext-title {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ov-muted);
+  margin-bottom: 6px;
+}
+
+.ov-upnext-match {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--ov-font-display, sans-serif);
+}
+
+.ov-mvp {
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-radius: var(--ov-radius);
+  padding: 14px 18px;
+  box-shadow: var(--ov-shadow);
+}
+
+.ov-mvp-title {
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ov-accent);
+  margin-bottom: 6px;
+}
+
+.ov-mvp-name {
+  font-family: var(--ov-font-display, sans-serif);
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.ov-mvp-stats {
+  margin-top: 6px;
+  font-family: var(--ov-font-numeric, monospace);
+  color: var(--ov-muted);
+  font-size: 16px;
+}
+
+/* ----------------------------------------------------------------- alerts */
+
+#ov-alerts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 4vh 0;
+  z-index: 50;
+}
+
+#ov-alerts.position-bottom {
+  justify-content: flex-end;
+  padding-bottom: 6vh;
+}
+
+#ov-alerts.position-center {
+  justify-content: center;
+}
+
+.ov-alert {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--ov-surface);
+  border: 1px solid var(--ov-border);
+  border-left: 8px solid var(--ov-accent);
+  border-radius: var(--ov-radius);
+  padding: 14px 26px;
+  box-shadow: var(--ov-shadow);
+  animation: ov-pop 260ms cubic-bezier(0.2, 1.2, 0.3, 1);
+  backdrop-filter: var(--ov-blur, none);
+}
+
+.ov-alert.leaving {
+  animation: ov-fade-out 240ms ease-in forwards;
+}
+
+.ov-alert-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.ov-alert-title {
+  font-family: var(--ov-font-display, sans-serif);
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.ov-alert-sub {
+  font-size: 16px;
+  color: var(--ov-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ------------------------------------------------------------------- goal */
+
+#ov-goal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 220ms ease-out;
+}
+
+#ov-goal.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ov-goal-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px 60px;
+  background: var(--ov-surface);
+  border: 2px solid var(--ov-accent);
+  border-radius: var(--ov-radius);
+  box-shadow: var(--ov-shadow);
+  text-align: center;
+}
+
+.ov-goal-kicker {
+  font-size: 18px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ov-accent);
+}
+
+.ov-goal-scorer {
+  font-family: var(--ov-font-display, sans-serif);
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.ov-goal-meta {
+  font-family: var(--ov-font-numeric, monospace);
+  color: var(--ov-muted);
+  font-size: 20px;
+}
+
+/* ------------------------------------------------------------- animations */
+
+@keyframes ov-slide-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ov-pop {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ov-fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes ov-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-event,
+  .ov-chat-msg,
+  .ov-alert {
+    animation: none;
+  }
+}
