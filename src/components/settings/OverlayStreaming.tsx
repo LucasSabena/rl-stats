@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation, Trans } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useUIStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
@@ -16,6 +18,7 @@ import {
   ChevronDown,
   Eye,
   Bot,
+  Clapperboard,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +46,10 @@ interface SceneConfig {
   series: number | null;
   hide: string[];
   alertTypes: string[];
+  alertDuration: number;
+  alertPosition: "top" | "bottom" | "center";
+  alertMax: number;
+  showSpeed: boolean;
 }
 
 const HIDE_MODULES = ["scorebug", "rosters", "ball", "series"] as const;
@@ -92,6 +99,10 @@ function defaultScene(): SceneConfig {
     series: null,
     hide: [],
     alertTypes: [...ALERT_TYPES],
+    alertDuration: 3200,
+    alertPosition: "top",
+    alertMax: 3,
+    showSpeed: false,
   };
 }
 
@@ -105,6 +116,10 @@ function toScenePayload(scene: SceneConfig) {
     series: scene.series,
     hide: scene.hide.join(","),
     alertTypes: scene.alertTypes.join(","),
+    alertDuration: scene.alertDuration,
+    alertPosition: scene.alertPosition,
+    alertMax: scene.alertMax,
+    showSpeed: scene.showSpeed,
   };
 }
 
@@ -115,6 +130,7 @@ function toScenePayload(scene: SceneConfig) {
 export function OverlayStreaming() {
   const { t } = useTranslation(["overlay", "common"]);
   const addToast = useUIStore((s) => s.addToast);
+  const navigate = useNavigate();
 
   const [status, setStatus] = useState<OverlayServerStatus | null>(null);
   const [urls, setUrls] = useState<OverlayUrl[]>([]);
@@ -384,17 +400,26 @@ export function OverlayStreaming() {
           )}
         </div>
 
-        <Button
-          variant={isRunning ? "secondary" : "primary"}
-          size="sm"
-          onClick={isRunning ? handleStop : handleStart}
-          isLoading={isToggling}
-          disabled={isToggling}
-          leftIcon={isRunning ? WifiOff : Wifi}
-          className="shrink-0"
-        >
-          {isRunning ? t("overlay:streaming.stop") : t("overlay:streaming.startStreaming")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={Clapperboard}
+            onClick={() => navigate("/studio")}
+          >
+            {t("overlay:studio.title")}
+          </Button>
+          <Button
+            variant={isRunning ? "secondary" : "primary"}
+            size="sm"
+            onClick={isRunning ? handleStop : handleStart}
+            isLoading={isToggling}
+            disabled={isToggling}
+            leftIcon={isRunning ? WifiOff : Wifi}
+          >
+            {isRunning ? t("overlay:streaming.stop") : t("overlay:streaming.startStreaming")}
+          </Button>
+        </div>
       </div>
 
       {/* ── Port input (shown when stopped) ── */}
@@ -541,6 +566,80 @@ export function OverlayStreaming() {
                     ))}
                   </div>
                 </div>
+
+                {/* Alert behaviour */}
+                <div className="grid grid-cols-3 gap-3">
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-text-muted">
+                      {t("overlay:streaming.scene.alertDuration")}
+                    </span>
+                    <input
+                      type="number"
+                      min={800}
+                      max={10000}
+                      step={200}
+                      value={scene.alertDuration}
+                      onChange={(event) =>
+                        setScene((prev) => ({
+                          ...prev,
+                          alertDuration: Number(event.target.value) || 3200,
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-text-muted">
+                      {t("overlay:streaming.scene.alertPosition")}
+                    </span>
+                    <Select
+                      size="sm"
+                      value={scene.alertPosition}
+                      onChange={(value) =>
+                        setScene((prev) => ({
+                          ...prev,
+                          alertPosition: value as SceneConfig["alertPosition"],
+                        }))
+                      }
+                      options={[
+                        { value: "top", label: t("overlay:streaming.positions.top") },
+                        { value: "bottom", label: t("overlay:streaming.positions.bottom") },
+                        { value: "center", label: t("overlay:streaming.positions.center") },
+                      ]}
+                      aria-label={t("overlay:streaming.scene.alertPosition")}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-[11px] font-medium text-text-muted">
+                      {t("overlay:streaming.scene.alertMax")}
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={scene.alertMax}
+                      onChange={(event) =>
+                        setScene((prev) => ({
+                          ...prev,
+                          alertMax: Math.max(1, Math.min(5, Number(event.target.value) || 1)),
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+
+                <label className="flex items-center gap-2 text-[11px] text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={scene.showSpeed}
+                    onChange={(event) =>
+                      setScene((prev) => ({ ...prev, showSpeed: event.target.checked }))
+                    }
+                    className="h-3.5 w-3.5 accent-[var(--accent)]"
+                  />
+                  {t("overlay:streaming.scene.showSpeed")}
+                </label>
 
                 <Button size="sm" variant="secondary" onClick={() => void refreshUrls()}>
                   {t("overlay:streaming.scene.apply")}

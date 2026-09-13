@@ -135,7 +135,11 @@
         "rosters": "Rosters",
         "ball": "Ball",
         "series": "Series"
-      }
+      },
+      "alertDuration": "Duration (ms)",
+      "alertPosition": "Position",
+      "alertMax": "Max at once",
+      "showSpeed": "Show speed (uu/s) on supported overlays"
     },
     "alerts": {
       "Goal": "Goals",
@@ -149,6 +153,49 @@
       "title": "Streamer.bot / integrations",
       "description": "Connect Streamer.bot or any other tool to this WebSocket to trigger actions.",
       "copyJson": "Copy configuration"
+    },
+    "positions": {
+      "top": "Top",
+      "bottom": "Bottom",
+      "center": "Center"
+    }
+  },
+  "studio": {
+    "title": "Overlay Studio",
+    "subtitle": "Build a custom overlay: drag modules, tune the style and copy the OBS URL.",
+    "serverRunning": "Server running on :{{port}}",
+    "serverStopped": "Server stopped",
+    "startServer": "Start server",
+    "stopServer": "Stop server",
+    "noServerTitle": "The overlay server is off",
+    "noServerDescription": "Start the local server to edit and preview your overlay live.",
+    "dragHint": "Drag modules to move them. Use arrow keys with Shift for fine tuning.",
+    "preview": "Live preview",
+    "copyObsUrl": "Copy OBS URL",
+    "openInBrowser": "Open in browser",
+    "urlCopied": "URL copied",
+    "copyFailed": "Could not copy",
+    "modules": "Modules",
+    "position": "Position and size",
+    "theme": "Theme",
+    "accent": "Accent color",
+    "radius": "Corners",
+    "scale": "Scale",
+    "scenes": "Saved scenes",
+    "sceneName": "Scene name",
+    "sceneSaved": "Scene \"{{name}}\" saved",
+    "sceneLoaded": "Scene \"{{name}}\" loaded",
+    "reset": "Reset layout",
+    "shareLayout": "Copy layout link",
+    "addModule": "Add module",
+    "removeModule": "Remove module",
+    "module": {
+      "score": "Scorebug",
+      "timer": "Clock",
+      "rosters": "Players",
+      "events": "Events",
+      "ball": "Ball speed",
+      "info": "Info"
     }
   }
 }

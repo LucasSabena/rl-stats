@@ -45,6 +45,12 @@ pub struct OverlaySceneConfig {
     pub hide: String,
     /// Alert types the alerts overlay should play.
     pub alert_types: String,
+    /// How long alert cards stay on screen (ms).
+    pub alert_duration: Option<u32>,
+    /// Alert stack position: `top`, `bottom` or `center`.
+    pub alert_position: String,
+    /// Maximum simultaneous alerts.
+    pub alert_max: Option<u32>,
     /// Append per-player speed (uu/s) to supported overlays.
     #[serde(default)]
     pub show_speed: bool,
@@ -77,6 +83,15 @@ fn scene_query(config: &OverlaySceneConfig, token: &str) -> String {
     if !config.alert_types.is_empty() {
         serializer.append_pair("types", &config.alert_types);
     }
+    if let Some(duration) = config.alert_duration.filter(|value| *value > 0) {
+        serializer.append_pair("duration", &duration.to_string());
+    }
+    if matches!(config.alert_position.as_str(), "top" | "bottom" | "center") {
+        serializer.append_pair("position", &config.alert_position);
+    }
+    if let Some(max) = config.alert_max.filter(|value| *value > 0) {
+        serializer.append_pair("max", &max.to_string());
+    }
     if config.show_speed {
         serializer.append_pair("speed", "1");
     }
@@ -105,6 +120,7 @@ pub async fn start_overlay_server(
     info!(port, "Starting overlay server");
 
     let mut server = OverlayServer::new(port);
+    server.set_db_pool(state.db_pool.clone());
     server.start().await?;
 
     let status = server.status();

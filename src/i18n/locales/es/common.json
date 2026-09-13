@@ -16,7 +16,8 @@
       "improve": "Mejorar"
     },
     "sessions": "Sesiones",
-    "records": "Récords"
+    "records": "Récords",
+    "studio": "Overlay Studio"
   },
   "pageTitles": {
     "live": "Live Dashboard",
@@ -30,7 +31,8 @@
     "profile": "Mi carrera",
     "matchDetail": "Detalle de partida",
     "sessions": "Sesiones",
-    "records": "Récords"
+    "records": "Récords",
+    "studio": "Overlay Studio"
   },
   "connection": {
     "online": "Online",
@@ -92,7 +94,8 @@
     "exported": "Historial exportado",
     "commandFailed": "No se pudo ejecutar la acción",
     "sessions": "Sesiones",
-    "records": "Récords"
+    "records": "Récords",
+    "studio": "Overlay Studio"
   },
   "status": {
     "live": "En directo",

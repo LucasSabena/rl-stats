@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RL Stats Studio Overlay</title>
+<style>
+  :root {
+    --accent: #7c5cff;
+    --radius: 8px;
+    --scale: 1;
+    --font: 'Geist Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Geist Mono Variable', 'Cascadia Code', 'Consolas', monospace;
+    --blue: #3b82f6;
+    --orange: #f59e0b;
+    --text: #ffffff;
+    --text-muted: rgba(255, 255, 255, 0.55);
+    --panel: rgba(8, 12, 20, 0.72);
+    --panel-border: rgba(255, 255, 255, 0.10);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    font-family: var(--font);
+    color: var(--text);
+    font-size: calc(16px * var(--scale));
+  }
+
+  #stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .module {
+    position: absolute;
+    border-radius: var(--radius);
+  }
+  .module[hidden] { display: none; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(6px);
+  }
+
+  /* ── Scorebug ── */
+  .score {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.4em;
+    padding: 0.4em 1em;
+  }
+  .score-team {
+    display: flex;
+    align-items: center;
+    gap: 0.6em;
+    min-width: 0;
+  }
+  .score-name {
+    font-weight: 700;
+    font-size: 1.05em;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 10em;
+  }
+  .score-name.blue { color: var(--blue); }
+  .score-name.orange { color: var(--orange); }
+  .score-value {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 2.1em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-value.blue { color: var(--blue); text-shadow: 0 0 18px color-mix(in srgb, var(--blue) 40%, transparent); }
+  .score-value.orange { color: var(--orange); text-shadow: 0 0 18px color-mix(in srgb, var(--orange) 40%, transparent); }
+  .score-divider {
+    font-family: var(--font-mono);
+    font-size: 1.6em;
+    color: var(--text-muted);
+  }
+
+  /* ── Timer ── */
+  .timer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7em;
+    padding: 0.3em 0.8em;
+  }
+  .timer-clock {
+    font-family: var(--font-mono);
+    font-size: 2em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .timer-badge {
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 0.15em 0.7em;
+    font-size: 0.72em;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .timer-badge[hidden] { display: none; }
+
+  /* ── Rosters ── */
+  .rosters {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4em;
+    padding: 0.6em;
+    overflow: hidden;
+  }
+  .roster-line {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto auto;
+    gap: 0.6em;
+    align-items: center;
+    padding: 0.3em 0.5em;
+    border-radius: calc(var(--radius) - 2px);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.9em;
+  }
+  .roster-line.blue { border-left: 3px solid var(--blue); }
+  .roster-line.orange { border-left: 3px solid var(--orange); }
+  .roster-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .roster-stat {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--text-muted);
+    min-width: 1.6em;
+    text-align: right;
+  }
+  .roster-stat.strong { color: var(--text); font-weight: 700; }
+  .roster-empty {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    padding: 0.6em;
+    text-align: center;
+  }
+
+  /* ── Events ── */
+  .events {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+    padding: 0.6em;
+    overflow: hidden;
+  }
+  .event {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    font-size: 0.82em;
+    opacity: 0.88;
+    animation: event-in 0.25s ease-out both;
+  }
+  .event-dot {
+    width: 0.45em;
+    height: 0.45em;
+    border-radius: 999px;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .event-dot.blue { background: var(--blue); }
+  .event-dot.orange { background: var(--orange); }
+  .event-label { font-weight: 700; }
+  .event-detail {
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @keyframes event-in {
+    from { opacity: 0; transform: translateX(6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ── Ball speed ── */
+  .ball {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5em;
+    padding: 0.4em 0.9em;
+  }
+  .ball-value {
+    font-family: var(--font-mono);
+    font-size: 1.7em;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .ball-unit { font-size: 0.75em; color: var(--text-muted); }
+  .ball.blue-touch { border-color: color-mix(in srgb, var(--blue) 50%, transparent); }
+  .ball.orange-touch { border-color: color-mix(in srgb, var(--orange) 50%, transparent); }
+
+  /* ── Info ── */
+  .info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8em;
+    padding: 0.35em 0.8em;
+    font-size: 0.82em;
+    color: var(--text-muted);
+  }
+  .info strong { color: var(--text); font-weight: 600; }
+
+  #disconnected {
+    position: fixed;
+    top: 12px;
+    right: 14px;
+    font-size: 0.7em;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #f87171;
+    display: none;
+  }
+  #disconnected.visible { display: block; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="disconnected">Sin conexion</div>
+
+<script src="/sdk/rl-overlay.js"></script>
+<script>
+(function () {
+  var overlay = RLOverlay.connect();
+  var stage = document.getElementById('stage');
+  var disconnected = document.getElementById('disconnected');
+
+  var DEFAULT_LAYOUT = {
+    v: 1,
+    theme: { accent: '#7c5cff', radius: 8, scale: 1 },
+    modules: [
+      { id: 'score', x: 41, y: 3, w: 18, h: 9 },
+      { id: 'timer', x: 44, y: 13, w: 12, h: 6 },
+      { id: 'rosters', x: 2, y: 24, w: 22, h: 34 },
+      { id: 'events', x: 76, y: 24, w: 22, h: 34 },
+      { id: 'ball', x: 2, y: 3, w: 11, h: 7 },
+      { id: 'info', x: 87, y: 3, w: 11, h: 7 }
+    ]
+  };
+
+  function decodeLayout() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var raw = params.get('layout');
+      if (!raw) return DEFAULT_LAYOUT;
+      var normalized = raw.replace(/-/g, '+').replace(/_/g, '/');
+      var decoded = decodeURIComponent(escape(atob(normalized)));
+      var parsed = JSON.parse(decoded);
+      if (!parsed || !Array.isArray(parsed.modules)) return DEFAULT_LAYOUT;
+      return parsed;
+    } catch (error) {
+      return DEFAULT_LAYOUT;
+    }
+  }
+
+  var layout = decodeLayout();
+  var state = null;
+  var events = [];
+  var prev = { blue: null, orange: null };
+
+  function applyTheme() {
+    var theme = layout.theme || {};
+    var root = document.documentElement;
+    if (theme.accent) root.style.setProperty('--accent', theme.accent);
+    if (theme.radius != null) root.style.setProperty('--radius', theme.radius + 'px');
+    if (theme.scale != null) root.style.setProperty('--scale', String(theme.scale));
+  }
+
+  function makeModule(module) {
+    var el = document.createElement('div');
+    el.className = 'module';
+    el.dataset.id = module.id;
+    el.style.left = module.x + '%';
+    el.style.top = module.y + '%';
+    el.style.width = module.w + '%';
+    el.style.height = module.h + '%';
+
+    var inner;
+    switch (module.id) {
+      case 'score': inner = renderScore(); break;
+      case 'timer': inner = renderTimer(); break;
+      case 'rosters': inner = renderRosters(); break;
+      case 'events': inner = renderEvents(); break;
+      case 'ball': inner = renderBall(); break;
+      case 'info': inner = renderInfo(); break;
+      default: inner = document.createElement('div');
+    }
+    inner.classList.add('panel');
+    inner.style.width = '100%';
+    inner.style.height = '100%';
+    el.appendChild(inner);
+    return el;
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function renderScore() {
+    var root = el('div', 'score');
+    var blue = el('div', 'score-team');
+    blue.appendChild(el('span', 'score-name blue', 'AZUL'));
+    blue.appendChild(el('span', 'score-value blue', '0'));
+    var divider = el('span', 'score-divider', '–');
+    var orange = el('div', 'score-team');
+    orange.appendChild(el('span', 'score-value orange', '0'));
+    orange.appendChild(el('span', 'score-name orange', 'NARANJA'));
+    root.appendChild(blue);
+    root.appendChild(divider);
+    root.appendChild(orange);
+    return root;
+  }
+
+  function renderTimer() {
+    var root = el('div', 'timer');
+    root.appendChild(el('span', 'timer-clock', '5:00'));
+    var badge = el('span', 'timer-badge', 'PRÓRROGA');
+    badge.hidden = true;
+    root.appendChild(badge);
+    return root;
+  }
+
+  function renderRosters() {
+    return el('div', 'rosters');
+  }
+
+  function renderEvents() {
+    return el('div', 'events');
+  }
+
+  function renderBall() {
+    var root = el('div', 'ball');
+    root.appendChild(el('span', 'ball-value', '0'));
+    root.appendChild(el('span', 'ball-unit', 'km/h'));
+    return root;
+  }
+
+  function renderInfo() {
+    var root = el('div', 'info');
+    root.appendChild(el('span', null, '—'));
+    return root;
+  }
+
+  function build() {
+    applyTheme();
+    stage.replaceChildren();
+    layout.modules.forEach(function (module) {
+      stage.appendChild(makeModule(module));
+    });
+  }
+
+  function fmtTime(seconds) {
+    if (seconds == null) return '5:00';
+    var s = Math.max(0, Math.floor(seconds));
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+
+  function update(d) {
+    state = d;
+
+    // Score
+    var score = stage.querySelector('[data-id="score"]');
+    if (score) {
+      score.querySelector('.score-value.blue').textContent = d.scoreBlue || 0;
+      score.querySelector('.score-value.orange').textContent = d.scoreOrange || 0;
+      var b = d.scoreBlue || 0;
+      var o = d.scoreOrange || 0;
+      if (prev.blue !== null && b !== prev.blue) pulse(score.querySelector('.score-value.blue'));
+      if (prev.orange !== null && o !== prev.orange) pulse(score.querySelector('.score-value.orange'));
+      prev.blue = b;
+      prev.orange = o;
+    }
+
+    // Timer
+    var timer = stage.querySelector('[data-id="timer"]');
+    if (timer) {
+      timer.querySelector('.timer-clock').textContent = fmtTime(d.timeRemaining);
+      timer.querySelector('.timer-badge').hidden = !d.isOvertime;
+    }
+
+    // Ball
+    var ball = stage.querySelector('[data-id="ball"]');
+    if (ball) {
+      ball.querySelector('.ball-value').textContent = Math.round((d.ballSpeed || 0) * 3.6);
+      ball.classList.toggle('blue-touch', d.lastTouchTeam === 0);
+      ball.classList.toggle('orange-touch', d.lastTouchTeam === 1);
+    }
+
+    // Info
+    var info = stage.querySelector('[data-id="info"]');
+    if (info) {
+      info.replaceChildren();
+      if (d.arena) {
+        var arena = el('span');
+        arena.appendChild(el('strong', null, d.arena));
+        info.appendChild(arena);
+      }
+      if (d.playerCount) {
+        info.appendChild(el('span', null, d.playerCount + ' jugadores'));
+      }
+      info.appendChild(el('span', null, d.isOnline ? 'Online' : 'Local'));
+    }
+
+    // Rosters
+    var rosters = stage.querySelector('[data-id="rosters"]');
+    if (rosters) {
+      rosters.replaceChildren();
+      var players = (d.players || []).slice().sort(function (a, c) {
+        return (c.score || 0) - (a.score || 0);
+      });
+      if (players.length === 0) {
+        rosters.appendChild(el('div', 'roster-empty', 'Sin jugadores'));
+      }
+      players.forEach(function (p) {
+        var line = el('div', 'roster-line ' + (p.team === 0 ? 'blue' : 'orange'));
+        line.appendChild(el('span', 'roster-name', p.name || '—'));
+        line.appendChild(el('span', 'roster-stat strong', p.score || 0));
+        line.appendChild(el('span', 'roster-stat', 'G' + (p.goals || 0)));
+        line.appendChild(el('span', 'roster-stat', 'A' + (p.assists || 0)));
+        line.appendChild(el('span', 'roster-stat', 'Sv' + (p.saves || 0)));
+        rosters.appendChild(line);
+      });
+    }
+  }
+
+  function renderEventFeed() {
+    var feed = stage.querySelector('[data-id="events"]');
+    if (!feed) return;
+    feed.replaceChildren();
+    events.slice(0, 8).forEach(function (event) {
+      var row = el('div', 'event');
+      var dot = el('span', 'event-dot ' + (event.team === 0 ? 'blue' : event.team === 1 ? 'orange' : ''));
+      row.appendChild(dot);
+      row.appendChild(el('span', 'event-label', event.label));
+      if (event.detail) row.appendChild(el('span', 'event-detail', event.detail));
+      feed.appendChild(row);
+    });
+    if (events.length === 0) {
+      feed.appendChild(el('div', 'roster-empty', 'Esperando eventos…'));
+    }
+  }
+
+  function pushEvent(label, detail, team) {
+    events.unshift({ label: label, detail: detail, team: team });
+    if (events.length > 12) events.pop();
+    renderEventFeed();
+  }
+
+  function pulse(node) {
+    if (!node) return;
+    node.style.transform = 'scale(1.18)';
+    node.style.transition = 'transform 0.12s ease-out';
+    window.setTimeout(function () {
+      node.style.transform = 'scale(1)';
+    }, 130);
+  }
+
+  overlay.on('connected', function () {
+    disconnected.classList.remove('visible');
+    pushEvent('Conexión', 'Overlay conectado', null);
+  });
+
+  overlay.on('disconnected', function () {
+    disconnected.classList.add('visible');
+  });
+
+  overlay.on('state', function (d) {
+    update(d);
+  });
+
+  overlay.on('goal', function (data) {
+    var name = (data && data.scorerName) || 'Jugador';
+    pushEvent('GOL', name, data && data.teamNum);
+  });
+
+  overlay.on('statfeed', function (data) {
+    if (!data) return;
+    var target = data.mainTarget ? data.mainTarget.name : '';
+    pushEvent(data.eventName || 'Evento', target, data.mainTarget ? data.mainTarget.teamNum : null);
+  });
+
+  build();
+  renderEventFeed();
+})();
+</script>
+</body>
+</html>

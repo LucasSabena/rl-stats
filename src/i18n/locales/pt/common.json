@@ -16,7 +16,8 @@
       "improve": "Melhorar"
     },
     "sessions": "Sessões",
-    "records": "Recordes"
+    "records": "Recordes",
+    "studio": "Overlay Studio"
   },
   "pageTitles": {
     "live": "Painel ao Vivo",
@@ -30,7 +31,8 @@
     "profile": "Minha carreira",
     "matchDetail": "Detalhe da partida",
     "sessions": "Sessões",
-    "records": "Recordes"
+    "records": "Recordes",
+    "studio": "Overlay Studio"
   },
   "connection": {
     "online": "Online",
@@ -92,7 +94,8 @@
     "exported": "Histórico exportado",
     "commandFailed": "Não foi possível executar a ação",
     "sessions": "Sessões",
-    "records": "Recordes"
+    "records": "Recordes",
+    "studio": "Overlay Studio"
   },
   "status": {
     "live": "Ao vivo",

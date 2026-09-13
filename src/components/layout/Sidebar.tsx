@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   BarChart3,
   CalendarClock,
+  Clapperboard,
   Dumbbell,
   Gamepad2,
   List,
@@ -54,6 +55,7 @@ const NAV_GROUPS: { labelKey: string | null; items: NavItem[] }[] = [
         icon: Dumbbell,
       },
       { path: "/pro-configs", labelKey: "sidebar.proConfigs", icon: Gamepad2 },
+      { path: "/studio", labelKey: "sidebar.studio", icon: Clapperboard },
     ],
   },
 ];

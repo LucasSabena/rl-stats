@@ -53,6 +53,7 @@ use tokio::sync::{broadcast, watch, RwLock};
 use tracing::{error, info, warn};
 
 use crate::core::models::{LiveMatchState, LivePlayer};
+use crate::core::storage::{self, DbPool};
 
 // ---------------------------------------------------------------------------
 // Embedded overlay assets
@@ -169,6 +170,9 @@ pub struct OverlayServer {
 
     /// Cached status that mirrors the shutdown signal + port.
     running: bool,
+
+    /// Profile database handle for the read-only local API. `None` in tests.
+    db_pool: Option<Arc<DbPool>>,
 }
 
 impl OverlayServer {
@@ -185,7 +189,13 @@ impl OverlayServer {
             latest_state: Arc::new(RwLock::new(None)),
             token: Arc::new(uuid::Uuid::new_v4().simple().to_string()),
             running: false,
+            db_pool: None,
         }
+    }
+
+    /// Attaches the profile database used by the read-only `/api/v1` routes.
+    pub fn set_db_pool(&mut self, pool: Arc<DbPool>) {
+        self.db_pool = Some(pool);
     }
 
     /// Starts the HTTP server on `127.0.0.1:{port}`.
@@ -217,11 +227,15 @@ impl OverlayServer {
             latest_state: self.latest_state_handle(),
             token: Arc::clone(&self.token),
             port,
+            db_pool: self.db_pool.clone(),
         });
 
         let app = Router::new()
             .route("/ws", get(ws_handler))
+            .route("/health", get(health_handler))
             .route("/api/state", get(get_state_handler))
+            .route("/api/v1/matches", get(v1_matches_handler))
+            .route("/api/v1/stats", get(v1_stats_handler))
             .route("/sdk/rl-overlay.js", get(serve_sdk))
             .route("/overlays/{*path}", get(serve_overlay))
             .with_state(shared_state);
@@ -445,6 +459,8 @@ struct AppContext {
     token: Arc<String>,
     /// Bound port, used to build the same-origin allowlist.
     port: u16,
+    /// Profile database for the read-only API. `None` in tests.
+    db_pool: Option<Arc<DbPool>>,
 }
 
 /// Optional `?token=` query parameter.
@@ -674,6 +690,198 @@ async fn get_state_handler(
         .into_response()
 }
 
+/// Health check for stream tooling and the Settings diagnostics card.
+async fn health_handler(State(state): State<Arc<AppContext>>) -> impl IntoResponse {
+    let body = serde_json::json!({
+        "status": "ok",
+        "port": state.port,
+        "clients": state.client_count.load(Ordering::SeqCst),
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "no-store, max-age=0"),
+        ],
+        body.to_string(),
+    )
+        .into_response()
+}
+
+/// Optional filters for the read-only local API.
+#[derive(Debug, Default, Deserialize)]
+struct ApiQuery {
+    #[serde(default)]
+    token: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    playlist: Option<String>,
+    match_type: Option<String>,
+    result: Option<String>,
+    search: Option<String>,
+    days: Option<i32>,
+}
+
+fn json_response(status: StatusCode, body: serde_json::Value) -> Response {
+    (
+        status,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "no-store, max-age=0"),
+        ],
+        body.to_string(),
+    )
+        .into_response()
+}
+
+fn authorize_api(headers: &HeaderMap, query: &ApiQuery, state: &AppContext) -> bool {
+    authorize(
+        headers,
+        &AuthQuery {
+            token: query.token.clone(),
+        },
+        state,
+    )
+}
+
+/// `GET /api/v1/matches` — recent matches as JSON for scripts, bots and
+/// Stream Deck integrations. Requires the per-run `?token=`.
+async fn v1_matches_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if !authorize_api(&headers, &query, &state) {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+    let Some(pool) = state.db_pool.clone() else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            serde_json::json!({ "error": "database unavailable" }),
+        );
+    };
+
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let offset = query.offset.unwrap_or(0).max(0);
+    let playlist = query.playlist.clone();
+    let match_type = query.match_type.clone();
+    let result = query.result.clone();
+    let search = query.search.clone();
+
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
+        let names = storage::identity_candidate_names(&settings);
+        storage::get_matches(
+            &pool,
+            storage::MatchQuery {
+                limit,
+                offset,
+                arena: None,
+                match_type: match_type.as_deref(),
+                playlist: playlist.as_deref(),
+                result: result.as_deref(),
+                date_from: None,
+                date_to: None,
+                search: search.as_deref(),
+                local_primary_id: settings.local_primary_id.as_deref(),
+                local_player_names: &names,
+            },
+        )
+    });
+
+    match task.await {
+        Ok(Ok(matches)) => json_response(
+            StatusCode::OK,
+            serde_json::json!({ "matches": matches, "limit": limit, "offset": offset }),
+        ),
+        Ok(Err(error)) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
+/// `GET /api/v1/stats?days=N` — aggregated stats for the local player
+/// (career totals/records when `days=0`). Requires `?token=`.
+async fn v1_stats_handler(
+    Query(query): Query<ApiQuery>,
+    headers: HeaderMap,
+    State(state): State<Arc<AppContext>>,
+) -> Response {
+    if !authorize_api(&headers, &query, &state) {
+        return json_response(
+            StatusCode::FORBIDDEN,
+            serde_json::json!({ "error": "forbidden" }),
+        );
+    }
+    let Some(pool) = state.db_pool.clone() else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            serde_json::json!({ "error": "database unavailable" }),
+        );
+    };
+
+    let days = query.days.unwrap_or(7).clamp(0, 3650);
+
+    let task =
+        tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+            let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
+            let identity = settings.local_primary_id.clone().unwrap_or_default();
+            if identity.trim().is_empty() {
+                return Ok(serde_json::json!({ "available": false }));
+            }
+            if days == 0 {
+                let records =
+                    storage::get_career_records(&pool, &identity, settings.session_gap_minutes)
+                        .map_err(|e| e.to_string())?;
+                return Ok(serde_json::json!({
+                    "available": true,
+                    "career": serde_json::to_value(records).unwrap_or(serde_json::json!(null)),
+                }));
+            }
+
+            let end = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let start = (chrono::Local::now() - chrono::Duration::days(days as i64 - 1))
+                .format("%Y-%m-%d")
+                .to_string();
+            let summary = storage::get_analytics_summary_for_identity(
+                &pool, &identity, &start, &end, None, None,
+            )
+            .map_err(|e| e.to_string())?;
+            let streak =
+                crate::core::metrics::calculate_streaks(&pool, &identity, &start, &end, None, None)
+                    .map_err(|e| e.to_string())?;
+            Ok(serde_json::json!({
+                "available": true,
+                "days": days,
+                "startDate": start,
+                "endDate": end,
+                "summary": serde_json::to_value(summary).unwrap_or(serde_json::json!(null)),
+                "streak": { "best": streak.best_streak, "current": streak.current_streak },
+            }))
+        });
+
+    match task.await {
+        Ok(Ok(value)) => json_response(StatusCode::OK, value),
+        Ok(Err(error)) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error }),
+        ),
+        Err(error) => json_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": error.to_string() }),
+        ),
+    }
+}
+
 /// Serves the overlay SDK JavaScript file at `GET /sdk/rl-overlay.js`.
 async fn serve_sdk() -> impl IntoResponse {
     match OverlayAssets::get("rl-overlay-sdk.js") {
@@ -702,6 +910,7 @@ mod tests {
             latest_state: Arc::new(RwLock::new(None)),
             token: Arc::new(token.to_string()),
             port,
+            db_pool: None,
         }
     }
 

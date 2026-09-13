@@ -643,9 +643,10 @@ pub fn run() {
                 let port = settings.overlay_server_port;
                 tauri::async_runtime::spawn(async move {
                     let mut server = OverlayServer::new(port);
+                    let state = app_handle.state::<AppState>();
+                    server.set_db_pool(state.db_pool.clone());
                     match server.start().await {
                         Ok(()) => {
-                            let state = app_handle.state::<AppState>();
                             *state.overlay_server.lock().await = Some(server);
                             info!(port, "Overlay server auto-started");
                         }

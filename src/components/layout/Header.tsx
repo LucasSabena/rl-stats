@@ -22,6 +22,7 @@ const TITLE_KEYS: Record<string, string> = {
   "/analytics": "pageTitles.analytics",
   "/sessions": "pageTitles.sessions",
   "/records": "pageTitles.records",
+  "/studio": "pageTitles.studio",
   "/players": "pageTitles.players",
   "/pro-configs": "pageTitles.proConfigs",
   "/training-packs": "pageTitles.trainingPacks",

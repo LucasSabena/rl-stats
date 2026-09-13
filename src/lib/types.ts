@@ -506,6 +506,10 @@ export interface OverlaySceneConfig {
   series: number | null;
   hide: string;
   alertTypes: string;
+  alertDuration?: number | null;
+  alertPosition?: "top" | "bottom" | "center" | "";
+  alertMax?: number | null;
+  showSpeed?: boolean;
 }
 
 export type MatchType =

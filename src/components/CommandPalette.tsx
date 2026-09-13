@@ -13,6 +13,7 @@ import {
   ArrowRight,
   BarChart3,
   CalendarClock,
+  Clapperboard,
   Dumbbell,
   FileDown,
   Gamepad2,
@@ -220,6 +221,14 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         path: "/sessions",
         icon: CalendarClock,
         keywords: "sessions sesiones bloques fatiga",
+      },
+      {
+        kind: "nav",
+        id: "nav-studio",
+        label: t("common:commandPalette.studio", { defaultValue: "Overlay Studio" }),
+        path: "/studio",
+        icon: Clapperboard,
+        keywords: "studio overlay obs stream editor drag",
       },
       {
         kind: "nav",

@@ -135,7 +135,11 @@
         "rosters": "Jugadores",
         "ball": "Balón",
         "series": "Serie"
-      }
+      },
+      "alertDuration": "Duración (ms)",
+      "alertPosition": "Posición",
+      "alertMax": "Máximo simultáneo",
+      "showSpeed": "Mostrar velocidad (uu/s) en overlays compatibles"
     },
     "alerts": {
       "Goal": "Goles",
@@ -149,6 +153,49 @@
       "title": "Streamer.bot / integraciones",
       "description": "Conectá Streamer.bot u otra herramienta a este WebSocket para disparar acciones.",
       "copyJson": "Copiar configuración"
+    },
+    "positions": {
+      "top": "Arriba",
+      "bottom": "Abajo",
+      "center": "Centro"
+    }
+  },
+  "studio": {
+    "title": "Overlay Studio",
+    "subtitle": "Armá tu overlay a medida: arrastrá los módulos, ajustá el estilo y copiá la URL para OBS.",
+    "serverRunning": "Servidor activo en :{{port}}",
+    "serverStopped": "Servidor detenido",
+    "startServer": "Iniciar servidor",
+    "stopServer": "Detener servidor",
+    "noServerTitle": "El servidor de overlay está apagado",
+    "noServerDescription": "Iniciá el servidor local para editar y previsualizar tu overlay en vivo.",
+    "dragHint": "Arrastrá los módulos para moverlos. Usá las flechas con Shift para ajustes finos.",
+    "preview": "Vista previa en vivo",
+    "copyObsUrl": "Copiar URL para OBS",
+    "openInBrowser": "Abrir en navegador",
+    "urlCopied": "URL copiada",
+    "copyFailed": "No se pudo copiar",
+    "modules": "Módulos",
+    "position": "Posición y tamaño",
+    "theme": "Tema",
+    "accent": "Color de acento",
+    "radius": "Bordes",
+    "scale": "Escala",
+    "scenes": "Escenas guardadas",
+    "sceneName": "Nombre de la escena",
+    "sceneSaved": "Escena \"{{name}}\" guardada",
+    "sceneLoaded": "Escena \"{{name}}\" cargada",
+    "reset": "Restablecer layout",
+    "shareLayout": "Copiar link del layout",
+    "addModule": "Agregar módulo",
+    "removeModule": "Quitar módulo",
+    "module": {
+      "score": "Marcador",
+      "timer": "Reloj",
+      "rosters": "Jugadores",
+      "events": "Eventos",
+      "ball": "Velocidad del balón",
+      "info": "Información"
     }
   }
 }
