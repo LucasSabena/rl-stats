@@ -278,7 +278,10 @@
       "exported": "Pack exportado",
       "imported": "Pack importado: {{name}}",
       "undo": "Desfazer",
-      "redo": "Refazer"
+      "redo": "Refazer",
+      "formats": "Formatos",
+      "formatsHint": "Reorganiza os módulos em um formato conhecido; os que não se aplicam ficam desligados.",
+      "formatApplied": "Formato aplicado: {{format}}"
     },
     "teams": {
       "title": "Equipes",

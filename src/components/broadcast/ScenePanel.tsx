@@ -71,6 +71,54 @@ const DEFAULT_PLACEMENT: Record<string, Placement> = {
 
 const ALL_MODULES = Object.keys(DEFAULT_PLACEMENT);
 
+interface FormatPlacement {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Layout formats: one click rearranges the modules into a known broadcast
+ * shape. Modules missing from the chosen format are turned off (not deleted),
+ * so switching back re-enables them.
+ */
+const FORMAT_PRESETS: Record<string, Record<string, FormatPlacement>> = {
+  full: {
+    scorebug: { x: 27, y: 3, w: 46, h: 9 },
+    series: { x: 40, y: 13, w: 20, h: 5 },
+    "roster:blue": { x: 1.5, y: 20, w: 22, h: 36 },
+    "roster:orange": { x: 76.5, y: 20, w: 22, h: 36 },
+    events: { x: 25, y: 68, w: 26, h: 24 },
+    chat: { x: 52, y: 68, w: 23, h: 24 },
+    brand: { x: 88, y: 92, w: 10, h: 6 },
+  },
+  oneLine: {
+    scorebug: { x: 8, y: 86, w: 84, h: 9 },
+    brand: { x: 90, y: 86, w: 8, h: 9 },
+  },
+  corner: {
+    scorebug: { x: 2, y: 3, w: 38, h: 10 },
+    series: { x: 2, y: 14.5, w: 22, h: 5 },
+    events: { x: 2, y: 70, w: 24, h: 22 },
+    brand: { x: 88, y: 92, w: 10, h: 6 },
+  },
+  side: {
+    scorebug: { x: 2, y: 3, w: 40, h: 9 },
+    "roster:blue": { x: 2, y: 15, w: 24, h: 48 },
+    "roster:orange": { x: 2, y: 66, w: 24, h: 30 },
+    chat: { x: 74, y: 15, w: 24, h: 52 },
+    brand: { x: 88, y: 92, w: 10, h: 6 },
+  },
+};
+
+const FORMAT_LABELS: Record<string, string> = {
+  full: "Completo",
+  oneLine: "Línea inferior",
+  corner: "Esquina",
+  side: "Lateral",
+};
+
 interface ScenePanelProps {
   port: number;
   token: string;
@@ -378,6 +426,30 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
     }
   };
 
+  /** Rearranges modules into a broadcast format preset (undoable). */
+  const applyFormat = (format: string) => {
+    const preset = FORMAT_PRESETS[format];
+    if (!preset) return;
+    const next: Record<string, SceneModule> = {};
+    Object.entries(layout).forEach(([key, spec]) => {
+      const lookup =
+        spec.module === "roster"
+          ? `roster:${spec.team === "orange" ? "orange" : "blue"}`
+          : spec.module;
+      const placement = preset[lookup];
+      next[key] = placement
+        ? { ...spec, ...placement, enabled: true }
+        : { ...spec, enabled: false };
+    });
+    commitLayout(next);
+    addToast({
+      type: "success",
+      title: t("overlay:broadcast.scene.formatApplied", {
+        format: FORMAT_LABELS[format] ?? format,
+      }),
+    });
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -545,6 +617,27 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
       </Card>
 
       <div className="space-y-4">
+        <Card className="p-4">
+          <h3 className="mb-2 text-sm font-semibold text-text-primary">
+            {t("overlay:broadcast.scene.formats")}
+          </h3>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.keys(FORMAT_PRESETS).map((format) => (
+              <button
+                key={format}
+                type="button"
+                onClick={() => applyFormat(format)}
+                className="rounded-md border border-border-subtle bg-bg-panel px-2 py-1 text-[11px] text-text-secondary hover:border-accent-primary/60 hover:text-text-primary"
+              >
+                {FORMAT_LABELS[format]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-text-muted">
+            {t("overlay:broadcast.scene.formatsHint")}
+          </p>
+        </Card>
+
         <Card className="p-4">
           <h3 className="mb-2 text-sm font-semibold text-text-primary">
             {t("overlay:broadcast.scene.modules")}

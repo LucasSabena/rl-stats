@@ -1,5 +1,14 @@
 # Changelog
 
+## v4.1.0 — Formatos de overlay en un clic
+
+### Nuevo
+
+- **Presets de formato** en el editor de escenas: Completo, **Línea inferior**
+  (una sola barra horizontal abajo), Esquina y Lateral. Un clic reordena los
+  módulos; los que no aplican al formato quedan apagados (no se borran), así
+  que volver atrás es inmediato. Es undoable como cualquier edición.
+
 ## v4.0.0 — RL Stats Broadcast Studio
 
 RL Stats deja de ser solo un panel de estadísticas y se convierte en una

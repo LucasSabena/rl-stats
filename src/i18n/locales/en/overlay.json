@@ -278,7 +278,10 @@
       "exported": "Pack exported",
       "imported": "Pack imported: {{name}}",
       "undo": "Undo",
-      "redo": "Redo"
+      "redo": "Redo",
+      "formats": "Formats",
+      "formatsHint": "Rearranges modules into a known format; unused ones are turned off.",
+      "formatApplied": "Format applied: {{format}}"
     },
     "teams": {
       "title": "Teams",

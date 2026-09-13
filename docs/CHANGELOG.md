@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-09-13
+
+### Added
+- Scene format presets: Full, One-line bottom bar, Corner and Side rail.
+  One click rearranges the modules and disables the unused ones (undoable).
+
 ## [4.0.0] - 2026-09-13
 
 Broadcast Studio milestone: overlay engine with design packs, Control Room,
