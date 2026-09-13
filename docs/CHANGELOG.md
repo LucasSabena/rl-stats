@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-13
+
+### Added
+- Team rosters: per-team player list (name + optional Stats API id) managed
+  from the Teams tab and exposed in `/api/v2/teams` and team snapshots.
+- Migration 30: team_roster table.
+
 ## [3.4.0] - 2026-09-13
 
 ### Added

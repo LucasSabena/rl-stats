@@ -288,7 +288,13 @@
       "saved": "Equipo guardado",
       "delete": "Eliminar equipo",
       "deleteConfirm": "El equipo se quitará de la biblioteca.",
-      "empty": "Todavía no hay equipos."
+      "empty": "Todavía no hay equipos.",
+      "roster": "Plantel",
+      "rosterEmpty": "Sin jugadores cargados.",
+      "addPlayer": "Agregar jugador",
+      "playerName": "Nombre",
+      "playerId": "ID (opcional)",
+      "playerAdded": "Jugador agregado"
     },
     "chat": {
       "title": "Fuentes de chat",

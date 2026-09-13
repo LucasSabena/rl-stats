@@ -6,7 +6,7 @@
 
 use crate::core::broadcast::packs::{builtin_packs, font_options};
 use crate::core::broadcast::store::{
-    self, BroadcastAsset, BroadcastPack, BroadcastScene, BroadcastToken, Series, Team,
+    self, BroadcastAsset, BroadcastPack, BroadcastScene, BroadcastToken, Series, Team, TeamPlayer,
 };
 use crate::core::broadcast::{is_broadcast_state, ActionRequest};
 use crate::core::settings::{get_settings, set_settings};
@@ -325,6 +325,40 @@ pub async fn save_team(
 #[tauri::command]
 pub async fn delete_team(state: State<'_, AppState>, id: String) -> Result<(), String> {
     store::delete_team(&state.db_pool, &id).map_err(storage_error)
+}
+
+// ---------------------------------------------------------------------------
+// Team roster
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn list_team_roster(
+    state: State<'_, AppState>,
+    team_id: String,
+) -> Result<Vec<TeamPlayer>, String> {
+    store::list_team_roster(&state.db_pool, &team_id).map_err(storage_error)
+}
+
+#[tauri::command]
+pub async fn add_team_roster_player(
+    state: State<'_, AppState>,
+    team_id: String,
+    name: String,
+    primary_id: Option<String>,
+) -> Result<TeamPlayer, String> {
+    if name.trim().is_empty() {
+        return Err("El nombre del jugador no puede estar vacío".into());
+    }
+    store::add_team_player(&state.db_pool, &team_id, &name, primary_id.as_deref())
+        .map_err(storage_error)
+}
+
+#[tauri::command]
+pub async fn remove_team_roster_player(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    store::remove_team_player(&state.db_pool, &id).map_err(storage_error)
 }
 
 // ---------------------------------------------------------------------------

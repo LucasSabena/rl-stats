@@ -476,6 +476,14 @@ export interface BroadcastTeam {
   updatedAt: string;
 }
 
+export interface TeamPlayer {
+  id: string;
+  teamId: string;
+  name: string;
+  primaryId?: string | null;
+  createdAt: string;
+}
+
 export interface TeamSnapshot {
   id: string;
   name: string;

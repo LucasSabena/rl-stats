@@ -78,8 +78,9 @@ Useful query parameters for `/overlays/live`:
 
 ## 3. Teams and series
 
-The **Teams** tab stores name, tag, primary/secondary colors and an uploaded
-logo. **Series** are best-of-N with automatic winner detection and a per-game
+The **Teams** tab stores name, tag, primary/secondary colors, an uploaded
+logo and an optional **roster** (player names + Stats API ids) used for
+tournament registration. **Series** are best-of-N with automatic winner detection and a per-game
 log; the overlay picks up the team names, colors and logos automatically.
 
 ## 3.5 Tournaments

@@ -618,6 +618,78 @@ pub fn delete_team(pool: &DbPool, id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// A player listed on a team's roster.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamPlayer {
+    pub id: String,
+    pub team_id: String,
+    pub name: String,
+    pub primary_id: Option<String>,
+    pub created_at: String,
+}
+
+pub fn list_team_roster(pool: &DbPool, team_id: &str) -> AppResult<Vec<TeamPlayer>> {
+    let conn = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    let mut statement = conn
+        .prepare("SELECT id, team_id, name, primary_id, created_at FROM team_roster WHERE team_id = ?1 ORDER BY name")
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    let rows = statement
+        .query_map(params![team_id], |row| {
+            Ok(TeamPlayer {
+                id: row.get(0)?,
+                team_id: row.get(1)?,
+                name: row.get(2)?,
+                primary_id: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| AppError::StorageError(error.to_string()))
+}
+
+pub fn add_team_player(
+    pool: &DbPool,
+    team_id: &str,
+    name: &str,
+    primary_id: Option<&str>,
+) -> AppResult<TeamPlayer> {
+    if get_team(pool, team_id)?.is_none() {
+        return Err(AppError::StorageError(format!("Team not found: {team_id}")));
+    }
+    let player = TeamPlayer {
+        id: new_id(),
+        team_id: team_id.to_string(),
+        name: name.trim().to_string(),
+        primary_id: primary_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        created_at: now(),
+    };
+    let conn = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    conn.execute(
+        "INSERT INTO team_roster (id, team_id, name, primary_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![player.id, player.team_id, player.name, player.primary_id, player.created_at],
+    )
+    .map_err(|error| AppError::StorageError(error.to_string()))?;
+    Ok(player)
+}
+
+pub fn remove_team_player(pool: &DbPool, id: &str) -> AppResult<()> {
+    let conn = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    conn.execute("DELETE FROM team_roster WHERE id = ?1", params![id])
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    Ok(())
+}
+
 /// Serializes a team for the overlay, resolving its logo to a server URL.
 pub fn team_snapshot(pool: &DbPool, id: Option<&str>) -> AppResult<Option<Value>> {
     let Some(id) = id.filter(|value| !value.is_empty()) else {
@@ -634,6 +706,7 @@ pub fn team_snapshot(pool: &DbPool, id: Option<&str>) -> AppResult<Option<Value>
         Some(asset) => asset.url,
         None => String::new(),
     };
+    let roster = list_team_roster(pool, &team.id).unwrap_or_default();
     Ok(Some(json!({
         "id": team.id,
         "name": team.name,
@@ -641,6 +714,14 @@ pub fn team_snapshot(pool: &DbPool, id: Option<&str>) -> AppResult<Option<Value>
         "colorPrimary": team.color_primary,
         "colorSecondary": team.color_secondary,
         "logoUrl": logo_url,
+        "roster": roster
+            .into_iter()
+            .map(|player| json!({
+                "id": player.id,
+                "name": player.name,
+                "primaryId": player.primary_id,
+            }))
+            .collect::<Vec<_>>(),
     })))
 }
 

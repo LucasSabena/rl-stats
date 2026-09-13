@@ -7,14 +7,17 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { useUIStore } from "@/stores/uiStore";
 import {
+  addTeamRosterPlayer,
   deleteBroadcastAsset,
   deleteTeam,
   listBroadcastAssets,
+  listTeamRoster,
   listTeams,
+  removeTeamRosterPlayer,
   saveTeam,
   uploadBroadcastAsset,
 } from "@/lib/api";
-import type { BroadcastAsset, BroadcastTeam } from "@/lib/types";
+import type { BroadcastAsset, BroadcastTeam, TeamPlayer } from "@/lib/types";
 import { Plus, Save, Trash2, Upload } from "lucide-react";
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -45,6 +48,9 @@ export function TeamsPanel({ port, onChanged }: TeamsPanelProps) {
   const [colorSecondary, setColorSecondary] = useState("#1d4ed8");
   const [logoAssetId, setLogoAssetId] = useState("");
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [roster, setRoster] = useState<TeamPlayer[]>([]);
+  const [playerName, setPlayerName] = useState("");
+  const [playerId, setPlayerId] = useState("");
 
   const load = useCallback(async () => {
     const [teamList, assets] = await Promise.all([
@@ -60,6 +66,7 @@ export function TeamsPanel({ port, onChanged }: TeamsPanelProps) {
   }, [load]);
 
   const resetForm = () => {
+    setRoster([]);
     setEditingId(null);
     setName("");
     setTag("");
@@ -69,6 +76,7 @@ export function TeamsPanel({ port, onChanged }: TeamsPanelProps) {
   };
 
   const startEdit = (team: BroadcastTeam) => {
+    void listTeamRoster(team.id).then(setRoster);
     setEditingId(team.id);
     setName(team.name);
     setTag(team.tag);
@@ -221,6 +229,87 @@ export function TeamsPanel({ port, onChanged }: TeamsPanelProps) {
               </Button>
             )}
           </div>
+
+          {editingId && (
+            <div className="border-t border-border-subtle pt-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
+                {t("overlay:broadcast.teams.roster")} · {roster.length}
+              </p>
+              <ul className="mb-2 space-y-1">
+                {roster.length === 0 && (
+                  <li className="text-xs text-text-muted">
+                    {t("overlay:broadcast.teams.rosterEmpty")}
+                  </li>
+                )}
+                {roster.map((player) => (
+                  <li
+                    key={player.id}
+                    className="flex items-center gap-2 rounded bg-bg-panel px-2 py-1"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
+                      {player.name}
+                    </span>
+                    {player.primaryId && (
+                      <span className="truncate font-mono text-[10px] text-text-tertiary">
+                        {player.primaryId}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="text-accent-danger"
+                      onClick={() =>
+                        void removeTeamRosterPlayer(player.id).then(() =>
+                          setRoster((current) =>
+                            current.filter((entry) => entry.id !== player.id),
+                          ),
+                        )
+                      }
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-end gap-1.5">
+                <Input
+                  placeholder={t("overlay:broadcast.teams.playerName")}
+                  value={playerName}
+                  onChange={(event) => setPlayerName(event.target.value)}
+                  size="sm"
+                  containerClassName="flex-1"
+                />
+                <Input
+                  placeholder={t("overlay:broadcast.teams.playerId")}
+                  value={playerId}
+                  onChange={(event) => setPlayerId(event.target.value)}
+                  size="sm"
+                  containerClassName="w-32"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!playerName.trim()}
+                  onClick={() =>
+                    void addTeamRosterPlayer(
+                      editingId,
+                      playerName.trim(),
+                      playerId.trim() || null,
+                    ).then((player) => {
+                      setRoster((current) => [...current, player]);
+                      setPlayerName("");
+                      setPlayerId("");
+                      addToast({
+                        type: "success",
+                        title: t("overlay:broadcast.teams.playerAdded"),
+                      });
+                    })
+                  }
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 

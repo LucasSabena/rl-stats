@@ -288,7 +288,13 @@
       "saved": "Equipe salva",
       "delete": "Excluir equipe",
       "deleteConfirm": "A equipe será removida da biblioteca.",
-      "empty": "Ainda não há equipes."
+      "empty": "Ainda não há equipes.",
+      "roster": "Plantel",
+      "rosterEmpty": "Sem jogadores.",
+      "addPlayer": "Adicionar jogador",
+      "playerName": "Nome",
+      "playerId": "ID (opcional)",
+      "playerAdded": "Jogador adicionado"
     },
     "chat": {
       "title": "Fontes de chat",

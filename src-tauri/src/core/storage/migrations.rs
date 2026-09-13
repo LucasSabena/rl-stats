@@ -466,6 +466,21 @@ pub static MIGRATIONS: &[Migration] = &[
         CREATE INDEX IF NOT EXISTS idx_tournament_matches_event
             ON tournament_matches(tournament_id, round, position);",
     },
+    Migration {
+        version: 30,
+        name: "create_team_roster",
+        // Optional player roster per team, used for tournament registration
+        // and eligibility checks. Names are free-form; `primary_id` links to
+        // the Stats API identity when known.
+        sql: "CREATE TABLE IF NOT EXISTS team_roster (
+            id TEXT PRIMARY KEY,
+            team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            primary_id TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_team_roster_team ON team_roster(team_id);",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

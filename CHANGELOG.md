@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.5.0 — Planteles por equipo
+
+### Nuevo
+
+- **Roster por equipo**: cargá los jugadores de cada equipo (nombre y,
+  opcionalmente, su ID de la Stats API) desde la pestaña Equipos. Quedan
+  guardados con el equipo y viajan en la API (`/api/v2/teams`) para
+  inscripciones y validaciones de torneo.
+
 ## v3.4.0 — Puente en vivo ↔ torneo y formato suizo
 
 ### Nuevo — Puente en vivo → serie → llave

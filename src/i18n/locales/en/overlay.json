@@ -288,7 +288,13 @@
       "saved": "Team saved",
       "delete": "Delete team",
       "deleteConfirm": "The team will be removed from the library.",
-      "empty": "No teams yet."
+      "empty": "No teams yet.",
+      "roster": "Roster",
+      "rosterEmpty": "No players yet.",
+      "addPlayer": "Add player",
+      "playerName": "Name",
+      "playerId": "ID (optional)",
+      "playerAdded": "Player added"
     },
     "chat": {
       "title": "Chat sources",

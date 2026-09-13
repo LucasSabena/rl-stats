@@ -10,6 +10,7 @@ import {
   type RecordingSummary,
   type SeriesSnapshot,
   type SceneModule,
+  type TeamPlayer,
   type Tournament,
   type TournamentMatch,
   type TournamentSnapshot,
@@ -191,6 +192,28 @@ export async function saveTeam(input: {
 
 export async function deleteTeam(id: string): Promise<void> {
   return invokeCommand<void>("delete_team", { id });
+}
+
+// ─── Team roster ────────────────────────────────────────────────────────────
+
+export async function listTeamRoster(teamId: string): Promise<TeamPlayer[]> {
+  return invokeCommand<TeamPlayer[]>("list_team_roster", { teamId });
+}
+
+export async function addTeamRosterPlayer(
+  teamId: string,
+  name: string,
+  primaryId?: string | null,
+): Promise<TeamPlayer> {
+  return invokeCommand<TeamPlayer>("add_team_roster_player", {
+    teamId,
+    name,
+    primaryId: primaryId ?? null,
+  });
+}
+
+export async function removeTeamRosterPlayer(id: string): Promise<void> {
+  return invokeCommand<void>("remove_team_roster_player", { id });
 }
 
 // ─── Series ─────────────────────────────────────────────────────────────────
