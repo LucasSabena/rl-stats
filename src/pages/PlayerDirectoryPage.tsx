@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import { useUIStore } from "@/stores/uiStore";
 import { ArrowRight, Shield, Swords, Search, Users, UserPlus, UserMinus, AlertTriangle } from "lucide-react";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -46,6 +47,7 @@ export function PlayerDirectoryPage() {
   const { data: friends } = useFriends();
   const addFriend = useAddFriend();
   const removeFriend = useRemoveFriend();
+  const addToast = useUIStore((state) => state.addToast);
 
   const friendIds = useMemo(
     () => new Set(friends?.map((f) => f.player_id) ?? []),
@@ -203,8 +205,38 @@ export function PlayerDirectoryPage() {
                     leftIcon={isFriend ? UserMinus : UserPlus}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (isFriend) removeFriend.mutate(p.player_id);
-                      else addFriend.mutate({ playerId: p.player_id, tag: p.name });
+                      if (isFriend) {
+                        removeFriend.mutate(p.player_id, {
+                          onSuccess: () =>
+                            addToast({
+                              type: "info",
+                              title: t("players:directory.friendRemoved", {
+                                name: p.name,
+                              }),
+                              action: {
+                                label: t("common:actions.undo"),
+                                onClick: () =>
+                                  addFriend.mutate({
+                                    playerId: p.player_id,
+                                    tag: p.name,
+                                  }),
+                              },
+                            }),
+                        });
+                      } else {
+                        addFriend.mutate(
+                          { playerId: p.player_id, tag: p.name },
+                          {
+                            onSuccess: () =>
+                              addToast({
+                                type: "success",
+                                title: t("players:directory.friendAdded", {
+                                  name: p.name,
+                                }),
+                              }),
+                          }
+                        );
+                      }
                     }}
                     isLoading={
                       (addFriend.isPending && addFriend.variables?.playerId === p.player_id) ||

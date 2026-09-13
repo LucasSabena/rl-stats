@@ -12,18 +12,38 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   BarChart3,
+  Dumbbell,
+  FileDown,
+  Gamepad2,
   History,
+  Home,
+  MonitorPlay,
   Radio,
+  RadioTower,
   Search,
   Settings,
+  Sparkles,
+  Sun,
+  User,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { getMatches, getPlayerDirectory } from "@/lib/api";
+import {
+  exportHistoryCsv,
+  getMatches,
+  getOverlayServerStatus,
+  getOverlayWindowState,
+  getPlayerDirectory,
+  startOverlayServer,
+  stopOverlayServer,
+  toggleOverlayEnabled,
+} from "@/lib/api";
 import { getArenaDisplayName } from "@/lib/arenaMap";
 import { QUERY_STALE_TIME } from "@/lib/constants";
 import { cn, formatDateTime } from "@/lib/utils";
+import { useUIStore } from "@/stores/uiStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import type { MatchSummary, PlayerDirectoryEntry } from "@/lib/types";
 
 interface CommandPaletteProps {
@@ -31,13 +51,22 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
-interface ActionItem {
-  kind: "action";
+interface NavItem {
+  kind: "nav";
   id: string;
   label: string;
   path: string;
   icon: LucideIcon;
   keywords: string;
+}
+
+interface CommandItem {
+  kind: "command";
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  keywords: string;
+  run: () => void | Promise<void>;
 }
 
 interface PlayerItem {
@@ -52,7 +81,7 @@ interface MatchItem {
   match: MatchSummary;
 }
 
-type PaletteItem = ActionItem | PlayerItem | MatchItem;
+type PaletteItem = NavItem | CommandItem | PlayerItem | MatchItem;
 
 interface PaletteGroup {
   id: string;
@@ -63,9 +92,40 @@ interface PaletteGroup {
 const MIN_SEARCH_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 200;
 const RESULT_LIMIT = 5;
+const RECENT_KEY = "rl-palette-recent";
+const MAX_RECENTS = 5;
 
 const KBD_CLASS =
   "rounded border border-border-subtle bg-bg-base px-1.5 py-0.5 font-mono text-[10px] leading-none text-text-tertiary";
+
+function readRecents(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(id: string) {
+  try {
+    const recents = [id, ...readRecents().filter((entry) => entry !== id)].slice(0, MAX_RECENTS);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
+  } catch {
+    // Recents are a nicety; ignore storage failures.
+  }
+}
+
+/** Simple relevance score: prefix > word start > substring. */
+function scoreItem(label: string, keywords: string, query: string): number {
+  const haystack = `${label} ${keywords}`.toLowerCase();
+  const labelLower = label.toLowerCase();
+  if (labelLower.startsWith(query)) return 3;
+  if (haystack.split(/[\s\-/]+/).some((word) => word.startsWith(query))) return 2;
+  if (haystack.includes(query)) return 1;
+  return 0;
+}
 
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const navigate = useNavigate();
@@ -76,9 +136,15 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
+
+  const addToast = useUIStore((state) => state.addToast);
+
+  const commandMode = search.trim().startsWith(">");
+  const effectiveSearch = commandMode ? search.trim().slice(1).trim() : search.trim();
 
   useEffect(() => {
-    const trimmed = search.trim();
+    const trimmed = effectiveSearch;
     if (trimmed.length < MIN_SEARCH_LENGTH) {
       setDebouncedSearch("");
       return;
@@ -88,18 +154,19 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       SEARCH_DEBOUNCE_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [effectiveSearch]);
 
   useEffect(() => {
     if (!isOpen) return;
     setSearch("");
     setDebouncedSearch("");
     setActiveIndex(0);
+    setRecentIds(readRecents());
     inputRef.current?.focus();
   }, [isOpen]);
 
   const searchReady =
-    isOpen && debouncedSearch.length >= MIN_SEARCH_LENGTH;
+    isOpen && !commandMode && debouncedSearch.length >= MIN_SEARCH_LENGTH;
 
   const playersQuery = useQuery({
     queryKey: ["command-palette", "players", debouncedSearch],
@@ -118,77 +185,224 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     retry: false,
   });
 
-  const actions = useMemo<ActionItem[]>(
+  const navigation = useMemo<NavItem[]>(
     () => [
       {
-        kind: "action",
-        id: "action-analytics",
-        label: t("common:commandPalette.analytics", { defaultValue: "Análisis" }),
-        path: "/analytics",
-        icon: BarChart3,
-        keywords: "analytics estadisticas stats rendimiento",
+        kind: "nav",
+        id: "nav-live",
+        label: t("common:commandPalette.live", { defaultValue: "En vivo" }),
+        path: "/",
+        icon: Home,
+        keywords: "live en vivo partida actual dashboard inicio",
       },
       {
-        kind: "action",
-        id: "action-history",
+        kind: "nav",
+        id: "nav-history",
         label: t("common:commandPalette.history", { defaultValue: "Historial" }),
         path: "/history",
         icon: History,
-        keywords: "history partidas matches",
+        keywords: "history partidas matches historial",
       },
       {
-        kind: "action",
-        id: "action-players",
+        kind: "nav",
+        id: "nav-analytics",
+        label: t("common:commandPalette.analytics", { defaultValue: "Análisis" }),
+        path: "/analytics",
+        icon: BarChart3,
+        keywords: "analytics estadisticas stats rendimiento analisis",
+      },
+      {
+        kind: "nav",
+        id: "nav-players",
         label: t("common:commandPalette.players", { defaultValue: "Jugadores" }),
         path: "/players",
         icon: Users,
         keywords: "players directorio jugadores",
       },
       {
-        kind: "action",
-        id: "action-settings",
+        kind: "nav",
+        id: "nav-training",
+        label: t("common:commandPalette.trainingPacks", { defaultValue: "Entrenamientos" }),
+        path: "/training-packs",
+        icon: Dumbbell,
+        keywords: "training packs entrenamientos practica",
+      },
+      {
+        kind: "nav",
+        id: "nav-pro-configs",
+        label: t("common:commandPalette.proConfigs", { defaultValue: "Pro Configs" }),
+        path: "/pro-configs",
+        icon: Gamepad2,
+        keywords: "pro configs configuraciones profesionales ajustes",
+      },
+      {
+        kind: "nav",
+        id: "nav-profile",
+        label: t("common:commandPalette.profile", { defaultValue: "Perfil" }),
+        path: "/profile",
+        icon: User,
+        keywords: "profile perfil carrera presets",
+      },
+      {
+        kind: "nav",
+        id: "nav-settings",
         label: t("common:commandPalette.settings", { defaultValue: "Ajustes" }),
         path: "/settings",
         icon: Settings,
-        keywords: "settings configuracion preferencias",
-      },
-      {
-        kind: "action",
-        id: "action-live",
-        label: t("common:commandPalette.live", { defaultValue: "En vivo" }),
-        path: "/",
-        icon: Radio,
-        keywords: "live en vivo partida actual",
+        keywords: "settings configuracion preferencias ajustes",
       },
     ],
     [t],
   );
 
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredActions = useMemo(
-    () =>
-      normalizedSearch.length === 0
-        ? actions
-        : actions.filter(
-            (action) =>
-              action.label.toLowerCase().includes(normalizedSearch) ||
-              action.keywords.includes(normalizedSearch),
-          ),
-    [actions, normalizedSearch],
+  const runOverlayServerToggle = async () => {
+    const status = await getOverlayServerStatus();
+    if (status.running) {
+      await stopOverlayServer();
+      addToast({ type: "info", title: t("common:commandPalette.overlayServerStopped") });
+    } else {
+      const next = await startOverlayServer(status.port || 9528);
+      addToast({
+        type: "success",
+        title: t("common:commandPalette.overlayServerStarted", { port: next.port }),
+      });
+    }
+  };
+
+  const runOverlayWindowToggle = async () => {
+    const before = await getOverlayWindowState();
+    const after = await toggleOverlayEnabled();
+    addToast({
+      type: "info",
+      title: after.visible
+        ? t("common:commandPalette.overlayShown")
+        : t("common:commandPalette.overlayHidden"),
+      message: before.visible ? undefined : t("common:commandPalette.overlayHint"),
+    });
+  };
+
+  const runExportCsv = async () => {
+    const csv = await exportHistoryCsv({});
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rl-stats-historial-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addToast({ type: "success", title: t("common:commandPalette.exported") });
+  };
+
+  const commands = useMemo<CommandItem[]>(
+    () => [
+      {
+        kind: "command",
+        id: "cmd-theme",
+        label: t("common:commandPalette.cmdTheme"),
+        icon: Sun,
+        keywords: "theme tema claro oscuro dark light apariencia",
+        run: () => useUIStore.getState().toggleTheme(),
+      },
+      {
+        kind: "command",
+        id: "cmd-overlay-server",
+        label: t("common:commandPalette.cmdOverlayServer"),
+        icon: RadioTower,
+        keywords: "overlay servidor streaming obs iniciar detener",
+        run: runOverlayServerToggle,
+      },
+      {
+        kind: "command",
+        id: "cmd-overlay-window",
+        label: t("common:commandPalette.cmdOverlayWindow"),
+        icon: MonitorPlay,
+        keywords: "overlay ventana mostrar ocultar juego",
+        run: runOverlayWindowToggle,
+      },
+      {
+        kind: "command",
+        id: "cmd-export-csv",
+        label: t("common:commandPalette.cmdExportCsv"),
+        icon: FileDown,
+        keywords: "exportar csv historial datos descargar",
+        run: runExportCsv,
+      },
+      {
+        kind: "command",
+        id: "cmd-onboarding",
+        label: t("common:commandPalette.cmdOnboarding"),
+        icon: Sparkles,
+        keywords: "onboarding tour bienvenida ayuda tutorial",
+        run: () => useSettingsStore.getState().restartOnboarding(),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [addToast, t]
   );
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const scoreAndSort = <T extends { label: string; keywords: string }>(
+    items: T[]
+  ): T[] => {
+    if (!normalizedSearch) return items;
+    return items
+      .map((item) => ({ item, score: scoreItem(item.label, item.keywords, normalizedSearch) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.item);
+  };
+
+  const filteredNavigation = useMemo(
+    () => (commandMode ? [] : scoreAndSort(navigation)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [commandMode, navigation, normalizedSearch]
+  );
+
+  const filteredCommands = useMemo(
+    () => scoreAndSort(commands),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [commands, normalizedSearch]
+  );
+
+  const recents = useMemo(() => {
+    if (normalizedSearch || commandMode) return [];
+    const byId = new Map<string, NavItem>(
+      navigation.map((item) => [item.id, item])
+    );
+    return recentIds
+      .map((id) => byId.get(id))
+      .filter((item): item is NavItem => Boolean(item));
+  }, [commandMode, navigation, normalizedSearch, recentIds]);
 
   const groups = useMemo<PaletteGroup[]>(() => {
     const result: PaletteGroup[] = [];
-    if (filteredActions.length > 0) {
-      result.push({ id: "actions", title: null, items: filteredActions });
+    if (recents.length > 0) {
+      result.push({
+        id: "recent",
+        title: t("common:commandPalette.recentSection", { defaultValue: "Recientes" }),
+        items: recents,
+      });
     }
-    const players = playersQuery.data ?? [];
+    if (filteredNavigation.length > 0) {
+      result.push({
+        id: "navigate",
+        title: t("common:commandPalette.navigateSection", { defaultValue: "Ir a" }),
+        items: filteredNavigation,
+      });
+    }
+    if (filteredCommands.length > 0) {
+      result.push({
+        id: "commands",
+        title: t("common:commandPalette.actionsSection", { defaultValue: "Acciones" }),
+        items: filteredCommands,
+      });
+    }
+    const players = searchReady ? (playersQuery.data ?? []) : [];
     if (players.length > 0) {
       result.push({
         id: "players",
-        title: t("common:commandPalette.playersSection", {
-          defaultValue: "Jugadores",
-        }),
+        title: t("common:commandPalette.playersSection", { defaultValue: "Jugadores" }),
         items: players.map((player) => ({
           kind: "player" as const,
           id: `player-${player.primary_id}`,
@@ -196,13 +410,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         })),
       });
     }
-    const matches = matchesQuery.data ?? [];
+    const matches = searchReady ? (matchesQuery.data ?? []) : [];
     if (matches.length > 0) {
       result.push({
         id: "matches",
-        title: t("common:commandPalette.matchesSection", {
-          defaultValue: "Partidas",
-        }),
+        title: t("common:commandPalette.matchesSection", { defaultValue: "Partidas" }),
         items: matches.map((match) => ({
           kind: "match" as const,
           id: `match-${match.id}`,
@@ -211,36 +423,48 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       });
     }
     return result;
-  }, [filteredActions, playersQuery.data, matchesQuery.data, t]);
+  }, [
+    filteredCommands,
+    filteredNavigation,
+    matchesQuery.data,
+    playersQuery.data,
+    recents,
+    searchReady,
+    t,
+  ]);
 
-  const items = useMemo(
-    () => groups.flatMap((group) => group.items),
-    [groups],
-  );
+  const items = useMemo(() => groups.flatMap((group) => group.items), [groups]);
 
   const activeItemIndex = items.length === 0 ? -1 : Math.min(activeIndex, items.length - 1);
-  const isSearching =
-    searchReady && (playersQuery.isLoading || matchesQuery.isLoading);
+  const isSearching = searchReady && (playersQuery.isLoading || matchesQuery.isLoading);
   const showEmpty = !isSearching && items.length === 0;
 
   useEffect(() => {
     if (!isOpen) return;
-    const activeElement = listRef.current?.querySelector<HTMLElement>(
-      '[data-active="true"]',
-    );
+    const activeElement = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
     activeElement?.scrollIntoView({ block: "nearest" });
   }, [activeItemIndex, isOpen]);
 
-  function handleSelect(item: PaletteItem) {
-    if (item.kind === "action") navigate(item.path);
-    else if (item.kind === "player") navigate(`/players/${item.player.primary_id}`);
-    else navigate(`/history/${item.match.id}`);
+  async function handleSelect(item: PaletteItem) {
+    if (item.kind === "nav") {
+      pushRecent(item.id);
+      navigate(item.path);
+    } else if (item.kind === "command") {
+      try {
+        await item.run();
+      } catch {
+        addToast({ type: "error", title: t("common:commandPalette.commandFailed") });
+      }
+    } else if (item.kind === "player") {
+      navigate(`/players/${item.player.primary_id}`);
+    } else {
+      navigate(`/history/${item.match.id}`);
+    }
     onClose();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.nativeEvent.isComposing) return;
-    // j/k are aliases for the arrow keys (vim-style navigation).
     const key =
       event.key === "j" || event.key === "J"
         ? "ArrowDown"
@@ -266,7 +490,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         const item = items[activeItemIndex];
         if (!item) return;
         event.preventDefault();
-        handleSelect(item);
+        void handleSelect(item);
         break;
       }
     }
@@ -314,13 +538,12 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       "aria-selected": isActive,
       "data-active": isActive || undefined,
       onMouseEnter: () => setActiveIndex(index),
-      onMouseDown: (event: MouseEvent<HTMLButtonElement>) =>
-        event.preventDefault(),
-      onClick: () => handleSelect(item),
+      onMouseDown: (event: MouseEvent<HTMLButtonElement>) => event.preventDefault(),
+      onClick: () => void handleSelect(item),
       className: rowClass,
     };
 
-    if (item.kind === "action") {
+    if (item.kind === "nav" || item.kind === "command") {
       const Icon = item.icon;
       return (
         <button key={item.id} {...commonProps}>
@@ -328,7 +551,13 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-text-primary">
             {item.label}
           </span>
-          <ArrowRight size={14} className={chevronClass} aria-hidden="true" />
+          {item.kind === "command" ? (
+            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+              {t("common:commandPalette.actionTag", { defaultValue: "Acción" })}
+            </span>
+          ) : (
+            <ArrowRight size={14} className={chevronClass} aria-hidden="true" />
+          )}
         </button>
       );
     }
@@ -351,14 +580,10 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     }
 
     const { label: resultLabel, tone: resultTone } = matchResult(item.match);
-    const arenaName = item.match.arena
-      ? getArenaDisplayName(item.match.arena)
-      : null;
+    const arenaName = item.match.arena ? getArenaDisplayName(item.match.arena) : null;
     const primaryTitle =
       arenaName ??
-      (item.match.matchType === "training"
-        ? t("history:titles.training")
-        : "—");
+      (item.match.matchType === "training" ? t("history:titles.training") : "—");
 
     return (
       <button key={item.id} {...commonProps}>
@@ -388,15 +613,17 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={t("common:commandPalette.title", {
-          defaultValue: "Paleta de comandos",
-        })}
+        aria-label={t("common:commandPalette.title", { defaultValue: "Paleta de comandos" })}
         className="w-full max-w-xl animate-scale-in overflow-hidden rounded-xl border border-border-default bg-bg-panel shadow-level-4"
         onMouseDown={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
         <div className="flex h-12 items-center gap-2.5 border-b border-border-subtle px-4">
-          <Search size={16} className="shrink-0 text-text-tertiary" aria-hidden="true" />
+          {commandMode ? (
+            <Radio size={16} className="shrink-0 text-accent-primary" aria-hidden="true" />
+          ) : (
+            <Search size={16} className="shrink-0 text-text-tertiary" aria-hidden="true" />
+          )}
           <input
             ref={inputRef}
             type="text"
@@ -404,21 +631,23 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
             aria-expanded={items.length > 0}
             aria-controls="command-palette-list"
             aria-activedescendant={
-              activeItemIndex >= 0
-                ? `command-palette-item-${activeItemIndex}`
-                : undefined
+              activeItemIndex >= 0 ? `command-palette-item-${activeItemIndex}` : undefined
             }
-            aria-label={t("common:commandPalette.searchLabel", {
-              defaultValue: "Buscar",
-            })}
+            aria-label={t("common:commandPalette.searchLabel", { defaultValue: "Buscar" })}
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
               setActiveIndex(0);
             }}
-            placeholder={t("common:commandPalette.placeholder", {
-              defaultValue: "Buscar jugadores, partidas o ir a…",
-            })}
+            placeholder={
+              commandMode
+                ? t("common:commandPalette.placeholderAction", {
+                    defaultValue: "Buscar una acción…",
+                  })
+                : t("common:commandPalette.placeholder", {
+                    defaultValue: "Buscar jugadores, partidas, acciones o ir a…",
+                  })
+            }
             autoComplete="off"
             spellCheck={false}
             className="h-full min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary"
@@ -431,9 +660,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 setActiveIndex(0);
                 inputRef.current?.focus();
               }}
-              aria-label={t("common:commandPalette.clear", {
-                defaultValue: "Limpiar búsqueda",
-              })}
+              aria-label={t("common:commandPalette.clear", { defaultValue: "Limpiar búsqueda" })}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               <X size={14} aria-hidden="true" />
@@ -486,6 +713,10 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           <span className="flex items-center gap-1">
             <kbd className={KBD_CLASS}>↵</kbd>
             {t("common:commandPalette.hintOpen", { defaultValue: "Abrir" })}
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className={KBD_CLASS}>&gt;</kbd>
+            {t("common:commandPalette.hintAction", { defaultValue: "Acciones" })}
           </span>
           <span className="flex items-center gap-1">
             <kbd className={KBD_CLASS}>Esc</kbd>

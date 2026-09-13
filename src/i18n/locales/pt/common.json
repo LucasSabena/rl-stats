@@ -65,7 +65,28 @@
     "matchesSection": "Partidas",
     "hintNavigate": "Navegar",
     "hintOpen": "Abrir",
-    "hintClose": "Fechar"
+    "hintClose": "Fechar",
+    "trainingPacks": "Treinos",
+    "proConfigs": "Pro Configs",
+    "profile": "Perfil",
+    "navigateSection": "Ir para",
+    "actionsSection": "Ações",
+    "recentSection": "Recentes",
+    "actionTag": "Ação",
+    "placeholderAction": "Buscar uma ação…",
+    "hintAction": "Ações",
+    "cmdTheme": "Alternar tema claro/escuro",
+    "cmdOverlayServer": "Iniciar/Parar servidor de overlay",
+    "cmdOverlayWindow": "Mostrar/Ocultar overlay no jogo",
+    "cmdExportCsv": "Exportar histórico para CSV",
+    "cmdOnboarding": "Repetir tour de boas-vindas",
+    "overlayServerStarted": "Servidor de overlay iniciado em :{{port}}",
+    "overlayServerStopped": "Servidor de overlay parado",
+    "overlayShown": "Overlay visível",
+    "overlayHidden": "Overlay oculto",
+    "overlayHint": "Ative com Ctrl+Shift+O ou em Ajustes → Overlay",
+    "exported": "Histórico exportado",
+    "commandFailed": "Não foi possível executar a ação"
   },
   "status": {
     "live": "Ao vivo",
@@ -91,7 +112,10 @@
     "metric": "Métrica"
   },
   "dataTable": {
-    "noData": "Nenhum dado disponível"
+    "noData": "Nenhum dado disponível",
+    "selectAll": "Selecionar todas",
+    "selectRow": "Selecionar linha",
+    "selectedCount": "{{count}} selecionadas"
   },
   "accessibility": {
     "close": "Fechar",
@@ -103,7 +127,8 @@
     "short": "RL"
   },
   "actions": {
-    "close": "Fechar"
+    "close": "Fechar",
+    "undo": "Desfazer"
   },
   "self": "Eu",
   "shortcuts": {
@@ -118,5 +143,46 @@
     "historyNavigate": "Navegar pela lista do histórico",
     "help": "Mostrar esta ajuda",
     "close": "Fechar janelas e modais"
+  },
+  "dateRange": {
+    "placeholder": "Intervalo de datas",
+    "today": "Hoje",
+    "last7": "Últimos 7 dias",
+    "last30": "Últimos 30 dias",
+    "thisMonth": "Este mês",
+    "lastMonth": "Mês passado",
+    "from": "De",
+    "to": "Até",
+    "clear": "Limpar intervalo"
+  },
+  "tagInput": {
+    "label": "Tags",
+    "remove": "Remover tag {{tag}}"
+  },
+  "combobox": {
+    "placeholder": "Selecionar…",
+    "search": "Buscar…",
+    "empty": "Sem resultados",
+    "all": "Todos"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "empty": "Você não tem notificações",
+    "markAllRead": "Marcar todas como lidas",
+    "clear": "Limpar",
+    "unread": "não lidas",
+    "matchSaved": {
+      "title": "{{result}} {{blue}}–{{orange}}",
+      "win": "Vitória",
+      "loss": "Derrota"
+    },
+    "sessionSaved": {
+      "title": "Sessão de {{count}} partidas",
+      "message": "{{wins}}V · {{losses}}D · {{duration}}"
+    },
+    "updateAvailable": {
+      "title": "Atualização disponível",
+      "message": "v{{version}} — abra em Configurações → Geral"
+    }
   }
 }

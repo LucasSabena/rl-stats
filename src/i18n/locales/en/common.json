@@ -65,7 +65,28 @@
     "matchesSection": "Matches",
     "hintNavigate": "Navigate",
     "hintOpen": "Open",
-    "hintClose": "Close"
+    "hintClose": "Close",
+    "trainingPacks": "Training",
+    "proConfigs": "Pro Configs",
+    "profile": "Profile",
+    "navigateSection": "Go to",
+    "actionsSection": "Actions",
+    "recentSection": "Recent",
+    "actionTag": "Action",
+    "placeholderAction": "Search an action…",
+    "hintAction": "Actions",
+    "cmdTheme": "Toggle light/dark theme",
+    "cmdOverlayServer": "Start/Stop overlay server",
+    "cmdOverlayWindow": "Show/Hide in-game overlay",
+    "cmdExportCsv": "Export history to CSV",
+    "cmdOnboarding": "Replay welcome tour",
+    "overlayServerStarted": "Overlay server started on :{{port}}",
+    "overlayServerStopped": "Overlay server stopped",
+    "overlayShown": "Overlay visible",
+    "overlayHidden": "Overlay hidden",
+    "overlayHint": "Toggle it with Ctrl+Shift+O or in Settings → Overlay",
+    "exported": "History exported",
+    "commandFailed": "The action could not be executed"
   },
   "status": {
     "live": "Live",
@@ -91,7 +112,10 @@
     "metric": "Metric"
   },
   "dataTable": {
-    "noData": "No data available"
+    "noData": "No data available",
+    "selectAll": "Select all",
+    "selectRow": "Select row",
+    "selectedCount": "{{count}} selected"
   },
   "accessibility": {
     "close": "Close",
@@ -103,7 +127,8 @@
     "short": "RL"
   },
   "actions": {
-    "close": "Close"
+    "close": "Close",
+    "undo": "Undo"
   },
   "self": "Me",
   "shortcuts": {
@@ -118,5 +143,46 @@
     "historyNavigate": "Move through the history list",
     "help": "Show this help",
     "close": "Close windows and modals"
+  },
+  "dateRange": {
+    "placeholder": "Date range",
+    "today": "Today",
+    "last7": "Last 7 days",
+    "last30": "Last 30 days",
+    "thisMonth": "This month",
+    "lastMonth": "Last month",
+    "from": "From",
+    "to": "To",
+    "clear": "Clear range"
+  },
+  "tagInput": {
+    "label": "Tags",
+    "remove": "Remove tag {{tag}}"
+  },
+  "combobox": {
+    "placeholder": "Select…",
+    "search": "Search…",
+    "empty": "No results",
+    "all": "All"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "You have no notifications",
+    "markAllRead": "Mark all as read",
+    "clear": "Clear",
+    "unread": "unread",
+    "matchSaved": {
+      "title": "{{result}} {{blue}}–{{orange}}",
+      "win": "Win",
+      "loss": "Loss"
+    },
+    "sessionSaved": {
+      "title": "{{count}}-match session",
+      "message": "{{wins}}W · {{losses}}L · {{duration}}"
+    },
+    "updateAvailable": {
+      "title": "Update available",
+      "message": "v{{version}} — open Settings → General"
+    }
   }
 }

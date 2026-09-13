@@ -24,7 +24,9 @@
     "firstSeen": "First seen:",
     "together": "together",
     "versus": "vs",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "friendRemoved": "Removed {{name}} from friends",
+    "friendAdded": "{{name}} is now a friend"
   },
   "detail": {
     "title": "Player Detail",

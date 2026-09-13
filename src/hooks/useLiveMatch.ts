@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
+import i18n from "@/i18n";
+import { pushNotification } from "@/stores/notificationStore";
 import {
   getConnectionStatus,
   getLiveState,
@@ -103,6 +105,21 @@ export function useLiveMatch() {
           void queryClient.invalidateQueries({ queryKey: ["rollups"] });
           void queryClient.invalidateQueries({ queryKey: ["insights"] });
           void queryClient.invalidateQueries({ queryKey: ["storageStats"] });
+
+          if (summary.match_type !== "training") {
+            const won = summary.winner != null && summary.winner === summary.local_team_num;
+            pushNotification({
+              type: "success",
+              title: i18n.t("common:notifications.matchSaved.title", {
+                result: won
+                  ? i18n.t("common:notifications.matchSaved.win")
+                  : i18n.t("common:notifications.matchSaved.loss"),
+                blue: summary.score_blue,
+                orange: summary.score_orange,
+              }),
+              href: "/history",
+            });
+          }
         });
         if (cancelled) un();
         else unlisten2 = un;

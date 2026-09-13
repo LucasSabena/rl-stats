@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, Moon, Sun } from "lucide-react";
+import { Plus, Moon, Sun, Bell } from "lucide-react";
 import { useLiveStore } from "@/stores/liveStore";
 import { useUIStore } from "@/stores/uiStore";
+import { useNotificationStore } from "@/stores/notificationStore";
+import { NotificationCenter } from "@/components/layout/NotificationCenter";
 import { useActiveProfile, useProfiles, useProfileMutations } from "@/hooks/useProfiles";
 import { restartApp } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -62,7 +64,11 @@ export function Header() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSwitchOpen, setIsSwitchOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [pendingSwitchId, setPendingSwitchId] = useState<string | null>(null);
+  const unreadNotifications = useNotificationStore(
+    (state) => state.items.filter((item) => !item.read).length
+  );
 
   const profileOptions = profiles.map((p) => ({ value: p.id, label: p.name }));
 
@@ -130,6 +136,20 @@ export function Header() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5" data-tour="profiles">
+          <button
+            type="button"
+            onClick={() => setIsNotificationsOpen(true)}
+            aria-label={t("notifications.title")}
+            title={t("notifications.title")}
+            className="relative flex h-8 w-8 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          >
+            <Bell size={15} aria-hidden="true" />
+            {unreadNotifications > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-primary px-1 text-[9px] font-bold text-accent-primary-fg">
+                {unreadNotifications > 9 ? "9+" : unreadNotifications}
+              </span>
+            )}
+          </button>
           <Button
             variant="icon"
             size="sm"
@@ -167,6 +187,10 @@ export function Header() {
         </div>
       </header>
 
+      <NotificationCenter
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+      />
       <CreateProfileModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}

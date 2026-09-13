@@ -9,7 +9,9 @@ import {
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import i18n from "@/i18n";
 import { AppShell } from "@/components/layout/AppShell";
+import { PageTransition } from "@/components/layout/PageTransition";
 import { AccountMismatchDialog } from "@/components/AccountMismatchDialog";
 import { MatchMoodModal } from "@/components/mood/MatchMoodModal";
 import { SessionSummaryModal } from "@/components/analytics/SessionSummaryModal";
@@ -23,6 +25,7 @@ import { useAutoUpdateCheck } from "@/hooks/useAutoUpdateCheck";
 import { useCloudAutoSync } from "@/hooks/useCloudAutoSync";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { reportFrontendError } from "@/lib/api";
+import { pushNotification } from "@/stores/notificationStore";
 
 const OverlayView = lazy(() =>
   import("@/components/overlay/OverlayView").then((module) => ({
@@ -113,6 +116,7 @@ function MainWindowHooks() {
   // views that show it when that finishes.
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let unlistenSession: UnlistenFn | undefined;
     let disposed = false;
     void listen("match-mmr-enriched", () => {
       void queryClient.invalidateQueries({ queryKey: ["match-detail"] });
@@ -122,9 +126,34 @@ function MainWindowHooks() {
       if (disposed) fn();
       else unlisten = fn;
     });
+
+    void listen<{
+      matches: number;
+      wins: number;
+      losses: number;
+      durationSeconds: number;
+    }>("session-summary", (event) => {
+      const { matches, wins, losses, durationSeconds } = event.payload;
+      const minutes = Math.max(1, Math.round(durationSeconds / 60));
+      pushNotification({
+        type: "info",
+        title: i18n.t("common:notifications.sessionSaved.title", { count: matches }),
+        message: i18n.t("common:notifications.sessionSaved.message", {
+          wins,
+          losses,
+          duration: `${minutes} min`,
+        }),
+        href: "/analytics?period=session",
+      });
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlistenSession = fn;
+    });
+
     return () => {
       disposed = true;
       unlisten?.();
+      unlistenSession?.();
     };
   }, [queryClient]);
 
@@ -222,7 +251,9 @@ function AppContent() {
               element={
                 <AppShell>
                   <ErrorBoundary onReset={() => window.location.reload()}>
-                    <Outlet />
+                    <PageTransition>
+                      <Outlet />
+                    </PageTransition>
                   </ErrorBoundary>
                 </AppShell>
               }

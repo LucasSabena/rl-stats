@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { useUIStore } from "@/stores/uiStore";
+import { pushNotification } from "@/stores/notificationStore";
 import i18n from "@/i18n";
 
 /**
@@ -31,6 +32,14 @@ export function useAutoUpdateCheck() {
               version: result.version,
             }),
             message: i18n.t("settings:update.toasts.available.message"),
+          });
+          pushNotification({
+            type: "info",
+            title: i18n.t("common:notifications.updateAvailable.title"),
+            message: i18n.t("common:notifications.updateAvailable.message", {
+              version: result.version,
+            }),
+            href: "/settings?tab=general",
           });
         }
       } catch {

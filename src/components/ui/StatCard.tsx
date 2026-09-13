@@ -1,4 +1,5 @@
 import { cn, formatNumber } from "@/lib/utils";
+import { NumberTicker } from "./NumberTicker";
 import type { LucideIcon } from "lucide-react";
 
 interface StatCardProps {
@@ -58,9 +59,16 @@ export function StatCard({
         )}
       </div>
 
-      <p className="numeral mt-2 text-[28px] leading-none text-text-primary">
-        {displayValue}
-      </p>
+      {typeof value === "number" ? (
+        <NumberTicker
+          value={value}
+          className="numeral mt-2 text-[28px] leading-none text-text-primary"
+        />
+      ) : (
+        <p className="numeral mt-2 text-[28px] leading-none text-text-primary">
+          {displayValue}
+        </p>
+      )}
 
       {trendValue && (
         <p

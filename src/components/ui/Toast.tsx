@@ -38,16 +38,18 @@ interface ToastItemProps {
     title: string;
     message?: string;
     duration?: number;
+    action?: { label: string; onClick: () => void };
   };
   onClose: () => void;
 }
 
 function ToastItem({ toast, onClose }: ToastItemProps) {
   const { t } = useTranslation("common");
+  const duration = toast.duration ?? (toast.action ? 8000 : 4000);
   useEffect(() => {
-    const timer = setTimeout(onClose, toast.duration ?? 4000);
+    const timer = setTimeout(onClose, duration);
     return () => clearTimeout(timer);
-  }, [onClose, toast.duration]);
+  }, [onClose, duration]);
 
   const Icon = icons[toast.type];
 
@@ -63,6 +65,18 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
       <div className="flex-1">
         <p className="text-sm font-semibold text-text-primary">{toast.title}</p>
         {toast.message && <p className="mt-1 text-xs text-text-secondary">{toast.message}</p>}
+        {toast.action && (
+          <button
+            type="button"
+            onClick={() => {
+              toast.action?.onClick();
+              onClose();
+            }}
+            className="mt-2 rounded-md border border-current/30 px-2 py-1 text-[11px] font-semibold transition-colors hover:bg-current/10"
+          >
+            {toast.action.label}
+          </button>
+        )}
       </div>
       <button
         onClick={onClose}

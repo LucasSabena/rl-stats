@@ -68,6 +68,9 @@ export interface SessionSummary {
   winner: number | null;
   local_primary_id: string | null;
   local_team_num: number | null;
+  match_type?: string | null;
+  kickoff_goals_scored?: number;
+  kickoff_goals_conceded?: number;
   players: {
     id: number;
     primary_id: string;
@@ -661,12 +664,19 @@ export interface StorageStats {
   dbPath?: string | null;
 }
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastItem {
   id: string;
   type: "success" | "error" | "warning" | "info";
   title: string;
   message?: string;
   duration?: number;
+  /** Optional inline action (e.g. "Deshacer"). Keeps the toast alive longer. */
+  action?: ToastAction;
 }
 
 // ─── Tracker Network ─────────────────────────────────────────────────────────

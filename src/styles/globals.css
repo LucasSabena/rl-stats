@@ -432,6 +432,18 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
+@keyframes drawer-in-right {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes drawer-in-left {
+  from { transform: translateX(-24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes float-in {
+  from { opacity: 0; transform: translateY(3px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 .animate-slide-in-up { animation: slide-in-up 0.32s var(--ease-out-quint) both; }
 .animate-spring-in { animation: spring-in 0.28s var(--ease-spring) both; }
@@ -458,6 +470,9 @@
   color: var(--fg-subtle);
 }
 .animate-overtime { animation: overtime-pulse 1.6s ease-in-out infinite; }
+.animate-drawer-in-right { animation: drawer-in-right 0.22s var(--ease-out-quint) both; }
+.animate-drawer-in-left { animation: drawer-in-left 0.22s var(--ease-out-quint) both; }
+.animate-float-in { animation: float-in 0.18s var(--ease-out-quint) both; }
 
 /* Score glows were pure decoration and cost a repaint every frame;
    kept as no-ops so existing markup doesn't need touching. */
