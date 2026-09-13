@@ -57,5 +57,10 @@
     "oceania": "Oceania",
     "asiaPacific": "Ásia-Pacífico",
     "subSaharanAfrica": "África Subsaariana"
+  },
+  "favorites": {
+    "only": "Só favoritos",
+    "add": "Adicionar aos favoritos",
+    "remove": "Remover dos favoritos"
   }
 }

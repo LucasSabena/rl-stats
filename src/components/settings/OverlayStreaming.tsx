@@ -706,6 +706,54 @@ export function OverlayStreaming() {
             <p className="text-xs text-text-muted italic">{t("overlay:streaming.loadingUrls")}</p>
           )}
 
+          {/* Local read-only API for scripts, bots and Stream Deck */}
+          {status?.running && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold tracking-wide text-text-secondary">
+                {t("overlay:streaming.api.title", { defaultValue: "API local (solo lectura)" })}
+              </p>
+              <p className="text-[11px] text-text-muted">
+                {t("overlay:streaming.api.hint", {
+                  defaultValue:
+                    "Endpoints JSON con token para tus scripts, bots o Stream Deck.",
+                })}
+              </p>
+              <div className="space-y-1.5">
+                {[
+                  { label: "/health", path: "/health" },
+                  { label: "/api/v1/matches?limit=20", path: "/api/v1/matches?limit=20" },
+                  { label: "/api/v1/stats?days=7", path: "/api/v1/stats?days=7" },
+                  { label: "/api/v1/stats?days=0 (carrera)", path: "/api/v1/stats?days=0" },
+                ].map((entry) => {
+                  const url = `http://127.0.0.1:${activePort}${entry.path}${
+                    entry.path.includes("?") ? "&" : "?"
+                  }token=${status.token ?? ""}`;
+                  const key = `api-${entry.path}`;
+                  const copied = copiedKey === key;
+                  return (
+                    <div
+                      key={entry.path}
+                      className="flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-base px-3 py-2"
+                    >
+                      <code className="min-w-0 flex-1 truncate text-[10px] font-mono text-text-tertiary select-all">
+                        {url}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        leftIcon={copied ? Check : Copy}
+                        onClick={() => void handleCopy(key, url)}
+                        className={cn("h-7 shrink-0 px-2", copied && "text-accent-primary")}
+                      >
+                        {""}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Preview */}
           {previewUrl && (
             <div className="overflow-hidden rounded-lg border border-border-subtle bg-black">

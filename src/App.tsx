@@ -288,7 +288,9 @@ function AppContent() {
               <Route path="/studio" element={<StudioPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/pro-configs" element={<ProConfigsPage />} />
+              <Route path="/pro-configs/:slug" element={<ProConfigsPage />} />
               <Route path="/training-packs" element={<TrainingPacksPage />} />
+              <Route path="/training-packs/:packId" element={<TrainingPacksPage />} />
               <Route path="/players" element={<PlayerDirectoryPage />} />
               <Route path="/players/:playerId" element={<PlayerDetailPage />} />
               <Route path="/settings" element={<SettingsPage />} />

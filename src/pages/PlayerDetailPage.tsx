@@ -7,6 +7,7 @@ import { useFriends } from "@/hooks/useFriends";
 import { useAddFriend, useRemoveFriend } from "@/hooks/useFriends";
 import { getArenaDisplayName } from "@/lib/arenaMap";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { MmrHistoryChart } from "@/components/analytics/MmrHistoryChart";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -173,6 +174,11 @@ export function PlayerDetailPage() {
               </Badge>
             </div>
           </Card>
+
+          {/* MMR del jugador (si tenemos identidad y datos) */}
+          <div className="mb-6">
+            <MmrHistoryChart playerId={player.primary_id} period="alltime" />
+          </div>
 
           {/* Como compañero */}
           {player.matches_as_teammate > 0 && (

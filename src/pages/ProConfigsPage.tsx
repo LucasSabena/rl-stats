@@ -1,11 +1,12 @@
-import { useState, useMemo, useId } from "react";
+import { useState, useMemo, useId, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { proPlayers } from "@/data/proConfigs";
 import { ProPlayerCard } from "@/components/pro-configs/ProPlayerCard";
 import { ProPlayerAvatar } from "@/components/pro-configs/ProPlayerAvatar";
 import { PageContainer } from "@/components/layout/PageContainer";
 import type { ProPlayer, Continent } from "@/lib/proConfigsTypes";
-import { Search, ChevronDown, ChevronRight, Globe } from "lucide-react";
+import { Search, ChevronDown, ChevronRight, Globe, Star } from "lucide-react";
 
 const continentOrder: Continent[] = ["Europe", "North America", "South America", "MENA", "Oceania", "Asia-Pacific", "Sub-Saharan Africa"];
 
@@ -46,16 +47,69 @@ function groupByContinentAndTeam(players: ProPlayer[]) {
   return map;
 }
 
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+const PLAYER_BY_SLUG = new Map(proPlayers.map((player) => [slugify(player.name), player]));
+
+const PRO_FAVORITES_KEY = "rl-pro-favorites";
+
+function readProFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PRO_FAVORITES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export function ProConfigsPage() {
   const { t } = useTranslation(["proConfigs", "common"]);
   const baseId = useId();
+  const navigate = useNavigate();
+  const { slug } = useParams<{ slug?: string }>();
   const [search, setSearch] = useState("");
   const [expandedContinents, setExpandedContinents] = useState<Set<Continent>>(new Set(["Europe", "North America"]));
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
-  const [selectedPlayer, setSelectedPlayer] = useState<ProPlayer | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(() => readProFavorites());
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const selectedPlayer = slug ? (PLAYER_BY_SLUG.get(slug) ?? null) : null;
+
+  const selectPlayer = useCallback(
+    (player: ProPlayer) => {
+      navigate(`/pro-configs/${slugify(player.name)}`);
+    },
+    [navigate]
+  );
+
+  const toggleFavorite = useCallback((player: ProPlayer) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      const key = slugify(player.name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(PRO_FAVORITES_KEY, JSON.stringify([...next]));
+      } catch {
+        // Favorites are a convenience; ignore storage failures.
+      }
+      return next;
+    });
+  }, []);
 
   const filteredPlayers = useMemo(() => {
-    if (!search.trim()) return proPlayers;
+    if (!search.trim()) {
+      return favoritesOnly
+        ? proPlayers.filter((player) => favorites.has(slugify(player.name)))
+        : proPlayers;
+    }
     const q = search.toLowerCase();
     return proPlayers.filter(
       (p) =>
@@ -64,7 +118,7 @@ export function ProConfigsPage() {
         p.team.toLowerCase().includes(q) ||
         p.nationality.toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [favorites, favoritesOnly, search]);
 
   const grouped = useMemo(() => groupByContinentAndTeam(filteredPlayers), [filteredPlayers]);
 
@@ -102,6 +156,23 @@ export function ProConfigsPage() {
               className="w-full rounded-md border border-border-subtle bg-bg-base py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent-primary focus:outline-none"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setFavoritesOnly((value) => !value)}
+            aria-pressed={favoritesOnly}
+            className={
+              favoritesOnly
+                ? "mb-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-accent-warning/40 bg-accent-warning/10 px-2 py-1.5 text-xs font-semibold text-accent-warning"
+                : "mb-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-border-subtle px-2 py-1.5 text-xs font-medium text-text-tertiary transition-colors hover:text-text-secondary"
+            }
+          >
+            <Star
+              size={12}
+              className={favoritesOnly ? "fill-accent-warning" : ""}
+            />
+            {t("proConfigs:favorites.only", { defaultValue: "Solo favoritos" })}
+            {favorites.size > 0 && ` (${favorites.size})`}
+          </button>
 
         {continentOrder.map((continent) => {
           const continentTeams = grouped.get(continent);
@@ -152,7 +223,7 @@ export function ProConfigsPage() {
                           {players.map((player) => (
                             <button
                               key={player.name}
-                              onClick={() => setSelectedPlayer(player)}
+                              onClick={() => selectPlayer(player)}
                               className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors ${
                                 selectedPlayer?.name === player.name
                                   ? "bg-accent-primary/10 text-accent-primary"
@@ -167,6 +238,37 @@ export function ProConfigsPage() {
                                 }`} />
                               )}
                               <span className="truncate">{player.name}</span>
+                              <span
+                                role="button"
+                                tabIndex={-1}
+                                aria-label={
+                                  favorites.has(slugify(player.name))
+                                    ? t("proConfigs:favorites.remove", {
+                                        defaultValue: "Quitar de favoritos",
+                                      })
+                                    : t("proConfigs:favorites.add", {
+                                        defaultValue: "Agregar a favoritos",
+                                      })
+                                }
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleFavorite(player);
+                                }}
+                                className={
+                                  favorites.has(slugify(player.name))
+                                    ? "rounded p-0.5 text-accent-warning"
+                                    : "rounded p-0.5 text-text-tertiary opacity-0 transition-opacity hover:text-accent-warning focus:opacity-100 group-hover/player:opacity-100"
+                                }
+                              >
+                                <Star
+                                  size={11}
+                                  className={
+                                    favorites.has(slugify(player.name))
+                                      ? "fill-accent-warning"
+                                      : ""
+                                  }
+                                />
+                              </span>
                               <span className="ml-auto text-xs text-text-tertiary">{player.nationality}</span>
                             </button>
                           ))}

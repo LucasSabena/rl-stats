@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -54,7 +55,17 @@ export function TrainingPacksPage() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeDifficulty, setActiveDifficulty] = useState<string | null>(null);
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { packId } = useParams<{ packId?: string }>();
+  const selectedPackId = packId ?? null;
+  const setSelectedPackId = useCallback(
+    (id: string | null) => {
+      navigate(id ? `/training-packs/${encodeURIComponent(id)}` : "/training-packs", {
+        replace: true,
+      });
+    },
+    [navigate]
+  );
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editingPackId, setEditingPackId] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -139,7 +150,7 @@ export function TrainingPacksPage() {
       if (editingPackId) savePack(pack, editingPackId);
       setSelectedPackId(null);
     },
-    [editingPackId, savePack]
+    [editingPackId, savePack, setSelectedPackId]
   );
 
   const handleDeleteConfirm = useCallback(() => {
@@ -147,7 +158,7 @@ export function TrainingPacksPage() {
     removeTrainingPack.mutate(deletePackId);
     setDeletePackId(null);
     setSelectedPackId(null);
-  }, [deletePackId, removeTrainingPack]);
+  }, [deletePackId, removeTrainingPack, setSelectedPackId]);
 
   const handleCopyCode = useCallback(
     async (pack: TrainingPack, e: React.MouseEvent) => {

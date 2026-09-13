@@ -158,6 +158,10 @@
       "top": "Top",
       "bottom": "Bottom",
       "center": "Center"
+    },
+    "api": {
+      "title": "Local API (read-only)",
+      "hint": "Token-guarded JSON endpoints for your scripts, bots or Stream Deck."
     }
   },
   "studio": {

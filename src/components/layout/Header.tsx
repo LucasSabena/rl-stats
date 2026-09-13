@@ -34,6 +34,8 @@ function resolveTitleKey(pathname: string): string {
   if (TITLE_KEYS[pathname]) return TITLE_KEYS[pathname];
   if (pathname.startsWith("/history/")) return "pageTitles.matchDetail";
   if (pathname.startsWith("/sessions/")) return "pageTitles.sessions";
+  if (pathname.startsWith("/pro-configs/")) return "pageTitles.proConfigs";
+  if (pathname.startsWith("/training-packs/")) return "pageTitles.trainingPacks";
   if (pathname.startsWith("/players/")) return "pageTitles.players";
   return "pageTitles.fallback";
 }
