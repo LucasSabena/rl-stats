@@ -295,7 +295,7 @@ test("app shell renders", async ({ page }) => {
   await expect(page.locator("header h1")).toHaveText(/\S+/);
   await expect(page.locator('[data-tour="nav-analytics"]')).toBeVisible();
   await expect(
-    page.getByText(/Esperando partida|Waiting for match/),
+    page.getByText(/Listo para despegar|Ready for takeoff/),
   ).toBeVisible();
 
   await page.waitForTimeout(300);

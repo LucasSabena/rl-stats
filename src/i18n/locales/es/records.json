@@ -102,5 +102,13 @@
   "empty": {
     "title": "Todavía no hay récords",
     "description": "Jugá algunas partidas para llenar tu salón de la fama."
+  },
+  "recap": {
+    "title": "Recap de este mes",
+    "matches": "Partidas",
+    "winRate": "Win rate",
+    "goals": "Goles",
+    "streak": "Mejor racha",
+    "playtime": "Tiempo jugado"
   }
 }

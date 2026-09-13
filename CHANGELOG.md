@@ -1,5 +1,81 @@
 # Changelog
 
+## v3.0.0 — Overlay Studio, Inicio, Récords, notas y personalización
+
+La actualización más grande desde que existe la app: páginas nuevas,
+herramientas para streamers, analítica más profunda y personalización total.
+
+### Nuevo — Overlay Studio
+
+- **Editor visual de overlays** en `/studio`: arrastrá módulos (marcador,
+  reloj, jugadores, eventos, velocidad del balón, info) sobre un lienzo
+  16:9, ajustá tema (color de acento, bordes, escala), guardá escenas y
+  copiá la URL lista para OBS con preview en vivo.
+- **Página de overlay `studio`** generada con el layout y tema elegidos.
+- **Configuración de alertas** desde Streaming: duración, posición y
+  máximo simultáneo, más opción de mostrar velocidad por jugador.
+- **API local de solo lectura** con token en el servidor de overlay:
+  `/health`, `/api/v1/matches` y `/api/v1/stats` para scripts, bots y
+  Stream Deck.
+
+### Nuevo — Inicio, Sesiones y Récords
+
+- **Inicio:** cuando no hay partida, la pantalla principal muestra el
+  resumen del día, racha, objetivo semanal, tendencia de MMR, una
+  sugerencia basada en tus patrones y las últimas partidas.
+- **Sesiones** (`/sessions`): listado con orden por recientes, mejores o
+  más largas; detalle con resumen, partidas, share y mejor sesión marcada.
+- **Récords** (`/records`): totales de carrera, récords personales
+  enlazados a su partida, mejor día/sesión, **13 logros con progreso** y
+  **recap del mes** compartible.
+
+### Nuevo — Historial y partidas
+
+- **Notas y etiquetas por partida** (editables desde el modal y visibles
+  en la lista y el detalle). La búsqueda ahora también encuentra notas.
+- **Selección múltiple**: cambiá tipo/playlist, agregá etiquetas o borrá
+  en lote, con **deshacer** para los cambios de metadatos.
+- **Navegación partida anterior/siguiente** con botones y `[` `]`.
+- **Presets de fecha** y rango personalizado en los filtros.
+
+### Nuevo — Analítica
+
+- **Click en un punto del gráfico** abre el historial de ese día.
+- **Dashboard personalizable con drag & drop**: reordená, ocultá y
+  restablecé los paneles (se guarda en tu equipo).
+- **Boost promedio real** en los resúmenes (antes estaba fijo en 0).
+- **MMR histórico por jugador** en los perfiles del directorio.
+- Pro Configs con **deep-link y favoritos**; training packs con deep-link.
+
+### Nuevo — Experiencia
+
+- **Command palette 2.0**: todas las páginas, acciones reales (tema,
+  overlay, export, tour), modo `>` para acciones y recientes.
+- **Centro de notificaciones** en el header: partidas guardadas, sesiones,
+  logros y updates.
+- **Toasts con deshacer** y animaciones de página y contadores.
+- **Tema claro/oscuro en el header** (y con `T`), atajo `[` `]` para
+  partidas y ayuda actualizada.
+
+### Mejoras
+
+- Directorio de jugadores con paginación real (50 por página).
+- Editar training packs existentes; estados de carga/error.
+- Overlays: velocidad de jugador en `enhanced` y `player-stats`
+  (`?speed=1`), estado sin conexión visible y arranque del servidor sin
+  perder la opción de velocidad.
+- Export/import JSON v1.1: incluye amigos y training packs.
+- Skeleton de hidratación en el dashboard en vivo.
+- El tab de Historial y los filtros de Análisis son deep-linkables.
+
+### Interno
+
+- Migración v27: notas y etiquetas en partidas, sincronizadas a la nube.
+- Nuevo comando `get_career_records` y `get_adjacent_matches`.
+- Motion (animaciones) y dnd-kit (drag & drop accesible) como
+  dependencias, con respeto a `prefers-reduced-motion`.
+- Tests nuevos para primitivas de UI, layout de overlay y logros.
+
 ## v2.8.3 — Entrenamientos con tiempo real y prompt usable
 
 ### Fixed

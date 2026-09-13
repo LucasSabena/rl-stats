@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Modal } from "@/components/ui/Modal";
+import { useUIStore } from "@/stores/uiStore";
 import { Keyboard } from "lucide-react";
 
 const ROUTE_BY_NUMBER: Record<string, string> = {
@@ -52,6 +53,9 @@ export function GlobalShortcuts() {
       if (event.key === "?") {
         event.preventDefault();
         setHelpOpen(true);
+      } else if (event.key === "t" || event.key === "T") {
+        event.preventDefault();
+        useUIStore.getState().toggleTheme();
       }
     };
 
@@ -68,6 +72,8 @@ export function GlobalShortcuts() {
     { keys: "Ctrl + 5", label: t("common:shortcuts.settings") },
     { keys: "Ctrl + ,", label: t("common:shortcuts.settings") },
     { keys: "J / K", label: t("common:shortcuts.historyNavigate") },
+    { keys: "[ / ]", label: t("common:shortcuts.matchNavigate") },
+    { keys: "T", label: t("common:shortcuts.theme") },
     { keys: "?", label: t("common:shortcuts.help") },
     { keys: "Esc", label: t("common:shortcuts.close") },
   ];

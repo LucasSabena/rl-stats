@@ -102,5 +102,13 @@
   "empty": {
     "title": "No records yet",
     "description": "Play some matches to fill your hall of fame."
+  },
+  "recap": {
+    "title": "This month recap",
+    "matches": "Matches",
+    "winRate": "Win rate",
+    "goals": "Goals",
+    "streak": "Best streak",
+    "playtime": "Time played"
   }
 }

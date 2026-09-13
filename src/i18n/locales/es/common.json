@@ -151,7 +151,9 @@
     "settings": "Abrir Ajustes",
     "historyNavigate": "Navegar la lista del historial",
     "help": "Mostrar esta ayuda",
-    "close": "Cerrar ventanas y modales"
+    "close": "Cerrar ventanas y modales",
+    "matchNavigate": "Partida anterior / siguiente",
+    "theme": "Cambiar tema"
   },
   "dateRange": {
     "placeholder": "Rango de fechas",

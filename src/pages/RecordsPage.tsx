@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -6,7 +7,13 @@ import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { useCareerRecords } from "@/hooks/useAnalytics";
+import { useAnalytics, useCareerRecords } from "@/hooks/useAnalytics";
+import { useFriends } from "@/hooks/useFriends";
+import { useSettings } from "@/hooks/useSettings";
+import { ShareModal } from "@/components/share/ShareModal";
+import { buildSummaryShareContext } from "@/lib/shareContext";
+import { Button } from "@/components/ui/Button";
+import type { ShareContext } from "@/lib/types";
 import { evaluateAchievements } from "@/lib/achievements";
 import { formatDuration, formatNumber } from "@/lib/utils";
 import {
@@ -15,6 +22,7 @@ import {
   CalendarDays,
   Flame,
   Gauge,
+  Share2,
   Trophy,
   Medal,
 } from "lucide-react";
@@ -32,6 +40,26 @@ export function RecordsPage() {
   const { t, i18n } = useTranslation(["records", "common"]);
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useCareerRecords();
+  const monthQuery = useAnalytics("month");
+  const { data: friends } = useFriends();
+  const { data: settings } = useSettings();
+  const [shareContext, setShareContext] = useState<ShareContext | null>(null);
+
+  const month = monthQuery.data?.data;
+  const monthShareContext = useMemo(() => {
+    if (!month || month.totalMatches === 0) return null;
+    const label = new Intl.DateTimeFormat(i18n.language, {
+      month: "long",
+      year: "numeric",
+    }).format(new Date());
+    return buildSummaryShareContext(
+      month,
+      (friends ?? []).map((friend) => friend.name),
+      settings?.playerName ?? t("common:self"),
+      t("records:recap.title"),
+      label
+    );
+  }, [friends, i18n.language, month, settings?.playerName, t]);
 
   const dateFormatter = new Intl.DateTimeFormat(i18n.language, {
     day: "numeric",
@@ -173,6 +201,78 @@ export function RecordsPage() {
                 />
               </div>
             </section>
+
+            {/* This month recap */}
+            {month && month.totalMatches > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                    {t("records:recap.title")}
+                  </h2>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={Share2}
+                    disabled={!monthShareContext}
+                    onClick={() =>
+                      monthShareContext && setShareContext(monthShareContext)
+                    }
+                  >
+                    {t("common:buttons.share")}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <Card className="p-4">
+                    <p className="text-xs text-text-tertiary">
+                      {t("records:recap.matches")}
+                    </p>
+                    <p className="numeral mt-1 text-2xl font-bold text-text-primary">
+                      {month.totalMatches}
+                    </p>
+                  </Card>
+                  <Card className="p-4">
+                    <p className="text-xs text-text-tertiary">
+                      {t("records:recap.winRate")}
+                    </p>
+                    <p
+                      className={
+                        (month.winRate ?? 0) >= 50
+                          ? "numeral mt-1 text-2xl font-bold text-accent-success"
+                          : "numeral mt-1 text-2xl font-bold text-text-primary"
+                      }
+                    >
+                      {month.winRate}%
+                    </p>
+                  </Card>
+                  <Card className="p-4">
+                    <p className="text-xs text-text-tertiary">
+                      {t("records:recap.goals")}
+                    </p>
+                    <p className="numeral mt-1 text-2xl font-bold text-text-primary">
+                      {month.totalGoals}
+                    </p>
+                  </Card>
+                  <Card className="p-4">
+                    <p className="text-xs text-text-tertiary">
+                      {t("records:recap.streak")}
+                    </p>
+                    <p className="numeral mt-1 text-2xl font-bold text-text-primary">
+                      {month.bestStreak}
+                    </p>
+                  </Card>
+                  <Card className="p-4">
+                    <p className="text-xs text-text-tertiary">
+                      {t("records:recap.playtime")}
+                    </p>
+                    <p className="numeral mt-1 text-2xl font-bold text-text-primary">
+                      {formatDuration(
+                        Math.round(month.avgDuration * month.totalMatches)
+                      )}
+                    </p>
+                  </Card>
+                </div>
+              </section>
+            )}
 
             {/* Personal records */}
             <section className="space-y-3">
@@ -371,6 +471,12 @@ export function RecordsPage() {
           </>
         )}
       </div>
+
+      <ShareModal
+        isOpen={shareContext !== null}
+        onClose={() => setShareContext(null)}
+        context={shareContext}
+      />
     </PageContainer>
   );
 }
