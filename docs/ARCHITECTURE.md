@@ -34,12 +34,39 @@
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Rocket League Stats API Stream                  │
-│              (TCP 127.0.0.1:49123)                          │
+│              (TCP 127.0.0.1:49123, read + commands)         │
 │                                                              │
 │  Events: UpdateState, BallHit, GoalScored,                  │
 │          StatfeedEvent, MatchCreated, MatchEnded, ...       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Broadcast Studio (`core/broadcast/`)
+
+The streaming/broadcast stack is a horizontal layer on top of the same event
+stream:
+
+```
+RlEvent ──► process_events ──► BroadcastHub ──► WebSocket clients (OBS, dock)
+                                   │  ▲
+                                   │  └── ChatManager (Twitch/Kick, read-only)
+                                   │  └── RecordingManager (JSONL + replay)
+                                   ▼
+                     ActionRequest channel ──► action orchestrator
+                     (state, series, timer, delay, game commands)
+```
+
+- `BroadcastHub` owns the fan-out channel, the v2 envelope (`v`/`seq`/`ts`),
+  the delay buffer, the cached state and a raw tap used by the recorder.
+- `core/overlay/mod.rs` serves the engine, `/dock`, `/assets` and the
+  `/api/v1` + `/api/v2` REST surface with role-scoped persistent tokens.
+- `core/broadcast/{packs,store,tournament,recording,chat,actions,discord}`
+  hold design packs, SQLite entities, brackets, replay, chat readers,
+  operator actions and notifications.
+- `overlays/{engine.js,engine.css,live.html,chat.html,dock.html}` are the
+  self-contained overlay runtime and operator dock embedded in the binary.
+
+See [BROADCAST.md](BROADCAST.md) for the operator-facing guide.
 
 ---
 
