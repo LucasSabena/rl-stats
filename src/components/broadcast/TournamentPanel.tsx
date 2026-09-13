@@ -33,6 +33,12 @@ interface TournamentPanelProps {
   onSeriesStarted: () => void;
 }
 
+function bracketLabel(bracket: string): string {
+  if (bracket === "losers") return "LB";
+  if (bracket === "grand_final") return "GF";
+  return "WB";
+}
+
 function roundLabel(round: number, total: number): string {
   if (total <= 1) return "Final";
   const remaining = total - round;
@@ -204,13 +210,22 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
   }, [snapshot]);
 
   const rounds = useMemo(() => {
-    const map = new Map<number, TournamentMatch[]>();
+    const map = new Map<string, TournamentMatch[]>();
     (snapshot?.matches ?? []).forEach((match) => {
-      const list = map.get(match.round) ?? [];
+      const key = `${match.bracket}:${match.round}`;
+      const list = map.get(key) ?? [];
       list.push(match);
-      map.set(match.round, list);
+      map.set(key, list);
     });
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
+    return [...map.entries()].sort((a, b) => {
+      const [aBracket, aRound] = a[0].split(":");
+      const [bBracket, bRound] = b[0].split(":");
+      const order: Record<string, number> = { winners: 0, losers: 1, grand_final: 2 };
+      return (
+        (order[aBracket] ?? 0) - (order[bBracket] ?? 0) ||
+        Number(aRound) - Number(bRound)
+      );
+    });
   }, [snapshot]);
 
   const totalRounds = snapshot?.rounds ?? 0;
@@ -288,6 +303,7 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
             aria-label={t("overlay:broadcast.tournament.format")}
             options={[
               { value: "single_elim", label: t("overlay:broadcast.tournament.singleElim") },
+              { value: "double_elim", label: t("overlay:broadcast.tournament.doubleElim") },
               { value: "round_robin", label: t("overlay:broadcast.tournament.roundRobin") },
               { value: "swiss", label: t("overlay:broadcast.tournament.swiss") },
             ]}
@@ -410,10 +426,15 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
               </p>
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-2">
-                {rounds.map(([round, matches]) => (
-                  <div key={round} className="min-w-[220px] space-y-2">
+                {rounds.map(([roundKey, matches]) => {
+                  const [bracket, roundText] = roundKey.split(":");
+                  const round = Number(roundText);
+                  return (
+                  <div key={roundKey} className="min-w-[220px] space-y-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
-                      {roundLabel(round, totalRounds)}
+                      {bracket === "grand_final"
+                        ? "Grand Final"
+                        : `${bracketLabel(bracket)} · ${roundLabel(round, totalRounds)}`}
                     </p>
                     {matches.map((match) => {
                       const teamA = teamById(match.teamAId);
@@ -533,7 +554,8 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
                       );
                     })}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

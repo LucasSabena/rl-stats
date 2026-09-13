@@ -881,6 +881,7 @@ export interface AppSettings {
   chatKickChannel?: string;
   chatShowBadges?: boolean;
   chatMaxMessages?: number;
+  discordWebhook?: string;
   obsWsEnabled?: boolean;
   obsWsUrl?: string;
   obsWsPassword?: string;

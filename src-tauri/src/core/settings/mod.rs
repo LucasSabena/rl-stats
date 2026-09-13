@@ -83,6 +83,9 @@ pub struct AppSettings {
     pub chat_kick_channel: String,
     pub chat_show_badges: bool,
     pub chat_max_messages: u32,
+    /// Discord webhook used for tournament notifications. Device-local and
+    /// stripped from cloud sync (it is a credential).
+    pub discord_webhook: String,
     // ─── OBS Studio (obs-websocket) ──────────────────────────────────────
     pub obs_ws_enabled: bool,
     pub obs_ws_url: String,
@@ -168,6 +171,7 @@ impl Default for AppSettings {
             chat_kick_channel: String::new(),
             chat_show_badges: true,
             chat_max_messages: 30,
+            discord_webhook: String::new(),
             obs_ws_enabled: false,
             obs_ws_url: "ws://127.0.0.1:4455".to_string(),
             obs_ws_password: String::new(),
@@ -310,6 +314,7 @@ impl AppSettings {
             ("chat_kick_channel", self.chat_kick_channel.clone()),
             ("chat_show_badges", self.chat_show_badges.to_string()),
             ("chat_max_messages", self.chat_max_messages.to_string()),
+            ("discord_webhook", self.discord_webhook.clone()),
             ("obs_ws_enabled", self.obs_ws_enabled.to_string()),
             ("obs_ws_url", self.obs_ws_url.clone()),
             ("obs_ws_password", self.obs_ws_password.clone()),
@@ -350,6 +355,7 @@ impl AppSettings {
         settings.rapidapi_key = None;
         settings.parsebot_api_key = None;
         settings.obs_ws_password = String::new();
+        settings.discord_webhook = String::new();
         settings
     }
 
@@ -373,6 +379,7 @@ impl AppSettings {
         merged.overlay_server_port = self.overlay_server_port;
         merged.overlay_bind_lan = self.overlay_bind_lan;
         merged.overlay_delay_seconds = self.overlay_delay_seconds;
+        merged.discord_webhook = self.discord_webhook.clone();
         merged.obs_ws_enabled = self.obs_ws_enabled;
         merged.obs_ws_url = self.obs_ws_url.clone();
         merged.obs_ws_password = self.obs_ws_password.clone();
@@ -533,6 +540,7 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             "chat_kick_channel" => settings.chat_kick_channel = value,
             "chat_show_badges" => settings.chat_show_badges = value.parse().unwrap_or(true),
             "chat_max_messages" => settings.chat_max_messages = value.parse().unwrap_or(30),
+            "discord_webhook" => settings.discord_webhook = value,
             "obs_ws_enabled" => settings.obs_ws_enabled = value.parse().unwrap_or(false),
             "obs_ws_url" => settings.obs_ws_url = value,
             "obs_ws_password" => settings.obs_ws_password = value,

@@ -12,6 +12,7 @@
 
 pub mod actions;
 pub mod chat;
+pub mod discord;
 pub mod game_commands;
 pub mod packs;
 pub mod recording;

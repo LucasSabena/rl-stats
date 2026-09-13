@@ -536,19 +536,31 @@
       }
       var rounds = {};
       tournament.matches.forEach(function (match) {
-        var key = String(match.round);
+        var key = (match.bracket || 'winners') + ':' + match.round;
         if (!rounds[key]) rounds[key] = [];
         rounds[key].push(match);
       });
+      var bracketOrder = { winners: 0, losers: 1, grand_final: 2 };
       var columns = el('div', 'ov-bracket');
       Object.keys(rounds)
         .sort(function (a, b) {
-          return Number(a) - Number(b);
+          var left = a.split(':');
+          var right = b.split(':');
+          var leftOrder = bracketOrder[left[0]] || 0;
+          var rightOrder = bracketOrder[right[0]] || 0;
+          return leftOrder - rightOrder || Number(left[1]) - Number(right[1]);
         })
-        .forEach(function (round) {
+        .forEach(function (key) {
+          var parts = key.split(':');
+          var bracket = parts[0];
+          var round = parts[1];
+          var label =
+            bracket === 'grand_final'
+              ? 'GRAN FINAL'
+              : (bracket === 'losers' ? 'LB' : 'WB') + ' · RONDA ' + round;
           var column = el('div', 'ov-bracket-round');
-          column.appendChild(el('div', 'ov-bracket-title', 'RONDA ' + round));
-          rounds[round].forEach(function (match) {
+          column.appendChild(el('div', 'ov-bracket-title', label));
+          rounds[key].forEach(function (match) {
             var row = el('div', 'ov-bracket-match');
             [
               [match.teamAId, match.scoreA],

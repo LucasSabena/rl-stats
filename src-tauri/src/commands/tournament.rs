@@ -169,6 +169,14 @@ pub async fn report_tournament_match(
         input.winner_team_id.as_deref(),
     )
     .map_err(storage_error)?;
+    crate::core::broadcast::discord::notify(
+        &state.db_pool,
+        &format!(
+            "📊 **Resultado de torneo** · {score_a}–{score_b}",
+            score_a = result.score_a,
+            score_b = result.score_b
+        ),
+    );
     publish_tournament(&state, Some(&result.tournament_id));
     Ok(result)
 }
@@ -215,6 +223,13 @@ pub async fn start_tournament_match_series(
     .map_err(storage_error)?;
     tournament::attach_series(&state.db_pool, &match_id, &series.id).map_err(storage_error)?;
 
+    crate::core::broadcast::discord::notify(
+        &state.db_pool,
+        &format!(
+            "🎮 **Serie iniciada** · {team_a} vs {team_b} (BO{})",
+            tournament.best_of
+        ),
+    );
     publish_tournament(&state, Some(&tournament_id));
     state
         .broadcast_hub

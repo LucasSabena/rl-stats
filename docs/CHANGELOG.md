@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-09-13
+
+### Added
+- Double-elimination tournaments: winners bracket, losers bracket and grand
+  final with deterministic feeders and walkover settling.
+- Design pack export/import as `.rlskin.json` files.
+- Discord webhook notifications for series start, bracket results and
+  finished series, with host validation and no cloud sync.
+
 ## [3.5.0] - 2026-09-13
 
 ### Added

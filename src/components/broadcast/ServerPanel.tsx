@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/Switch";
 import { useUIStore } from "@/stores/uiStore";
 import {
   createBroadcastToken,
+  setDiscordWebhook,
+  testDiscordWebhook,
   getDockUrl,
   getLanUrl,
   getOverlayServerStatus,
@@ -46,6 +48,7 @@ export function ServerPanel({ status, onStatusChange }: ServerPanelProps) {
   const [tokens, setTokens] = useState<BroadcastToken[]>([]);
   const [newRole, setNewRole] = useState<"admin" | "referee" | "viewer">("referee");
   const [newLabel, setNewLabel] = useState("");
+  const [webhook, setWebhook] = useState("");
 
   const refresh = useCallback(async () => {
     const current = await getOverlayServerStatus();
@@ -61,6 +64,7 @@ export function ServerPanel({ status, onStatusChange }: ServerPanelProps) {
     setTokens(await listBroadcastTokens());
     const settings = await getSettings();
     setLanEnabled(Boolean(settings.overlayBindLan));
+    setWebhook(settings.discordWebhook ?? "");
   }, []);
 
   useEffect(() => {
@@ -245,6 +249,70 @@ export function ServerPanel({ status, onStatusChange }: ServerPanelProps) {
             ))}
           </ul>
         )}
+      </Card>
+
+      <Card className="p-4 xl:col-span-2">
+        <h2 className="mb-2 text-sm font-semibold text-text-primary">
+          {t("overlay:broadcast.discord.title")}
+        </h2>
+        <p className="mb-3 text-[11px] text-text-muted">
+          {t("overlay:broadcast.discord.hint")}
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <Input
+            label={t("overlay:broadcast.discord.webhook")}
+            placeholder="https://discord.com/api/webhooks/…"
+            value={webhook}
+            onChange={(event) => setWebhook(event.target.value)}
+            size="sm"
+            containerClassName="min-w-[280px] flex-1"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              void setDiscordWebhook(webhook.trim())
+                .then(() =>
+                  addToast({
+                    type: "success",
+                    title: t("overlay:broadcast.discord.saved"),
+                  }),
+                )
+                .catch((error) =>
+                  addToast({
+                    type: "error",
+                    title: t("overlay:broadcast.discord.invalid"),
+                    message: String(error),
+                  }),
+                )
+            }
+          >
+            {t("overlay:broadcast.discord.save")}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!webhook.trim()}
+            onClick={() =>
+              void testDiscordWebhook()
+                .then(() =>
+                  addToast({
+                    type: "success",
+                    title: t("overlay:broadcast.discord.testOk"),
+                  }),
+                )
+                .catch((error) =>
+                  addToast({
+                    type: "error",
+                    title: t("overlay:broadcast.toasts.error"),
+                    message: String(error),
+                  }),
+                )
+            }
+          >
+            {t("overlay:broadcast.discord.test")}
+          </Button>
+        </div>
       </Card>
 
       <Card className="p-4 xl:col-span-2">

@@ -270,7 +270,11 @@
       "dragHint": "Drag modules to move them. Select one to fine-tune its size.",
       "modules": "Add module",
       "layerList": "Layers",
-      "empty": "Add modules to build the scene."
+      "empty": "Add modules to build the scene.",
+      "export": "Export pack",
+      "import": "Import pack",
+      "exported": "Pack exported",
+      "imported": "Pack imported: {{name}}"
     },
     "teams": {
       "title": "Teams",
@@ -405,7 +409,8 @@
       "saved": "Schedule saved",
       "swiss": "Swiss",
       "generateRound": "Generate round",
-      "swissHint": "Swiss: one round at a time, paired by score and avoiding rematches."
+      "swissHint": "Swiss: one round at a time, paired by score and avoiding rematches.",
+      "doubleElim": "Double elimination"
     },
     "recording": {
       "title": "Recording & replay",
@@ -427,6 +432,16 @@
       "started": "Recording started",
       "stopped": "Recording saved",
       "replayStarted": "Replay started"
+    },
+    "discord": {
+      "title": "Discord notifications",
+      "hint": "Tournament series and result updates in a Discord channel.",
+      "webhook": "Webhook",
+      "save": "Save",
+      "saved": "Webhook saved",
+      "test": "Test",
+      "testOk": "Notification sent",
+      "invalid": "The URL must be a Discord webhook"
     }
   }
 }

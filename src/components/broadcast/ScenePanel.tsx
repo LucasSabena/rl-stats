@@ -9,6 +9,7 @@ import {
   listBroadcastPacks,
   listBroadcastScenes,
   refreshBroadcast,
+  saveBroadcastPack,
   saveBroadcastScene,
 } from "@/lib/api";
 import type {
@@ -16,7 +17,7 @@ import type {
   BroadcastScene,
   SceneModule,
 } from "@/lib/types";
-import { Eye, EyeOff, Move, Plus, Save, Trash2 } from "lucide-react";
+import { Download, Eye, EyeOff, Move, Plus, Save, Trash2, Upload } from "lucide-react";
 
 const STATES = ["waiting", "live", "replay", "post", "brb"] as const;
 
@@ -96,6 +97,7 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
   const [layout, setLayout] = useState<Record<string, SceneModule>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const [packsResponse, sceneList] = await Promise.all([
@@ -200,6 +202,69 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
     dragRef.current = null;
   };
 
+  /** Downloads the selected pack as a portable `.rlskin.json` file. */
+  const exportPack = () => {
+    const pack = packs.find((candidate) => candidate.id === packId);
+    if (!pack) return;
+    const payload = {
+      kind: "rl-stats-pack",
+      version: 1,
+      pack: {
+        name: pack.name,
+        baseId: pack.baseId ?? pack.id,
+        tokens: pack.tokens,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${pack.id}.rlskin.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    addToast({ type: "success", title: t("overlay:broadcast.scene.exported") });
+  };
+
+  /** Imports a `.rlskin.json` as a new custom pack. */
+  const importPack = async (file: File) => {
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as {
+        kind?: string;
+        pack?: { name?: string; baseId?: string; tokens?: unknown };
+      };
+      const pack = payload.pack;
+      if (
+        payload.kind !== "rl-stats-pack" ||
+        !pack ||
+        typeof pack.name !== "string" ||
+        typeof pack.tokens !== "object" ||
+        pack.tokens === null
+      ) {
+        throw new Error("invalid pack file");
+      }
+      const saved = await saveBroadcastPack({
+        name: pack.name,
+        baseId: pack.baseId ?? null,
+        tokens: pack.tokens as Record<string, unknown>,
+      });
+      await load();
+      setPackId(saved.id);
+      addToast({
+        type: "success",
+        title: t("overlay:broadcast.scene.imported", { name: saved.name }),
+      });
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: t("overlay:broadcast.toasts.error"),
+        message: String(error),
+      });
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -258,6 +323,29 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
               onChange={setPackId}
               size="sm"
             />
+            <Button size="sm" variant="ghost" onClick={exportPack}>
+              <Download className="h-3.5 w-3.5" aria-hidden />
+              {t("overlay:broadcast.scene.export")}
+            </Button>
+            <input
+              ref={importRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void importPack(file);
+                event.target.value = "";
+              }}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => importRef.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden />
+              {t("overlay:broadcast.scene.import")}
+            </Button>
             <Button size="sm" isLoading={saving} onClick={() => void save()}>
               <Save className="h-3.5 w-3.5" aria-hidden />
               {t("overlay:broadcast.scene.save")}

@@ -23,7 +23,7 @@ fn new_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
-pub const FORMATS: &[&str] = &["single_elim", "round_robin", "swiss"];
+pub const FORMATS: &[&str] = &["single_elim", "double_elim", "round_robin", "swiss"];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -418,6 +418,7 @@ pub fn list_tournament_matches(
 fn insert_match(
     conn: &rusqlite::Connection,
     tournament_id: &str,
+    bracket: &str,
     round: i64,
     position: i64,
     team_a: Option<&str>,
@@ -426,10 +427,496 @@ fn insert_match(
     let timestamp = now();
     conn.execute(
         "INSERT INTO tournament_matches (id, tournament_id, round, position, bracket, team_a_id, team_b_id, score_a, score_b, winner_team_id, series_id, status, station, scheduled_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 'winners', ?5, ?6, 0, 0, NULL, NULL, 'pending', NULL, NULL, ?7, ?7)",
-        params![new_id(), tournament_id, round, position, team_a, team_b, timestamp],
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, NULL, NULL, 'pending', NULL, NULL, ?8, ?8)",
+        params![
+            new_id(),
+            tournament_id,
+            round,
+            position,
+            bracket,
+            team_a,
+            team_b,
+            timestamp
+        ],
     )
     .map_err(|error| AppError::StorageError(error.to_string()))?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Double elimination
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum BracketKind {
+    Winners,
+    Losers,
+    GrandFinal,
+}
+
+impl BracketKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            BracketKind::Winners => "winners",
+            BracketKind::Losers => "losers",
+            BracketKind::GrandFinal => "grand_final",
+        }
+    }
+
+    fn parse(value: &str) -> BracketKind {
+        match value {
+            "losers" => BracketKind::Losers,
+            "grand_final" => BracketKind::GrandFinal,
+            _ => BracketKind::Winners,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FeedOutput {
+    Winner,
+    Loser,
+}
+
+#[derive(Clone, Copy)]
+struct Feeder {
+    bracket: BracketKind,
+    round: i64,
+    position: i64,
+    output: FeedOutput,
+}
+
+#[derive(Clone, Copy)]
+enum Slot {
+    A,
+    B,
+}
+
+impl Slot {
+    fn column(self) -> &'static str {
+        match self {
+            Slot::A => "team_a_id",
+            Slot::B => "team_b_id",
+        }
+    }
+}
+
+/// Number of winners-bracket rounds for a bracket of `size` slots.
+fn winners_rounds(size: usize) -> i64 {
+    (size as f64).log2().round() as i64
+}
+
+/// Number of losers-bracket rounds. `size == 2` has no losers bracket (the
+/// WB loser goes straight to the grand final).
+fn losers_round_count(size: usize) -> i64 {
+    let rounds = winners_rounds(size);
+    if rounds >= 2 {
+        2 * (rounds - 1)
+    } else {
+        0
+    }
+}
+
+/// Matches in losers round `round` (1-based).
+fn losers_round_size(size: usize, round: i64) -> i64 {
+    if round <= 0 {
+        return 0;
+    }
+    let exponent = if round % 2 == 1 {
+        (round + 1) / 2 + 1
+    } else {
+        round / 2 + 1
+    };
+    ((size as f64) / 2f64.powi(exponent as i32)).ceil().max(1.0) as i64
+}
+
+/// Structural sources of a match. Deterministic, so both generation and
+/// advancement can rely on it without extra database columns.
+fn match_feeders(size: usize, bracket: BracketKind, round: i64, position: i64) -> Vec<Feeder> {
+    let winners_rounds = winners_rounds(size);
+    match bracket {
+        BracketKind::Winners => {
+            if round <= 1 {
+                Vec::new()
+            } else {
+                vec![
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: round - 1,
+                        position: position * 2,
+                        output: FeedOutput::Winner,
+                    },
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: round - 1,
+                        position: position * 2 + 1,
+                        output: FeedOutput::Winner,
+                    },
+                ]
+            }
+        }
+        BracketKind::Losers => {
+            if round == 1 {
+                vec![
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: 1,
+                        position: position * 2,
+                        output: FeedOutput::Loser,
+                    },
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: 1,
+                        position: position * 2 + 1,
+                        output: FeedOutput::Loser,
+                    },
+                ]
+            } else if round % 2 == 1 {
+                vec![
+                    Feeder {
+                        bracket: BracketKind::Losers,
+                        round: round - 1,
+                        position: position * 2,
+                        output: FeedOutput::Winner,
+                    },
+                    Feeder {
+                        bracket: BracketKind::Losers,
+                        round: round - 1,
+                        position: position * 2 + 1,
+                        output: FeedOutput::Winner,
+                    },
+                ]
+            } else {
+                let winners_round = round / 2 + 1;
+                vec![
+                    Feeder {
+                        bracket: BracketKind::Losers,
+                        round: round - 1,
+                        position,
+                        output: FeedOutput::Winner,
+                    },
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: winners_round,
+                        position,
+                        output: FeedOutput::Loser,
+                    },
+                ]
+            }
+        }
+        BracketKind::GrandFinal => {
+            if winners_rounds <= 1 {
+                vec![
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: 1,
+                        position: 0,
+                        output: FeedOutput::Winner,
+                    },
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: 1,
+                        position: 0,
+                        output: FeedOutput::Loser,
+                    },
+                ]
+            } else {
+                vec![
+                    Feeder {
+                        bracket: BracketKind::Winners,
+                        round: winners_rounds,
+                        position: 0,
+                        output: FeedOutput::Winner,
+                    },
+                    Feeder {
+                        bracket: BracketKind::Losers,
+                        round: losers_round_count(size),
+                        position: 0,
+                        output: FeedOutput::Winner,
+                    },
+                ]
+            }
+        }
+    }
+}
+
+/// Where a match's winner/loser goes next.
+fn match_targets(
+    size: usize,
+    bracket: BracketKind,
+    round: i64,
+    position: i64,
+    output: FeedOutput,
+) -> Vec<(BracketKind, i64, i64, Slot)> {
+    let winners_rounds = winners_rounds(size);
+    match bracket {
+        BracketKind::Winners => match output {
+            FeedOutput::Winner => {
+                if round < winners_rounds {
+                    vec![(
+                        BracketKind::Winners,
+                        round + 1,
+                        position / 2,
+                        if position % 2 == 0 { Slot::A } else { Slot::B },
+                    )]
+                } else {
+                    vec![(BracketKind::GrandFinal, 1, 0, Slot::A)]
+                }
+            }
+            FeedOutput::Loser => {
+                if winners_rounds <= 1 {
+                    vec![(BracketKind::GrandFinal, 1, 0, Slot::B)]
+                } else if round == 1 {
+                    vec![(
+                        BracketKind::Losers,
+                        1,
+                        position / 2,
+                        if position % 2 == 0 { Slot::A } else { Slot::B },
+                    )]
+                } else {
+                    vec![(BracketKind::Losers, 2 * (round - 1), position, Slot::B)]
+                }
+            }
+        },
+        BracketKind::Losers => match output {
+            FeedOutput::Winner => {
+                if round >= losers_round_count(size) {
+                    vec![(BracketKind::GrandFinal, 1, 0, Slot::B)]
+                } else if round % 2 == 0 {
+                    // Even rounds merge two matches into one odd-round match.
+                    vec![(
+                        BracketKind::Losers,
+                        round + 1,
+                        position / 2,
+                        if position % 2 == 0 { Slot::A } else { Slot::B },
+                    )]
+                } else {
+                    // Odd rounds carry one winner per match into the next even round.
+                    vec![(BracketKind::Losers, round + 1, position, Slot::A)]
+                }
+            }
+            FeedOutput::Loser => Vec::new(),
+        },
+        BracketKind::GrandFinal => Vec::new(),
+    }
+}
+
+/// Generates a double-elimination bracket: winners, losers and grand final.
+pub fn generate_double_elim(pool: &DbPool, tournament_id: &str) -> AppResult<Vec<TournamentMatch>> {
+    let teams = list_tournament_teams(pool, tournament_id)?;
+    if teams.len() < 2 {
+        return Err(AppError::ConfigError(
+            "El torneo necesita al menos 2 equipos".into(),
+        ));
+    }
+    let team_ids: Vec<String> = teams.into_iter().map(|team| team.team_id).collect();
+    let size = next_power_of_two(team_ids.len());
+    let order = seeding_order(size);
+    let winners_rounds = winners_rounds(size);
+
+    let conn = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    conn.execute(
+        "DELETE FROM tournament_matches WHERE tournament_id = ?1",
+        params![tournament_id],
+    )
+    .map_err(|error| AppError::StorageError(error.to_string()))?;
+
+    // Winners round 1 from the seeding order.
+    for (position, pair) in order.chunks(2).enumerate() {
+        let team_a = pair
+            .first()
+            .and_then(|seed| team_ids.get(seed.saturating_sub(1)))
+            .map(String::as_str);
+        let team_b = pair
+            .get(1)
+            .and_then(|seed| team_ids.get(seed.saturating_sub(1)))
+            .map(String::as_str);
+        insert_match(
+            &conn,
+            tournament_id,
+            "winners",
+            1,
+            position as i64,
+            team_a,
+            team_b,
+        )?;
+        if team_a.is_none() || team_b.is_none() {
+            let winner = team_a.or(team_b);
+            conn.execute(
+                "UPDATE tournament_matches SET status = 'finished', winner_team_id = ?3, updated_at = ?4 WHERE tournament_id = ?1 AND bracket = 'winners' AND round = 1 AND position = ?2",
+                params![tournament_id, position as i64, winner, now()],
+            )
+            .map_err(|error| AppError::StorageError(error.to_string()))?;
+        }
+    }
+
+    // Winners shells for the following rounds.
+    let mut matches_in_round = size / 2;
+    for round in 2..=winners_rounds {
+        matches_in_round /= 2;
+        for position in 0..matches_in_round {
+            insert_match(
+                &conn,
+                tournament_id,
+                "winners",
+                round,
+                position as i64,
+                None,
+                None,
+            )?;
+        }
+    }
+
+    // Losers shells + grand final.
+    for round in 1..=losers_round_count(size) {
+        for position in 0..losers_round_size(size, round) {
+            insert_match(&conn, tournament_id, "losers", round, position, None, None)?;
+        }
+    }
+    insert_match(&conn, tournament_id, "grand_final", 1, 0, None, None)?;
+
+    advance_double_elim(pool, tournament_id)?;
+    info!(teams = team_ids.len(), size, "Double elimination generated");
+    list_tournament_matches(pool, tournament_id)
+}
+
+fn team_loser(entry: &TournamentMatch) -> Option<String> {
+    let winner = entry.winner_team_id.as_deref()?;
+    if entry.team_a_id.as_deref() == Some(winner) {
+        entry.team_b_id.clone()
+    } else if entry.team_b_id.as_deref() == Some(winner) {
+        entry.team_a_id.clone()
+    } else {
+        None
+    }
+}
+
+fn output_of(entry: &TournamentMatch, output: FeedOutput) -> Option<String> {
+    if entry.status != "finished" {
+        return None;
+    }
+    match output {
+        FeedOutput::Winner => entry.winner_team_id.clone(),
+        FeedOutput::Loser => team_loser(entry),
+    }
+}
+
+/// Advances a double-elimination bracket to a fixpoint: propagates every
+/// finished match's winner and loser, then settles walkovers (a match whose
+/// feeders are all decided and which can no longer receive a second team).
+pub fn advance_double_elim(pool: &DbPool, tournament_id: &str) -> AppResult<()> {
+    let conn = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    let Some(tournament) = get_tournament(pool, tournament_id)? else {
+        return Ok(());
+    };
+    if tournament.status == "finished" {
+        return Ok(());
+    }
+    let team_count = list_tournament_teams(pool, tournament_id)?.len();
+    let size = next_power_of_two(team_count.max(2));
+
+    // The fixpoint must always converge; the cap turns any future structural
+    // bug into a bounded no-op instead of a hung process.
+    for _iteration in 0..200 {
+        let matches = list_tournament_matches(pool, tournament_id)?;
+        let mut changed = false;
+
+        let find = |bracket: BracketKind, round: i64, position: i64| {
+            matches.iter().find(|entry| {
+                entry.round == round
+                    && entry.position == position
+                    && BracketKind::parse(&entry.bracket) == bracket
+            })
+        };
+
+        // Propagate winners/losers of finished matches.
+        for entry in matches.iter().filter(|entry| entry.status == "finished") {
+            let bracket = BracketKind::parse(&entry.bracket);
+            for output in [FeedOutput::Winner, FeedOutput::Loser] {
+                let Some(team) = output_of(entry, output) else {
+                    continue;
+                };
+                for (target_bracket, target_round, target_position, slot) in
+                    match_targets(size, bracket, entry.round, entry.position, output)
+                {
+                    let column = slot.column();
+                    let updated = conn
+                        .execute(
+                            &format!(
+                                "UPDATE tournament_matches SET {column} = ?4, updated_at = ?5                                  WHERE tournament_id = ?1 AND bracket = ?2 AND round = ?3 AND position = ?6                                  AND ({column} IS NULL OR {column} != ?4)"
+                            ),
+                            params![
+                                tournament_id,
+                                target_bracket.as_str(),
+                                target_round,
+                                team,
+                                now(),
+                                target_position
+                            ],
+                        )
+                        .map_err(|error| AppError::StorageError(error.to_string()))?;
+                    if updated > 0 {
+                        changed = true;
+                    }
+                }
+            }
+
+            // Grand final winner closes the tournament.
+            if bracket == BracketKind::GrandFinal && entry.winner_team_id.is_some() {
+                conn.execute(
+                    "UPDATE tournaments SET status = 'finished', updated_at = ?2 WHERE id = ?1",
+                    params![tournament_id, now()],
+                )
+                .map_err(|error| AppError::StorageError(error.to_string()))?;
+                return Ok(());
+            }
+        }
+
+        // Settle walkovers / empty matches once every feeder is decided.
+        for entry in matches.iter().filter(|entry| entry.status == "pending") {
+            let bracket = BracketKind::parse(&entry.bracket);
+            let feeders = match_feeders(size, bracket, entry.round, entry.position);
+            if feeders.is_empty() {
+                continue;
+            }
+            let mut expected: Vec<Option<String>> = Vec::new();
+            let mut all_decided = true;
+            for feeder in &feeders {
+                match find(feeder.bracket, feeder.round, feeder.position) {
+                    Some(feeder_match) if feeder_match.status == "finished" => {
+                        expected.push(output_of(feeder_match, feeder.output));
+                    }
+                    _ => {
+                        all_decided = false;
+                        break;
+                    }
+                }
+            }
+            if !all_decided {
+                continue;
+            }
+            let filled: Vec<&String> = expected.iter().flatten().collect();
+            if filled.len() >= 2 {
+                // Ready to be played: make sure both slots are populated.
+                continue;
+            }
+            let winner = filled.first().map(|team| (*team).as_str());
+            conn.execute(
+                "UPDATE tournament_matches SET status = 'finished', winner_team_id = ?2, updated_at = ?3 WHERE id = ?1",
+                params![entry.id, winner, now()],
+            )
+            .map_err(|error| AppError::StorageError(error.to_string()))?;
+            changed = true;
+        }
+
+        if !changed {
+            break;
+        }
+    }
     Ok(())
 }
 
@@ -472,6 +959,7 @@ pub fn generate_single_elim(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
                 insert_match(
                     &conn,
                     tournament_id,
+                    "winners",
                     1,
                     position,
                     Some(team_a),
@@ -480,7 +968,15 @@ pub fn generate_single_elim(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
             }
             (Some(team_a), None) => {
                 // Bye: the top seed advances without playing.
-                insert_match(&conn, tournament_id, 1, position, Some(team_a), None)?;
+                insert_match(
+                    &conn,
+                    tournament_id,
+                    "winners",
+                    1,
+                    position,
+                    Some(team_a),
+                    None,
+                )?;
                 conn.execute(
                     "UPDATE tournament_matches SET status = 'finished', winner_team_id = team_a_id WHERE tournament_id = ?1 AND round = 1 AND position = ?2",
                     params![tournament_id, position],
@@ -488,7 +984,15 @@ pub fn generate_single_elim(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
                 .map_err(|error| AppError::StorageError(error.to_string()))?;
             }
             (None, Some(team_b)) => {
-                insert_match(&conn, tournament_id, 1, position, None, Some(team_b))?;
+                insert_match(
+                    &conn,
+                    tournament_id,
+                    "winners",
+                    1,
+                    position,
+                    None,
+                    Some(team_b),
+                )?;
                 conn.execute(
                     "UPDATE tournament_matches SET status = 'finished', winner_team_id = team_b_id WHERE tournament_id = ?1 AND round = 1 AND position = ?2",
                     params![tournament_id, position],
@@ -496,7 +1000,7 @@ pub fn generate_single_elim(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
                 .map_err(|error| AppError::StorageError(error.to_string()))?;
             }
             (None, None) => {
-                insert_match(&conn, tournament_id, 1, position, None, None)?;
+                insert_match(&conn, tournament_id, "winners", 1, position, None, None)?;
                 conn.execute(
                     "UPDATE tournament_matches SET status = 'finished' WHERE tournament_id = ?1 AND round = 1 AND position = ?2",
                     params![tournament_id, position],
@@ -511,7 +1015,15 @@ pub fn generate_single_elim(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
     for round in 2..=rounds {
         matches_in_round /= 2;
         for position in 0..matches_in_round {
-            insert_match(&conn, tournament_id, round, position as i64, None, None)?;
+            insert_match(
+                &conn,
+                tournament_id,
+                "winners",
+                round,
+                position as i64,
+                None,
+                None,
+            )?;
         }
     }
 
@@ -547,6 +1059,7 @@ pub fn generate_round_robin(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
             insert_match(
                 &conn,
                 tournament_id,
+                "winners",
                 round_index as i64 + 1,
                 position as i64,
                 team_ids.get(*left).map(String::as_str),
@@ -631,6 +1144,7 @@ pub fn generate_swiss_round(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
         insert_match(
             &conn,
             tournament_id,
+            "winners",
             next_round,
             position as i64,
             team_a.as_deref(),
@@ -638,8 +1152,18 @@ pub fn generate_swiss_round(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
         )?;
     }
 
-    // Settle a structural bye for the odd team (no opponent this round).
-    advance_all_winners(pool, tournament_id)?;
+    // A bye is an immediate walkover in Swiss: the present team scores the
+    // free win without playing.
+    for (position, (team_a, team_b)) in pairings.iter().enumerate() {
+        if team_a.is_some() ^ team_b.is_some() {
+            let winner = team_a.as_deref().or(team_b.as_deref());
+            conn.execute(
+                "UPDATE tournament_matches SET status = 'finished', winner_team_id = ?3, updated_at = ?4 WHERE tournament_id = ?1 AND round = ?2 AND position = ?5",
+                params![tournament_id, next_round, winner, now(), position as i64],
+            )
+            .map_err(|error| AppError::StorageError(error.to_string()))?;
+        }
+    }
     let _ = had_bye;
 
     info!(round = next_round, "Swiss round generated");
@@ -650,11 +1174,22 @@ pub fn generate_swiss_round(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
         .collect())
 }
 
-/// Moves the winner of every finished match into its next-round slot.
-///
-/// Idempotent: safe to call after every result (and after generation, for
-/// byes). A finished final marks the tournament as finished.
+/// Advances a tournament according to its format.
 pub fn advance_all_winners(pool: &DbPool, tournament_id: &str) -> AppResult<()> {
+    let Some(tournament) = get_tournament(pool, tournament_id)? else {
+        return Ok(());
+    };
+    match tournament.format.as_str() {
+        "single_elim" => advance_single_elim(pool, tournament_id),
+        "double_elim" => advance_double_elim(pool, tournament_id),
+        _ => Ok(()),
+    }
+}
+
+/// Moves the winner of every finished single-elimination match into its next
+/// round slot. Idempotent: safe to call after every result (and after
+/// generation, for byes). A finished final marks the tournament as finished.
+pub fn advance_single_elim(pool: &DbPool, tournament_id: &str) -> AppResult<()> {
     let connection = pool
         .get()
         .map_err(|error| AppError::StorageError(error.to_string()))?;
@@ -662,9 +1197,7 @@ pub fn advance_all_winners(pool: &DbPool, tournament_id: &str) -> AppResult<()> 
     let Some(tournament) = get_tournament(pool, tournament_id)? else {
         return Ok(());
     };
-    if tournament.format != "single_elim" {
-        return Ok(());
-    }
+    let _ = &tournament;
 
     let total_rounds = matches.iter().map(|m| m.round).max().unwrap_or(0);
     for current in matches
@@ -1109,6 +1642,143 @@ mod tests {
                 "rematch generated in Swiss pairing"
             );
         }
+    }
+
+    #[test]
+    fn double_elim_structure_matches_the_standard_shape() {
+        let pool = temp_pool("de-structure");
+        let tournament = save_tournament(&pool, None, "DE", "double_elim", 3, None).unwrap();
+        for index in 0..8 {
+            let team = crate::core::broadcast::store::upsert_team(
+                &pool,
+                None,
+                &format!("D{index}"),
+                &format!("D{index}"),
+                "#111111",
+                "#222222",
+                None,
+            )
+            .unwrap();
+            add_tournament_team(&pool, &tournament.id, &team.id, None).unwrap();
+        }
+        let matches = generate_double_elim(&pool, &tournament.id).unwrap();
+        // Standard 8-team double elimination: 2n-2 = 14 matches.
+        assert_eq!(matches.len(), 14);
+
+        let count = |bracket: &str, round: i64| {
+            matches
+                .iter()
+                .filter(|entry| entry.bracket == bracket && entry.round == round)
+                .count()
+        };
+        assert_eq!(count("winners", 1), 4);
+        assert_eq!(count("winners", 2), 2);
+        assert_eq!(count("winners", 3), 1);
+        assert_eq!(count("losers", 1), 2);
+        assert_eq!(count("losers", 2), 2);
+        assert_eq!(count("losers", 3), 1);
+        assert_eq!(count("losers", 4), 1);
+        assert_eq!(count("grand_final", 1), 1);
+
+        // Every first-round match has both teams when the bracket is full.
+        assert!(matches
+            .iter()
+            .filter(|entry| entry.bracket == "winners" && entry.round == 1)
+            .all(|entry| entry.team_a_id.is_some() && entry.team_b_id.is_some()));
+    }
+
+    #[test]
+    fn double_elim_plays_through_to_a_champion() {
+        let pool = temp_pool("de-play");
+        let tournament = save_tournament(&pool, None, "DE2", "double_elim", 1, None).unwrap();
+        for index in 0..8 {
+            let team = crate::core::broadcast::store::upsert_team(
+                &pool,
+                None,
+                &format!("P{index}"),
+                &format!("P{index}"),
+                "#111111",
+                "#222222",
+                None,
+            )
+            .unwrap();
+            add_tournament_team(&pool, &tournament.id, &team.id, None).unwrap();
+        }
+        generate_double_elim(&pool, &tournament.id).unwrap();
+
+        // Always let team A win; the bracket must still resolve completely.
+        let mut guard = 0;
+        loop {
+            guard += 1;
+            assert!(guard < 60, "bracket did not converge");
+            let matches = list_tournament_matches(&pool, &tournament.id).unwrap();
+            let Some(playable) = matches.iter().find(|entry| {
+                entry.status == "pending" && entry.team_a_id.is_some() && entry.team_b_id.is_some()
+            }) else {
+                break;
+            };
+            let winner = playable.team_a_id.clone().unwrap();
+            report_tournament_match(&pool, &playable.id, 1, 0, Some(&winner)).unwrap();
+        }
+
+        let snapshot = tournament_snapshot(&pool, Some(&tournament.id)).unwrap();
+        let matches = list_tournament_matches(&pool, &tournament.id).unwrap();
+        assert_eq!(snapshot["status"], "finished");
+        assert!(
+            matches.iter().all(|entry| entry.status == "finished"),
+            "every match must be resolved once the champion is decided"
+        );
+        let final_match = matches
+            .iter()
+            .find(|entry| entry.bracket == "grand_final")
+            .unwrap();
+        assert!(final_match.team_a_id.is_some() && final_match.team_b_id.is_some());
+        assert!(final_match.winner_team_id.is_some());
+
+        // A team that loses in the winners bracket must get a second chance:
+        // the grand final's second slot comes from the losers bracket.
+        let losers_final = matches
+            .iter()
+            .filter(|entry| entry.bracket == "losers")
+            .max_by_key(|entry| entry.round)
+            .unwrap();
+        assert_eq!(
+            final_match.team_b_id, losers_final.winner_team_id,
+            "grand final slot B must be the losers-bracket winner"
+        );
+    }
+
+    #[test]
+    fn double_elim_handles_byes() {
+        let pool = temp_pool("de-bye");
+        let tournament = save_tournament(&pool, None, "DE3", "double_elim", 1, None).unwrap();
+        for index in 0..3 {
+            let team = crate::core::broadcast::store::upsert_team(
+                &pool,
+                None,
+                &format!("B{index}"),
+                &format!("B{index}"),
+                "#111111",
+                "#222222",
+                None,
+            )
+            .unwrap();
+            add_tournament_team(&pool, &tournament.id, &team.id, None).unwrap();
+        }
+        let matches = generate_double_elim(&pool, &tournament.id).unwrap();
+        // 3 teams -> size 4: 2n-2 with a bye behaves like 2*3-2 = 4 real games
+        // plus the empty shells; assert nothing is stuck without a winner.
+        let ready = matches
+            .iter()
+            .filter(|entry| {
+                entry.status == "pending" && entry.team_a_id.is_some() && entry.team_b_id.is_some()
+            })
+            .count();
+        assert!(ready <= 2, "only the non-bye opening matches are ready");
+        assert!(matches
+            .iter()
+            .filter(|entry| entry.bracket == "winners" && entry.round == 1)
+            .any(|entry| entry.status == "finished"));
     }
 
     #[test]

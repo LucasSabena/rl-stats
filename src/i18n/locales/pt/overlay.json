@@ -270,7 +270,11 @@
       "dragHint": "Arraste os módulos para movê-los. Selecione um para ajustar o tamanho.",
       "modules": "Adicionar módulo",
       "layerList": "Camadas",
-      "empty": "Adicione módulos para montar a cena."
+      "empty": "Adicione módulos para montar a cena.",
+      "export": "Exportar pack",
+      "import": "Importar pack",
+      "exported": "Pack exportado",
+      "imported": "Pack importado: {{name}}"
     },
     "teams": {
       "title": "Equipes",
@@ -405,7 +409,8 @@
       "saved": "Programação salva",
       "swiss": "Suíço",
       "generateRound": "Gerar rodada",
-      "swissHint": "Suíço: uma rodada por vez, pareando por pontuação e evitando reencontros."
+      "swissHint": "Suíço: uma rodada por vez, pareando por pontuação e evitando reencontros.",
+      "doubleElim": "Dupla eliminação"
     },
     "recording": {
       "title": "Gravação e retransmissão",
@@ -427,6 +432,16 @@
       "started": "Gravação iniciada",
       "stopped": "Gravação salva",
       "replayStarted": "Retransmissão iniciada"
+    },
+    "discord": {
+      "title": "Notificações do Discord",
+      "hint": "Avisos de séries e resultados de torneio em um canal do Discord.",
+      "webhook": "Webhook",
+      "save": "Salvar",
+      "saved": "Webhook salvo",
+      "test": "Testar",
+      "testOk": "Notificação enviada",
+      "invalid": "A URL deve ser um webhook do Discord"
     }
   }
 }

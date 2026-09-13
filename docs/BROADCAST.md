@@ -55,6 +55,9 @@ In the **Scene** tab you can pick a pack, add/remove modules, drag them over
 the live preview, fine-tune X/Y/W/H and save. Layouts persist in the
 `broadcast_scenes` table; no base64 URLs.
 
+Packs can be exported and imported as `.rlskin.json` files from the Scene tab
+(import creates a custom pack), so a design can be shared between machines.
+
 ### Overlay URLs
 
 | Overlay | Path | Use |
@@ -87,9 +90,11 @@ log; the overlay picks up the team names, colors and logos automatically.
 
 The **Tournament** tab runs events end to end:
 
-1. Create a tournament (single elimination, round robin or Swiss, best-of N).
-   Swiss generates one round at a time, paired by score and avoiding
-   rematches.
+1. Create a tournament (single elimination, double elimination, round robin
+   or Swiss, best-of N). Double elimination generates a winners bracket, a
+   losers bracket and a grand final, and every eliminated team gets a second
+   chance through the losers bracket. Swiss generates one round at a time,
+   paired by score and avoiding rematches.
 2. Register teams from the library and mark their check-in.
 3. **Generate bracket**: single elimination uses standard seeding with byes;
    round robin uses the circle method.
@@ -187,6 +192,14 @@ With obs-websocket (OBS 28+) enabled, set the URL, password and the scene
 name for each state in **Server → OBS Studio**. RL Stats then switches the
 program scene when the broadcast state changes. Without OBS the overlays keep
 working on their own.
+
+## 9.5 Discord notifications
+
+Set a Discord webhook in **Server → Discord notifications** and RL Stats will
+post a message when a tournament series starts, when a bracket result is
+reported and when a live series finishes. The URL is validated against
+Discord's own hostnames, stored only on this device and stripped from cloud
+sync.
 
 ## 10. Security
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## v3.6.0 — Doble eliminación, packs portables y Discord
+
+### Nuevo — Doble eliminación
+
+- **Double elimination** completa: winners bracket, losers bracket y gran
+  final, con segunda oportunidad para todos los eliminados. Aplica a torneos
+  nuevos desde la pestaña Torneo.
+
+### Nuevo — Packs portables
+
+- **Exportá e importá packs** como archivos `.rlskin.json` desde la pestaña
+  Escena para compartir un diseño entre máquinas o con tu equipo.
+
+### Nuevo — Notificaciones de Discord
+
+- **Webhook de Discord** en Servidor → Notificaciones: avisos cuando arranca
+  una serie de torneo, cuando se reporta un resultado y cuando termina una
+  serie en vivo. La URL se valida contra los hosts de Discord y nunca sale
+  de tu equipo.
+
 ## v3.5.0 — Planteles por equipo
 
 ### Nuevo

@@ -399,6 +399,16 @@ export async function getTournamentSnapshot(
   });
 }
 
+// ─── Discord notifications ──────────────────────────────────────────────────
+
+export async function setDiscordWebhook(url: string): Promise<void> {
+  return invokeCommand<void>("set_discord_webhook", { url });
+}
+
+export async function testDiscordWebhook(): Promise<void> {
+  return invokeCommand<void>("test_discord_webhook");
+}
+
 // ─── Recording & replay ─────────────────────────────────────────────────────
 
 export async function startRecording(

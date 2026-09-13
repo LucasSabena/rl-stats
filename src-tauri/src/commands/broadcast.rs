@@ -485,6 +485,31 @@ pub async fn configure_chat(
 }
 
 #[tauri::command]
+pub async fn set_discord_webhook(state: State<'_, AppState>, url: String) -> Result<(), String> {
+    let mut settings = get_settings(&state.db_pool).map_err(storage_error)?;
+    let url = url.trim().to_string();
+    if !url.is_empty() && !crate::core::broadcast::discord::is_valid_webhook(&url) {
+        return Err("La URL debe ser un webhook de Discord".into());
+    }
+    settings.discord_webhook = url;
+    set_settings(&state.db_pool, &settings).map_err(storage_error)
+}
+
+#[tauri::command]
+pub async fn test_discord_webhook(state: State<'_, AppState>) -> Result<(), String> {
+    let settings = get_settings(&state.db_pool).map_err(storage_error)?;
+    let webhook = settings.discord_webhook;
+    if webhook.is_empty() {
+        return Err("Configurá un webhook primero".into());
+    }
+    crate::core::broadcast::discord::send(
+        &webhook,
+        "RL Stats: notificaciones de torneo activadas ✅",
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn get_chat_status(state: State<'_, AppState>) -> Result<Value, String> {
     Ok(json!({
         "running": state.chat.running_platforms(),

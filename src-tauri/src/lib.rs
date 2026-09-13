@@ -271,6 +271,8 @@ pub fn run() {
             commands::broadcast::delete_series_cmd,
             commands::broadcast::configure_chat,
             commands::broadcast::get_chat_status,
+            commands::broadcast::set_discord_webhook,
+            commands::broadcast::test_discord_webhook,
             commands::tournament::list_tournaments,
             commands::tournament::save_tournament,
             commands::tournament::delete_tournament,
@@ -1674,6 +1676,21 @@ async fn auto_advance_series(app_handle: tauri::AppHandle, winner_team_num: Opti
         score_b = updated.score_b,
         "Live match advanced the active series"
     );
+    if updated.status == "finished" {
+        let label = if updated.name.is_empty() {
+            "Serie".to_string()
+        } else {
+            updated.name.clone()
+        };
+        crate::core::broadcast::discord::notify(
+            &pool,
+            &format!(
+                "🏆 **{label} finalizada** · {score_a}–{score_b}",
+                score_a = updated.score_a,
+                score_b = updated.score_b
+            ),
+        );
+    }
 
     // Linked bracket match: report the series result and advance the tree.
     if updated.status == "finished" {
