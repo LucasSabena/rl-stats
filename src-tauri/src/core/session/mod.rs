@@ -51,6 +51,10 @@ pub struct SessionManager {
     /// team) never do; a real match does on its first full snapshot.
     had_opposing_teams: bool,
     last_touch_team: Option<i32>,
+    /// Team names/colors from the API for the focused/scorebug overlays.
+    teams: Vec<crate::core::models::TeamInfo>,
+    /// Player currently observed by the spectator camera.
+    target: Option<crate::core::models::LiveTarget>,
     mmr_snapshot: Option<MatchMmrSnapshot>,
     // Kickoff goal tracking
     kickoff_threshold_seconds: i32,
@@ -110,6 +114,8 @@ impl SessionManager {
             max_player_count: 0,
             had_opposing_teams: false,
             last_touch_team: None,
+            teams: Vec::new(),
+            target: None,
             mmr_snapshot: None,
             kickoff_threshold_seconds,
             round_start_game_time: None,
@@ -281,6 +287,8 @@ impl SessionManager {
             player_count,
             match_type: live_match_type,
             last_touch_team: self.last_touch_team,
+            teams: self.teams.clone(),
+            target: self.target.clone(),
             playlist_id: self.playlist_id,
             training_elapsed_seconds: if self.is_training_by_content() {
                 self.start_time
@@ -352,6 +360,13 @@ impl SessionManager {
                         if teams.len() > 1 {
                             self.score_orange = teams[1].score;
                         }
+                        if !teams.is_empty() {
+                            self.teams = teams.clone();
+                        }
+                    }
+                    // Spectator camera target (focused-player card).
+                    if let Some(target) = &game.target {
+                        self.target = Some(target.clone());
                     }
                     self.ball_speed = game.ball.as_ref().map(|ball| ball.speed).unwrap_or(0.0);
                     // `Ball.TeamNum` is the last team that touched the ball.
@@ -956,6 +971,8 @@ impl SessionManager {
         self.max_player_count = 0;
         self.had_opposing_teams = false;
         self.last_touch_team = None;
+        self.teams.clear();
+        self.target = None;
         self.mmr_snapshot = None;
         self.round_start_game_time = None;
         self.round_start_wall_time = None;
@@ -1234,8 +1251,14 @@ mod tests {
             match_guid: Some("guid-1".into()),
             game: GameState {
                 teams: Some(vec![
-                    crate::core::models::TeamInfo { score: blue },
-                    crate::core::models::TeamInfo { score: orange },
+                    crate::core::models::TeamInfo {
+                        score: blue,
+                        ..Default::default()
+                    },
+                    crate::core::models::TeamInfo {
+                        score: orange,
+                        ..Default::default()
+                    },
                 ]),
                 time,
                 is_overtime: false,
@@ -1639,8 +1662,14 @@ mod tests {
             match_guid: Some("guid-1".into()),
             game: GameState {
                 teams: Some(vec![
-                    crate::core::models::TeamInfo { score: 2 },
-                    crate::core::models::TeamInfo { score: 1 },
+                    crate::core::models::TeamInfo {
+                        score: 2,
+                        ..Default::default()
+                    },
+                    crate::core::models::TeamInfo {
+                        score: 1,
+                        ..Default::default()
+                    },
                 ]),
                 time: 120,
                 is_overtime: false,
@@ -1760,8 +1789,14 @@ mod tests {
                 match_guid: Some("queue-guid".into()),
                 game: GameState {
                     teams: Some(vec![
-                        crate::core::models::TeamInfo { score: 0 },
-                        crate::core::models::TeamInfo { score: 0 },
+                        crate::core::models::TeamInfo {
+                            score: 0,
+                            ..Default::default()
+                        },
+                        crate::core::models::TeamInfo {
+                            score: 0,
+                            ..Default::default()
+                        },
                     ]),
                     time: 300,
                     is_overtime: false,

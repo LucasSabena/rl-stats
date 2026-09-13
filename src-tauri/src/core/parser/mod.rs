@@ -136,6 +136,29 @@ fn parse_game_state(data: &Value) -> GameState {
                         .or_else(|| team.get("score"))
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0) as i32,
+                    name: team
+                        .get("Name")
+                        .or_else(|| team.get("name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    team_num: team
+                        .get("TeamNum")
+                        .or_else(|| team.get("teamNum"))
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0) as i32,
+                    color_primary: team
+                        .get("ColorPrimary")
+                        .or_else(|| team.get("colorPrimary"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    color_secondary: team
+                        .get("ColorSecondary")
+                        .or_else(|| team.get("colorSecondary"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
                 })
                 .collect()
         });
@@ -179,9 +202,16 @@ fn parse_game_state(data: &Value) -> GameState {
         target: game
             .get("Target")
             .or_else(|| game.get("target"))
-            .and_then(|v| v.get("Name"))
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
+            .map(|target| crate::core::models::LiveTarget {
+                name: target
+                    .get("Name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                team_num: target.get("TeamNum").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                shortcut: target.get("Shortcut").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+            })
+            .filter(|target| !target.name.is_empty()),
         playlist_id: game
             .get("PlaylistId")
             .or_else(|| game.get("playlistId"))
@@ -736,6 +766,51 @@ mod tests {
     // ---------------------------------------------------------------------------
 
     #[test]
+    fn test_parse_update_state_team_identity_and_target() {
+        let json = r#"{
+            "event":"UpdateState",
+            "data":{
+                "Game":{
+                    "TimeSeconds":180,
+                    "Arena":"DFHStadium_P",
+                    "Teams":[
+                        {"Name":"Blue","TeamNum":0,"Score":2,"ColorPrimary":"1E90FF","ColorSecondary":"0B3D91"},
+                        {"Name":"Naranja FC","TeamNum":1,"Score":1,"ColorPrimary":"FF8C00","ColorSecondary":"7A3E00"}
+                    ],
+                    "Target":{"Name":"AlphaStar","TeamNum":1,"Shortcut":3}
+                },
+                "Players":[]
+            }
+        }"#;
+        let ev = parse_event(json).unwrap();
+        if let RlEvent::UpdateState { game, .. } = ev {
+            let teams = game.teams.expect("teams parsed");
+            assert_eq!(teams.len(), 2);
+            assert_eq!(teams[0].name, "Blue");
+            assert_eq!(teams[0].color_primary, "1E90FF");
+            assert_eq!(teams[1].name, "Naranja FC");
+            assert_eq!(teams[1].team_num, 1);
+            let target = game.target.expect("target parsed");
+            assert_eq!(target.name, "AlphaStar");
+            assert_eq!(target.team_num, 1);
+            assert_eq!(target.shortcut, 3);
+        } else {
+            panic!("Expected UpdateState");
+        }
+    }
+
+    #[test]
+    fn test_parse_update_state_without_target_has_none() {
+        let json = r#"{"event":"UpdateState","data":{"Game":{"TimeSeconds":10},"Players":[]}}"#;
+        let ev = parse_event(json).unwrap();
+        if let RlEvent::UpdateState { game, .. } = ev {
+            assert!(game.target.is_none());
+        } else {
+            panic!("Expected UpdateState");
+        }
+    }
+
+    #[test]
     fn test_parse_update_state() {
         let json = r#"{
             "event":"UpdateState",
@@ -1174,7 +1249,10 @@ mod tests {
         }"#;
         let ev = parse_event(json).unwrap();
         if let RlEvent::UpdateState { game, .. } = ev {
-            assert_eq!(game.target.as_deref(), Some("OrangeGoal"));
+            assert_eq!(
+                game.target.as_ref().map(|target| target.name.as_str()),
+                Some("OrangeGoal")
+            );
         } else {
             panic!("Expected UpdateState");
         }

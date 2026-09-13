@@ -1533,6 +1533,13 @@ fn map_live_event(event: &RlEvent) -> Option<serde_json::Value> {
             serde_json::json!({ "winnerTeamNum": winner_team_num }),
         ),
         RlEvent::BallHit => ("BallHit", serde_json::json!({})),
+        RlEvent::CrossbarHit { data } => (
+            "CrossbarHit",
+            serde_json::json!({
+                "playerName": data.player.name,
+                "teamNum": data.player.team_num,
+            }),
+        ),
         RlEvent::CountdownBegin => ("CountdownBegin", serde_json::json!({})),
         RlEvent::MatchPaused => ("MatchPaused", serde_json::json!({})),
         RlEvent::MatchUnpaused => ("MatchUnpaused", serde_json::json!({})),
@@ -1575,6 +1582,9 @@ fn broadcast_to_overlay(
                 }
                 RlEvent::BallHit => {
                     server.broadcast_ball_hit(last_touch_team.unwrap_or(-1));
+                }
+                RlEvent::CrossbarHit { data } => {
+                    server.broadcast_crossbar(&data.player.name, data.player.team_num);
                 }
                 RlEvent::ClockUpdatedSeconds { time } => {
                     server.broadcast_clock(*time);

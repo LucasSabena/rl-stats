@@ -291,6 +291,7 @@ pub fn default_layout_for_state(state: &str) -> Value {
             ),
             ("events", json!({ "x": 25, "y": 66, "w": 26, "h": 26 })),
             ("chat", json!({ "x": 52, "y": 66, "w": 23, "h": 26 })),
+            ("focus", json!({ "x": 1.5, "y": 60, "w": 22, "h": 14 })),
             ("brand", json!({ "x": 88, "y": 92, "w": 10, "h": 6 })),
         ],
     };

@@ -19,6 +19,7 @@ const MODULE_LABELS: Record<string, string> = {
   sponsors: "Sponsors",
   replaybadge: "Replay",
   upnext: "Próximo",
+  focus: "En cámara",
   mvp: "MVP",
   info: "Info",
 };

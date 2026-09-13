@@ -260,10 +260,21 @@
 
   // ---------------------------------------------------------------- renderers
 
+  function stateTeam(team) {
+    var match = App.match;
+    if (!match || !Array.isArray(match.teams)) return null;
+    var index = team === 'blue' ? 0 : 1;
+    return match.teams[index] || null;
+  }
+
   function teamColor(team) {
     var series = App.series || {};
     var snapshot = team === 'blue' ? series.teamA : series.teamB;
     if (snapshot && snapshot.colorPrimary) return snapshot.colorPrimary;
+    var live = stateTeam(team);
+    if (live && live.colorPrimary) {
+      return live.colorPrimary.charAt(0) === '#' ? live.colorPrimary : '#' + live.colorPrimary;
+    }
     return team === 'blue' ? '#3b82f6' : '#f97316';
   }
 
@@ -273,6 +284,10 @@
     if (snapshot && snapshot.name) return snapshot.name;
     var query = params.get(team === 'blue' ? 'blueName' : 'orangeName');
     if (query) return query;
+    // Private/LAN matches report real team names; the default "Blue"/"Orange"
+    // labels are ignored so the pack keeps its own naming.
+    var live = stateTeam(team);
+    if (live && live.name && !/^(blue|orange)$/i.test(live.name)) return live.name;
     return team === 'blue' ? 'AZUL' : 'NARANJA';
   }
 
@@ -506,6 +521,42 @@
       node.appendChild(wrap);
     },
 
+    focus: function (node) {
+      var target = App.match && App.match.target;
+      var wrap = el('div', 'ov-upnext');
+      wrap.appendChild(el('div', 'ov-upnext-title', 'EN CÁMARA'));
+      var row = el('div', 'ov-upnext-match');
+      if (target && target.name) {
+        var player = null;
+        (App.match.players || []).forEach(function (candidate) {
+          if (candidate.name === target.name) player = candidate;
+        });
+        row.appendChild(el('span', '', target.name));
+        wrap.appendChild(row);
+        if (player) {
+          wrap.appendChild(
+            el(
+              'div',
+              'ov-player-stat',
+              (player.goals || 0) +
+                ' G · ' +
+                (player.assists || 0) +
+                ' A · ' +
+                (player.saves || 0) +
+                ' S · ' +
+                (player.shots || 0) +
+                ' T'
+            )
+          );
+        }
+      } else {
+        row.appendChild(el('span', '', '—'));
+        wrap.appendChild(row);
+      }
+      clear(node);
+      node.appendChild(wrap);
+    },
+
     replaybadge: function (node) {
       var wrap = el('div', 'ov-replay', 'REPLAY');
       wrap.style.visibility = App.replay ? 'visible' : 'hidden';
@@ -621,6 +672,7 @@
     'sponsors',
     'replaybadge',
     'upnext',
+    'focus',
     'mvp',
     'info'
   ];
@@ -672,7 +724,8 @@
     AerialGoal: 'GOL AÉREO',
     Assists: 'ASISTENCIA',
     SaveAssist: 'ASIST. DE SAVE',
-    Shot: 'TIRO'
+    Shot: 'TIRO',
+    CrossbarHit: 'AL PALO'
   };
 
   function pushAlert(title, subtitle, team) {
@@ -811,6 +864,15 @@
         requestRender();
         break;
       }
+      case 'crossbar':
+        pushEvent({
+          who: data.playerName || '',
+          what: 'AL PALO',
+          team: data.teamNum
+        });
+        pushAlert('¡AL PALO!', data.playerName || '', data.teamNum);
+        requestRender();
+        break;
       case 'ball_hit':
         if (typeof data.teamNum === 'number' && data.teamNum >= 0 && App.match) {
           App.match.lastTouchTeam = data.teamNum;

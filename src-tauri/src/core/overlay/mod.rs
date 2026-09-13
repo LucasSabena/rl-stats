@@ -49,7 +49,7 @@ use tracing::{error, info, warn};
 
 use crate::core::broadcast::packs::{builtin_packs, default_layout_for_state, font_options};
 use crate::core::broadcast::{store, ActionRequest, BroadcastHub};
-use crate::core::models::{LiveMatchState, LivePlayer};
+use crate::core::models::{LiveMatchState, LivePlayer, LiveTarget, TeamInfo};
 use crate::core::overlay::assets::AssetStore;
 use crate::core::storage::{self, DbPool};
 
@@ -114,6 +114,8 @@ struct OverlayState<'a> {
     player_count: usize,
     match_type: &'a Option<String>,
     last_touch_team: Option<i32>,
+    teams: &'a [TeamInfo],
+    target: Option<&'a LiveTarget>,
     playlist_id: Option<i32>,
     training_elapsed_seconds: Option<i64>,
 }
@@ -133,6 +135,8 @@ impl<'a> From<&'a LiveMatchState> for OverlayState<'a> {
             player_count: state.player_count,
             match_type: &state.match_type,
             last_touch_team: state.last_touch_team,
+            teams: &state.teams,
+            target: state.target.as_ref(),
             playlist_id: state.playlist_id,
             training_elapsed_seconds: state.training_elapsed_seconds,
         }
@@ -379,6 +383,14 @@ impl OverlayServer {
             }
         });
         self.hub.publish(event);
+    }
+
+    /// A shot hit the crossbar (a fan-favorite broadcast moment).
+    pub fn broadcast_crossbar(&self, player_name: &str, team_num: i32) {
+        self.hub.publish(serde_json::json!({
+            "type": "crossbar",
+            "data": { "playerName": player_name, "teamNum": team_num }
+        }));
     }
 
     pub fn broadcast_ball_hit(&self, team_num: i32) {

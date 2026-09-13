@@ -102,7 +102,8 @@ pub struct GameState {
     pub is_overtime: bool,
     pub ball: Option<BallState>,
     pub arena: Option<String>,
-    pub target: Option<String>,
+    /// Player currently being observed, when the stream reports it.
+    pub target: Option<LiveTarget>,
     /// Numeric playlist id reported by the official Stats API (`Game.PlaylistId`).
     /// This is the authoritative playlist for the current match, unlike the
     /// team-size inference that used to be the only source.
@@ -113,6 +114,27 @@ pub struct GameState {
 #[serde(rename_all = "camelCase")]
 pub struct TeamInfo {
     pub score: i32,
+    /// Team name reported by the API (`Game.Teams[].Name`, e.g. "Blue").
+    #[serde(default)]
+    pub name: String,
+    /// Team index (0 = Blue, 1 = Orange).
+    #[serde(default)]
+    pub team_num: i32,
+    /// Primary color as a hex string without `#` (`Game.Teams[].ColorPrimary`).
+    #[serde(default)]
+    pub color_primary: String,
+    /// Secondary color as a hex string without `#`.
+    #[serde(default)]
+    pub color_secondary: String,
+}
+
+/// The vehicle the observer is currently watching (`Game.Target`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveTarget {
+    pub name: String,
+    pub team_num: i32,
+    pub shortcut: i32,
 }
 
 /// Current live match state held in memory.
@@ -130,6 +152,12 @@ pub struct LiveMatchState {
     pub player_count: usize,
     pub match_type: Option<String>,
     pub last_touch_team: Option<i32>,
+    /// Team names/colors reported by the API (Blue first, Orange second).
+    #[serde(default)]
+    pub teams: Vec<TeamInfo>,
+    /// Player the observer camera is following, for the focused-player card.
+    #[serde(default)]
+    pub target: Option<LiveTarget>,
     /// Numeric playlist id from the Stats API, when the stream reports it.
     pub playlist_id: Option<i32>,
     /// Seconds since the current solo (Free Play) session started. `None`
