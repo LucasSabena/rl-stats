@@ -396,7 +396,10 @@
       "schedule": "Horario",
       "upNext": "Próximos",
       "noUpNext": "No hay partidas programadas.",
-      "saved": "Programación guardada"
+      "saved": "Programación guardada",
+      "swiss": "Suizo",
+      "generateRound": "Generar ronda",
+      "swissHint": "Suizo: una ronda por vez, emparejando por puntaje y evitando revanchas."
     },
     "recording": {
       "title": "Grabación y retransmisión",

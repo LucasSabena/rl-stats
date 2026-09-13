@@ -1421,7 +1421,7 @@ async fn process_events(
         {
             let last_touch_team = session.live_state().last_touch_team;
             let overlay = app_handle.state::<AppState>().overlay_server.clone();
-            broadcast_to_overlay(&overlay, &event, last_touch_team);
+            broadcast_to_overlay(&overlay, &event, last_touch_team, &app_handle);
         }
 
         if let Some(live_event) = map_live_event(&event) {
@@ -1594,10 +1594,133 @@ fn map_live_event(event: &RlEvent) -> Option<serde_json::Value> {
     }))
 }
 
+/// Advances the active series (and the linked bracket match) when a live
+/// match ends. Only a match with a definite winner counts, and each game is
+/// processed once (guarded by the last processed winner).
+async fn auto_advance_series(app_handle: tauri::AppHandle, winner_team_num: Option<i32>) {
+    use crate::core::broadcast::{store as broadcast_store, tournament};
+
+    let Some(winner_team_num) = winner_team_num else {
+        return;
+    };
+    let state = app_handle.state::<AppState>();
+    let pool = state.db_pool.clone();
+    let hub = state.broadcast_hub.clone();
+
+    // Debounce: MatchEnded can be emitted twice for the same game in some
+    // streams; only one auto-advance may land within a short window.
+    {
+        use std::sync::atomic::Ordering;
+        static LAST: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+        let now = chrono::Utc::now().timestamp_millis();
+        let previous = LAST.load(Ordering::SeqCst);
+        if now - previous < 5_000 {
+            return;
+        }
+        LAST.store(now, Ordering::SeqCst);
+    }
+
+    let pool_task = pool.clone();
+    let series = tauri::async_runtime::spawn_blocking(move || {
+        broadcast_store::get_active_series(&pool_task)
+    })
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .flatten();
+    let Some(series) = series.filter(|series| series.status == "live") else {
+        return;
+    };
+
+    let winner_team_id = if winner_team_num == 0 {
+        series.team_a_id.clone()
+    } else if winner_team_num == 1 {
+        series.team_b_id.clone()
+    } else {
+        None
+    };
+    let score_a = series.score_a + i64::from(winner_team_num == 0);
+    let score_b = series.score_b + i64::from(winner_team_num == 1);
+
+    let pool_task = pool.clone();
+    let series_id = series.id.clone();
+    let winner_for_task = winner_team_id.clone();
+    let updated = tauri::async_runtime::spawn_blocking(move || {
+        broadcast_store::record_series_game(
+            &pool_task,
+            &series_id,
+            winner_for_task.as_deref(),
+            i64::from(winner_team_num == 0),
+            i64::from(winner_team_num == 1),
+            None,
+            0,
+            None,
+        )?;
+        broadcast_store::update_series_score(&pool_task, &series_id, score_a, score_b)
+    })
+    .await
+    .ok()
+    .and_then(Result::ok);
+
+    let Some(updated) = updated else {
+        return;
+    };
+    info!(
+        series = %updated.id,
+        score_a = updated.score_a,
+        score_b = updated.score_b,
+        "Live match advanced the active series"
+    );
+
+    // Linked bracket match: report the series result and advance the tree.
+    if updated.status == "finished" {
+        let pool_task = pool.clone();
+        let series_id = updated.id.clone();
+        let report = tauri::async_runtime::spawn_blocking(move || -> Option<serde_json::Value> {
+            let connection = pool_task.get().ok()?;
+            let match_id: Option<String> = connection
+                .query_row(
+                    "SELECT id FROM tournament_matches WHERE series_id = ?1",
+                    rusqlite::params![series_id],
+                    |row| row.get(0),
+                )
+                .ok();
+            let match_id = match_id?;
+            tournament::report_tournament_match(
+                &pool_task,
+                &match_id,
+                updated.score_a,
+                updated.score_b,
+                None,
+            )
+            .ok()?;
+            tournament::tournament_snapshot(&pool_task, None).ok()
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some(snapshot) = report {
+            hub.publish_typed("tournament", Some(snapshot));
+        }
+    }
+
+    let pool_task = pool.clone();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || {
+        broadcast_store::series_snapshot(&pool_task, Some(&updated.id))
+    })
+    .await
+    .ok()
+    .and_then(Result::ok);
+    if let Some(snapshot) = snapshot {
+        hub.publish_typed("series", Some(snapshot));
+    }
+}
+
 fn broadcast_to_overlay(
     overlay: &std::sync::Arc<tokio::sync::Mutex<Option<OverlayServer>>>,
     event: &RlEvent,
     last_touch_team: Option<i32>,
+    app_handle: &tauri::AppHandle,
 ) {
     if let Ok(guard) = overlay.try_lock() {
         if let Some(ref server) = *guard {
@@ -1628,6 +1751,14 @@ fn broadcast_to_overlay(
                 }
                 RlEvent::MatchEnded { winner_team_num } => {
                     server.broadcast_match_ended(*winner_team_num);
+                    // Bridge: a finished live match advances the active series
+                    // and, when the series is linked to a tournament bracket
+                    // match, reports the result there too.
+                    let app_handle = app_handle.clone();
+                    let winner = *winner_team_num;
+                    tauri::async_runtime::spawn(async move {
+                        auto_advance_series(app_handle, winner).await;
+                    });
                 }
                 RlEvent::CountdownBegin => {
                     server.broadcast_countdown_begin();

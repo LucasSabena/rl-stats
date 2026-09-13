@@ -1,5 +1,21 @@
 # Changelog
 
+## v3.4.0 — Puente en vivo ↔ torneo y formato suizo
+
+### Nuevo — Puente en vivo → serie → llave
+
+- Al terminar una partida real, la **serie activa se actualiza sola**: suma
+  el juego con su ganador (con anti-duplicado de 5 segundos).
+- Cuando la serie alcanza el BO configurado, se cierra y, si estaba enlazada
+  a una partida de la llave, **el resultado se reporta y el cuadro avanza
+  automáticamente**. Nadie tipea un resultado en un torneo en vivo.
+
+### Nuevo — Formato suizo
+
+- **Swiss**: rondas generadas una por vez, emparejando por puntaje y
+  evitando revanchas; bye automático para el equipo impar.
+- Tabla de posiciones compartida con round robin.
+
 ## v3.3.0 — Grabación, retransmisión y programación de torneos
 
 ### Nuevo — Grabación y retransmisión

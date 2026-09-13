@@ -396,7 +396,10 @@
       "schedule": "Schedule",
       "upNext": "Up next",
       "noUpNext": "No scheduled matches.",
-      "saved": "Schedule saved"
+      "saved": "Schedule saved",
+      "swiss": "Swiss",
+      "generateRound": "Generate round",
+      "swissHint": "Swiss: one round at a time, paired by score and avoiding rematches."
     },
     "recording": {
       "title": "Recording & replay",

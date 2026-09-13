@@ -216,7 +216,9 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
   const totalRounds = snapshot?.rounds ?? 0;
 
   const standings = useMemo(() => {
-    if (selected?.format !== "round_robin") return [];
+    if (selected?.format !== "round_robin" && selected?.format !== "swiss") {
+      return [];
+    }
     const table = new Map<string, { wins: number; losses: number }>();
     (snapshot?.teams ?? []).forEach((entry) =>
       table.set(entry.teamId, { wins: 0, losses: 0 }),
@@ -287,6 +289,7 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
             options={[
               { value: "single_elim", label: t("overlay:broadcast.tournament.singleElim") },
               { value: "round_robin", label: t("overlay:broadcast.tournament.roundRobin") },
+              { value: "swiss", label: t("overlay:broadcast.tournament.swiss") },
             ]}
             value={format}
             onChange={setFormat}
@@ -389,8 +392,15 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
               onClick={() => void generate()}
             >
               <Swords className="h-3.5 w-3.5" aria-hidden />
-              {t("overlay:broadcast.tournament.generate")}
+              {selected.format === "swiss"
+                ? t("overlay:broadcast.tournament.generateRound")
+                : t("overlay:broadcast.tournament.generate")}
             </Button>
+            {selected.format === "swiss" && (
+              <p className="mt-2 text-[11px] text-text-muted">
+                {t("overlay:broadcast.tournament.swissHint")}
+              </p>
+            )}
           </Card>
 
           <Card className="p-4">

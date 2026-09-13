@@ -127,12 +127,10 @@ pub async fn generate_tournament_bracket(
         .map_err(storage_error)?
         .map(|item| item.format)
         .unwrap_or_else(|| "single_elim".to_string());
-    let matches = tauri::async_runtime::spawn_blocking(move || {
-        if format == "round_robin" {
-            tournament::generate_round_robin(&pool, &id)
-        } else {
-            tournament::generate_single_elim(&pool, &id)
-        }
+    let matches = tauri::async_runtime::spawn_blocking(move || match format.as_str() {
+        "round_robin" => tournament::generate_round_robin(&pool, &id),
+        "swiss" => tournament::generate_swiss_round(&pool, &id),
+        _ => tournament::generate_single_elim(&pool, &id),
     })
     .await
     .map_err(|error| error.to_string())?

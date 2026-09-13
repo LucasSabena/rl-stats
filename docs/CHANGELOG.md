@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-09-13
+
+### Added
+- Live bridge: a finished match auto-scores the active series (5s debounce)
+  and, when the series closes and is linked to a bracket match, the result is
+  reported and the bracket advances automatically.
+- Swiss tournament format: one round at a time, paired by score, rematches
+  avoided, automatic bye, shared standings table.
+
 ## [3.3.0] - 2026-09-13
 
 ### Added

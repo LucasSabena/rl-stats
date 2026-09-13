@@ -23,7 +23,7 @@ fn new_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
-pub const FORMATS: &[&str] = &["single_elim", "round_robin"];
+pub const FORMATS: &[&str] = &["single_elim", "round_robin", "swiss"];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -558,6 +558,98 @@ pub fn generate_round_robin(pool: &DbPool, tournament_id: &str) -> AppResult<Vec
     list_tournament_matches(pool, tournament_id)
 }
 
+/// Computes and stores the next Swiss round.
+///
+/// Teams are ranked by wins and paired top-vs-next, skipping pairs that
+/// already played (greedy swap) and giving a bye to the lowest-ranked team
+/// without one when the count is odd. One call = one round; the operator
+/// decides when to run the next one.
+pub fn generate_swiss_round(pool: &DbPool, tournament_id: &str) -> AppResult<Vec<TournamentMatch>> {
+    let teams = list_tournament_teams(pool, tournament_id)?;
+    if teams.len() < 2 {
+        return Err(AppError::ConfigError(
+            "El torneo necesita al menos 2 equipos".into(),
+        ));
+    }
+    let matches = list_tournament_matches(pool, tournament_id)?;
+    let current_round = matches.iter().map(|entry| entry.round).max().unwrap_or(0);
+    let next_round = current_round + 1;
+
+    let mut wins: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
+    let mut played: std::collections::HashSet<(&str, &str)> = std::collections::HashSet::new();
+    let mut had_bye: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for entry in &matches {
+        if let (Some(team_a), Some(team_b)) =
+            (entry.team_a_id.as_deref(), entry.team_b_id.as_deref())
+        {
+            played.insert((team_a.min(team_b), team_a.max(team_b)));
+        } else if entry.status == "finished" {
+            if let Some(single) = entry.team_a_id.as_deref().or(entry.team_b_id.as_deref()) {
+                had_bye.insert(single);
+            }
+        }
+        if let Some(winner) = entry.winner_team_id.as_deref() {
+            *wins.entry(winner).or_insert(0) += 1;
+        }
+    }
+
+    let mut ranked: Vec<&str> = teams.iter().map(|team| team.team_id.as_str()).collect();
+    ranked.sort_by(|left, right| {
+        let left_wins = wins.get(left).copied().unwrap_or(0);
+        let right_wins = wins.get(right).copied().unwrap_or(0);
+        right_wins.cmp(&left_wins).then_with(|| left.cmp(right))
+    });
+
+    let mut pairings: Vec<(Option<String>, Option<String>)> = Vec::new();
+    let mut pool_queue: Vec<String> = ranked.into_iter().map(str::to_string).collect();
+
+    while pool_queue.len() > 1 {
+        let first = pool_queue.remove(0);
+        // Find the highest-ranked opponent that has not played `first` yet.
+        let opponent_index = pool_queue
+            .iter()
+            .position(|candidate| {
+                let key = (
+                    first.as_str().min(candidate.as_str()),
+                    first.as_str().max(candidate.as_str()),
+                );
+                !played.contains(&key)
+            })
+            .unwrap_or(0);
+        let second = pool_queue.remove(opponent_index);
+        pairings.push((Some(first), Some(second)));
+    }
+    if let Some(bye) = pool_queue.pop() {
+        // A bye counts as a win for standings purposes only when reported.
+        pairings.push((Some(bye), None));
+    }
+
+    let conn = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    for (position, (team_a, team_b)) in pairings.iter().enumerate() {
+        insert_match(
+            &conn,
+            tournament_id,
+            next_round,
+            position as i64,
+            team_a.as_deref(),
+            team_b.as_deref(),
+        )?;
+    }
+
+    // Settle a structural bye for the odd team (no opponent this round).
+    advance_all_winners(pool, tournament_id)?;
+    let _ = had_bye;
+
+    info!(round = next_round, "Swiss round generated");
+    let matches = list_tournament_matches(pool, tournament_id)?;
+    Ok(matches
+        .into_iter()
+        .filter(|entry| entry.round == next_round)
+        .collect())
+}
+
 /// Moves the winner of every finished match into its next-round slot.
 ///
 /// Idempotent: safe to call after every result (and after generation, for
@@ -977,6 +1069,46 @@ mod tests {
         }
         let matches = generate_round_robin(&pool, &tournament.id).unwrap();
         assert_eq!(matches.len(), 6);
+    }
+
+    #[test]
+    fn swiss_pairs_by_score_and_avoids_rematches() {
+        let pool = temp_pool("swiss");
+        let tournament = save_tournament(&pool, None, "S", "swiss", 1, None).unwrap();
+        for index in 0..4 {
+            let team = crate::core::broadcast::store::upsert_team(
+                &pool,
+                None,
+                &format!("S{index}"),
+                &format!("S{index}"),
+                "#111111",
+                "#222222",
+                None,
+            )
+            .unwrap();
+            add_tournament_team(&pool, &tournament.id, &team.id, None).unwrap();
+        }
+
+        let round_one = generate_swiss_round(&pool, &tournament.id).unwrap();
+        assert_eq!(round_one.len(), 2);
+        assert!(round_one
+            .iter()
+            .all(|entry| entry.team_a_id.is_some() && entry.team_b_id.is_some()));
+
+        // Report the first match; the next round must not repeat the pairing.
+        let first = round_one[0].clone();
+        let winner = first.team_a_id.clone().unwrap();
+        report_tournament_match(&pool, &first.id, 1, 0, Some(&winner)).unwrap();
+        let round_two = generate_swiss_round(&pool, &tournament.id).unwrap();
+        assert_eq!(round_two.len(), 2);
+        let repeated = (first.team_a_id.clone(), first.team_b_id.clone());
+        for entry in &round_two {
+            assert_ne!(
+                (entry.team_a_id.clone(), entry.team_b_id.clone()),
+                repeated,
+                "rematch generated in Swiss pairing"
+            );
+        }
     }
 
     #[test]

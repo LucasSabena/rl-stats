@@ -396,7 +396,10 @@
       "schedule": "Horário",
       "upNext": "Próximas",
       "noUpNext": "Sem partidas programadas.",
-      "saved": "Programação salva"
+      "saved": "Programação salva",
+      "swiss": "Suíço",
+      "generateRound": "Gerar rodada",
+      "swissHint": "Suíço: uma rodada por vez, pareando por pontuação e evitando reencontros."
     },
     "recording": {
       "title": "Gravação e retransmissão",

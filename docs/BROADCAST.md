@@ -86,7 +86,9 @@ log; the overlay picks up the team names, colors and logos automatically.
 
 The **Tournament** tab runs events end to end:
 
-1. Create a tournament (single elimination or round robin, best-of N).
+1. Create a tournament (single elimination, round robin or Swiss, best-of N).
+   Swiss generates one round at a time, paired by score and avoiding
+   rematches.
 2. Register teams from the library and mark their check-in.
 3. **Generate bracket**: single elimination uses standard seeding with byes;
    round robin uses the circle method.
@@ -96,8 +98,11 @@ The **Tournament** tab runs events end to end:
    closes the tournament. Round robin shows the standings table.
 6. **Start series** on any match: RL Stats creates the BO series (teams, colors
    and logos come from the library), links it to the bracket and the Control
-   Room follows the live match. Report the series score from the Control tab
-   when it ends.
+   Room follows the live match.
+7. **Live bridge**: when a real match ends, the active series scores the game
+   automatically. When the series reaches the BO target it finishes, and if it
+   is linked to the bracket the result is reported and the tree advances
+   without anyone typing a score.
 
 The `bracket` widget renders rounds, team tags, scores and winners on the
 overlay (included in the default waiting and post scenes).
