@@ -225,6 +225,24 @@ pub async fn start_tournament_match_series(
 }
 
 #[tauri::command]
+pub async fn schedule_tournament_match(
+    state: State<'_, AppState>,
+    match_id: String,
+    station: Option<String>,
+    scheduled_at: Option<String>,
+) -> Result<TournamentMatch, String> {
+    let updated = tournament::schedule_tournament_match(
+        &state.db_pool,
+        &match_id,
+        station.as_deref(),
+        scheduled_at.as_deref(),
+    )
+    .map_err(storage_error)?;
+    publish_tournament(&state, Some(&updated.tournament_id));
+    Ok(updated)
+}
+
+#[tauri::command]
 pub async fn get_tournament_snapshot(
     state: State<'_, AppState>,
     tournament_id: Option<String>,

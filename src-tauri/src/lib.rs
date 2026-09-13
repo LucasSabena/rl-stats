@@ -26,6 +26,7 @@ const TRACKER_REFRESH_MAX_FAILURES: u32 = 5;
 
 use crate::core::autostart::configure_autostart;
 use crate::core::broadcast::chat::ChatManager;
+use crate::core::broadcast::recording::RecordingManager;
 use crate::core::broadcast::store as broadcast_store;
 use crate::core::broadcast::BroadcastHub;
 use crate::core::ingestor::{start_ingestor, CommandSender, IngestorHandle};
@@ -61,6 +62,8 @@ pub struct AppState {
     pub broadcast_hub: BroadcastHub,
     /// Read-only Twitch/Kick chat readers.
     pub chat: ChatManager,
+    /// Match recorder + replay ("retransmisión").
+    pub recordings: RecordingManager,
     /// Where uploaded broadcast assets (logos, fonts) live on disk.
     pub broadcast_assets_dir: PathBuf,
     /// Sender for Stats API commands (pause, POV, replay, …). `None` until the
@@ -276,7 +279,15 @@ pub fn run() {
             commands::tournament::list_tournament_matches,
             commands::tournament::report_tournament_match,
             commands::tournament::start_tournament_match_series,
+            commands::tournament::schedule_tournament_match,
             commands::tournament::get_tournament_snapshot,
+            commands::recording::start_recording,
+            commands::recording::stop_recording,
+            commands::recording::list_recordings,
+            commands::recording::delete_recording,
+            commands::recording::replay_recording,
+            commands::recording::stop_replay,
+            commands::recording::get_recording_status,
             commands::overlay_window::create_overlay_window,
             commands::overlay_window::destroy_overlay_window,
             commands::overlay_window::get_overlay_window_state,
@@ -654,6 +665,16 @@ pub fn run() {
             // Broadcast Studio: shared hub, chat readers and uploaded assets.
             let broadcast_hub = BroadcastHub::new();
             let chat = ChatManager::new(broadcast_hub.clone());
+            let recordings = RecordingManager::new(
+                app.path()
+                    .app_data_dir()
+                    .unwrap_or_else(|_| std::env::temp_dir())
+                    .join("broadcast_recordings"),
+            );
+            if let Err(error) = recordings.ensure_dir() {
+                tracing::warn!(error = %error, "Could not create recordings directory");
+            }
+            core::broadcast::recording::spawn_recorder(broadcast_hub.clone(), recordings.clone());
             let broadcast_assets_dir = app
                 .path()
                 .app_data_dir()
@@ -708,6 +729,7 @@ pub fn run() {
                 overlay_handle: Arc::new(std::sync::Mutex::new(None)),
                 broadcast_hub: broadcast_hub.clone(),
                 chat: chat.clone(),
+                recordings,
                 broadcast_assets_dir: broadcast_assets_dir.clone(),
                 game_commands: Arc::clone(&game_commands),
                 rlstats_scraper: Some(core::mmr::webview::RlstatsScraper::new(

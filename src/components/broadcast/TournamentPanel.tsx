@@ -16,6 +16,7 @@ import {
   listTournaments,
   removeTournamentTeam,
   reportTournamentMatch,
+  scheduleTournamentMatch,
   saveTournament,
   setTournamentTeamCheckedIn,
   startTournamentMatchSeries,
@@ -184,6 +185,23 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
 
   const teamById = (id?: string | null) =>
     (snapshot?.teams ?? []).find((entry) => entry.teamId === id)?.team;
+
+  const upNext = useMemo(() => {
+    return (snapshot?.matches ?? [])
+      .filter(
+        (match) =>
+          match.status !== "finished" && match.teamAId && match.teamBId,
+      )
+      .sort((a, b) => {
+        const aTime = a.scheduledAt ?? "";
+        const bTime = b.scheduledAt ?? "";
+        if (aTime && bTime && aTime !== bTime) return aTime < bTime ? -1 : 1;
+        if (aTime && !bTime) return -1;
+        if (!aTime && bTime) return 1;
+        return a.round - b.round || a.position - b.position;
+      })
+      .slice(0, 5);
+  }, [snapshot]);
 
   const rounds = useMemo(() => {
     const map = new Map<number, TournamentMatch[]>();
@@ -445,6 +463,36 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
                               }
                             />
                           </div>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            <Input
+                              placeholder={t("overlay:broadcast.tournament.station")}
+                              defaultValue={match.station ?? ""}
+                              size="sm"
+                              onBlur={(event) =>
+                                void scheduleTournamentMatch(
+                                  match.id,
+                                  event.target.value,
+                                  match.scheduledAt ?? null,
+                                ).then(() => refresh(selectedId))
+                              }
+                            />
+                            <Input
+                              type="datetime-local"
+                              size="sm"
+                              defaultValue={
+                                match.scheduledAt
+                                  ? match.scheduledAt.slice(0, 16)
+                                  : ""
+                              }
+                              onBlur={(event) =>
+                                void scheduleTournamentMatch(
+                                  match.id,
+                                  match.station ?? null,
+                                  event.target.value,
+                                ).then(() => refresh(selectedId))
+                              }
+                            />
+                          </div>
                           <div className="mt-2 flex items-center gap-1.5">
                             {finished ? (
                               <Badge variant="success">
@@ -476,6 +524,35 @@ export function TournamentPanel({ onSeriesStarted }: TournamentPanelProps) {
                     })}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {upNext.length > 0 && (
+              <div className="mt-4 border-t border-border-subtle pt-3">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
+                  {t("overlay:broadcast.tournament.upNext")}
+                </p>
+                <ul className="space-y-1">
+                  {upNext.map((match) => (
+                    <li
+                      key={match.id}
+                      className="flex items-center gap-3 rounded bg-bg-panel px-3 py-1.5 text-xs"
+                    >
+                      <span className="flex-1 truncate text-text-primary">
+                        {teamById(match.teamAId)?.tag ?? "—"} vs{" "}
+                        {teamById(match.teamBId)?.tag ?? "—"}
+                      </span>
+                      <span className="font-mono text-[11px] text-text-muted">
+                        {match.station || t("overlay:broadcast.tournament.station")}
+                      </span>
+                      <span className="font-mono text-[11px] text-text-tertiary">
+                        {match.scheduledAt
+                          ? new Date(match.scheduledAt).toLocaleString()
+                          : `R${match.round}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

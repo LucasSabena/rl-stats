@@ -70,6 +70,9 @@ fn create_app(pool: Arc<DbPool>) -> tauri::App<MockRuntime> {
             rl_stats_lib::core::broadcast::BroadcastHub::new(),
         ),
         broadcast_assets_dir: std::env::temp_dir(),
+        recordings: rl_stats_lib::core::broadcast::recording::RecordingManager::new(
+            std::env::temp_dir(),
+        ),
         game_commands: Arc::new(std::sync::Mutex::new(None)),
         rlstats_scraper: None,
     });

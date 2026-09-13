@@ -391,7 +391,33 @@
       "standings": "Tabla",
       "finished": "Finalizado",
       "delete": "Eliminar torneo",
-      "deleteConfirm": "Se borrarán la llave, los resultados y la inscripción."
+      "deleteConfirm": "Se borrarán la llave, los resultados y la inscripción.",
+      "station": "Estación",
+      "schedule": "Horario",
+      "upNext": "Próximos",
+      "noUpNext": "No hay partidas programadas.",
+      "saved": "Programación guardada"
+    },
+    "recording": {
+      "title": "Grabación y retransmisión",
+      "hint": "Grabá una partida y reemitila en el overlay con el ritmo original.",
+      "label": "Etiqueta (opcional)",
+      "record": "Grabar",
+      "recording": "Grabando…",
+      "stop": "Detener",
+      "empty": "Todavía no hay grabaciones.",
+      "events": "{{count}} eventos",
+      "duration": "{{duration}}",
+      "replay": "Retransmitir",
+      "replaying": "Retransmitiendo",
+      "stopReplay": "Detener retransmisión",
+      "speed": "Velocidad",
+      "loop": "Repetir en bucle",
+      "delete": "Eliminar",
+      "deleted": "Grabación eliminada",
+      "started": "Grabación iniciada",
+      "stopped": "Grabación guardada",
+      "replayStarted": "Retransmisión iniciada"
     }
   }
 }

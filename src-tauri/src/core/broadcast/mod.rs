@@ -14,6 +14,7 @@ pub mod actions;
 pub mod chat;
 pub mod game_commands;
 pub mod packs;
+pub mod recording;
 pub mod store;
 pub mod tournament;
 
@@ -96,6 +97,8 @@ struct PendingEvent {
 pub struct BroadcastHub {
     tx: broadcast::Sender<String>,
     actions_tx: broadcast::Sender<ActionRequest>,
+    /// Raw event tap used by the recorder (JSONL) without re-parsing frames.
+    tap_tx: broadcast::Sender<Value>,
     latest_state: Arc<RwLock<Option<String>>>,
     client_count: Arc<AtomicUsize>,
     delay_secs: Arc<AtomicU64>,
@@ -113,9 +116,11 @@ impl BroadcastHub {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel::<String>(512);
         let (actions_tx, _) = broadcast::channel::<ActionRequest>(64);
+        let (tap_tx, _) = broadcast::channel::<Value>(1024);
         Self {
             tx,
             actions_tx,
+            tap_tx,
             latest_state: Arc::new(RwLock::new(None)),
             client_count: Arc::new(AtomicUsize::new(0)),
             delay_secs: Arc::new(AtomicU64::new(0)),
@@ -144,6 +149,8 @@ impl BroadcastHub {
         } else {
             None
         };
+
+        let _ = self.tap_tx.send(value.clone());
 
         let text = match serde_json::to_string(&value) {
             Ok(text) => text,
@@ -214,6 +221,12 @@ impl BroadcastHub {
 
     pub fn subscribe_actions(&self) -> broadcast::Receiver<ActionRequest> {
         self.actions_tx.subscribe()
+    }
+
+    /// Raw event tap for the recorder. Every published event (before the
+    /// delay buffer) is delivered once.
+    pub fn subscribe_tap(&self) -> broadcast::Receiver<Value> {
+        self.tap_tx.subscribe()
     }
 
     /// Queues an operator action for the action listener task.

@@ -391,7 +391,33 @@
       "standings": "Standings",
       "finished": "Finished",
       "delete": "Delete tournament",
-      "deleteConfirm": "The bracket, results and registration will be removed."
+      "deleteConfirm": "The bracket, results and registration will be removed.",
+      "station": "Station",
+      "schedule": "Schedule",
+      "upNext": "Up next",
+      "noUpNext": "No scheduled matches.",
+      "saved": "Schedule saved"
+    },
+    "recording": {
+      "title": "Recording & replay",
+      "hint": "Record a match and re-air it on the overlay with the original pacing.",
+      "label": "Label (optional)",
+      "record": "Record",
+      "recording": "Recording…",
+      "stop": "Stop",
+      "empty": "No recordings yet.",
+      "events": "{{count}} events",
+      "duration": "{{duration}}",
+      "replay": "Replay",
+      "replaying": "Replaying",
+      "stopReplay": "Stop replay",
+      "speed": "Speed",
+      "loop": "Loop",
+      "delete": "Delete",
+      "deleted": "Recording deleted",
+      "started": "Recording started",
+      "stopped": "Recording saved",
+      "replayStarted": "Replay started"
     }
   }
 }

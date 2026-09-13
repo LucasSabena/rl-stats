@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-13
+
+### Added
+- Match recording (JSONL, state downsampled to 5/s) and replay with original
+  pacing, 0.25x-4x speed and loop; recording manager card in the Control tab.
+- Tournament scheduling: station and time per match, "Up next" list, and the
+  `upnext` overlay widget prefers the tournament schedule.
+
 ## [3.2.0] - 2026-09-13
 
 ### Added

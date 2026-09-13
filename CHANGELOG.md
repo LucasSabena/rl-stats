@@ -1,5 +1,22 @@
 # Changelog
 
+## v3.3.0 — Grabación, retransmisión y programación de torneos
+
+### Nuevo — Grabación y retransmisión
+
+- **Grabadora de partidas**: el feed de overlays se guarda en JSONL (los
+  frames de estado se muestrean a 5/s; el chat no se graba).
+- **Retransmisión**: reemití cualquier grabación con el ritmo original y
+  velocidad 0.25×–4×, con opción de bucle. Ideal para reemitir una partida,
+  probar overlays sin jugar o recuperar los gráficos tras un cierre.
+- Panel de grabaciones con duración, tamaño, cantidad de eventos y borrado.
+
+### Nuevo — Programación de torneos
+
+- **Estación y horario por partida** desde la llave.
+- **Próximos partidos**: lista ordenada por horario con la estación, y el
+  widget `upnext` del overlay ahora prioriza la agenda del torneo.
+
 ## v3.2.0 — Torneos: llaves, inscripción y series en vivo
 
 El Control Room suma la gestión completa de torneos y los overlays pasan a

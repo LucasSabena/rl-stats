@@ -551,6 +551,23 @@ export interface TournamentMatch {
   scheduledAt?: string | null;
 }
 
+export interface RecordingSummary {
+  id: string;
+  label: string;
+  startedAt: number;
+  endedAt?: number | null;
+  durationMs: number;
+  events: number;
+  sizeBytes: number;
+  matchGuid?: string | null;
+  active: boolean;
+}
+
+export interface RecordingStatus {
+  recording: boolean;
+  replaying: boolean;
+}
+
 export interface TournamentSnapshot {
   available: boolean;
   id?: string;

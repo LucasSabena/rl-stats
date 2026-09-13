@@ -6,6 +6,8 @@ import {
   type BroadcastToken,
   type ChatStatus,
   type PacksResponse,
+  type RecordingStatus,
+  type RecordingSummary,
   type SeriesSnapshot,
   type SceneModule,
   type Tournament,
@@ -354,12 +356,66 @@ export async function startTournamentMatchSeries(
   });
 }
 
+export async function scheduleTournamentMatch(
+  matchId: string,
+  station?: string | null,
+  scheduledAt?: string | null,
+): Promise<TournamentMatch> {
+  return invokeCommand<TournamentMatch>("schedule_tournament_match", {
+    matchId,
+    station: station ?? null,
+    scheduledAt: scheduledAt ?? null,
+  });
+}
+
 export async function getTournamentSnapshot(
   tournamentId?: string | null,
 ): Promise<TournamentSnapshot> {
   return invokeCommand<TournamentSnapshot>("get_tournament_snapshot", {
     tournamentId: tournamentId ?? null,
   });
+}
+
+// ─── Recording & replay ─────────────────────────────────────────────────────
+
+export async function startRecording(
+  label?: string,
+): Promise<RecordingSummary> {
+  return invokeCommand<RecordingSummary>("start_recording", {
+    label: label ?? null,
+  });
+}
+
+export async function stopRecording(): Promise<RecordingSummary | null> {
+  return invokeCommand<RecordingSummary | null>("stop_recording");
+}
+
+export async function listRecordings(): Promise<RecordingSummary[]> {
+  return invokeCommand<RecordingSummary[]>("list_recordings");
+}
+
+export async function deleteRecording(id: string): Promise<void> {
+  return invokeCommand<void>("delete_recording", { id });
+}
+
+export async function replayRecording(
+  id: string,
+  speed?: number,
+  loop?: boolean,
+): Promise<void> {
+  return invokeCommand<void>("replay_recording", {
+    id,
+    speed: speed ?? null,
+    loopEvents: loop ?? null,
+  });
+}
+
+export async function stopReplay(): Promise<void> {
+  return invokeCommand<void>("stop_replay");
+}
+
+export async function getRecordingStatus(): Promise<RecordingStatus> {
+  return invokeCommand<RecordingStatus>("get_recording_status");
 }
 
 // ─── Chat ───────────────────────────────────────────────────────────────────

@@ -718,6 +718,31 @@ pub fn report_tournament_match(
         .map_err(|error| AppError::StorageError(error.to_string()))
 }
 
+/// Assigns a station (broadcast/game slot) and/or a scheduled time.
+pub fn schedule_tournament_match(
+    pool: &DbPool,
+    match_id: &str,
+    station: Option<&str>,
+    scheduled_at: Option<&str>,
+) -> AppResult<TournamentMatch> {
+    let connection = pool
+        .get()
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    connection
+        .execute(
+            "UPDATE tournament_matches SET station = ?2, scheduled_at = ?3, updated_at = ?4 WHERE id = ?1",
+            params![
+                match_id,
+                station.filter(|value| !value.trim().is_empty()),
+                scheduled_at.filter(|value| !value.trim().is_empty()),
+                now()
+            ],
+        )
+        .map_err(|error| AppError::StorageError(error.to_string()))?;
+    get_tournament_match(pool, match_id)?
+        .ok_or_else(|| AppError::StorageError(format!("Match not found: {match_id}")))
+}
+
 /// Links a live series to a bracket match so the Control Room shows it.
 pub fn attach_series(pool: &DbPool, match_id: &str, series_id: &str) -> AppResult<()> {
     let connection = pool
@@ -790,6 +815,7 @@ pub fn tournament_snapshot(pool: &DbPool, tournament_id: Option<&str>) -> AppRes
                 "seriesId": entry.series_id,
                 "status": entry.status,
                 "station": entry.station,
+                "scheduledAt": entry.scheduled_at,
             })
         })
         .collect();

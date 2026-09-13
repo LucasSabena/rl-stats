@@ -623,19 +623,51 @@
       var wrap = el('div', 'ov-upnext');
       wrap.appendChild(el('div', 'ov-upnext-title', 'PRÓXIMO PARTIDO'));
       var match = el('div', 'ov-upnext-match');
-      match.appendChild(el('span', '', teamName('blue')));
-      match.appendChild(el('span', '', 'VS'));
-      match.appendChild(el('span', '', teamName('orange')));
+      var subtitle = actualStateLabel();
+      var tournament = App.tournament;
+
+      // Prefer the tournament schedule: pending match with both teams.
+      var pending = null;
+      if (tournament && tournament.available && Array.isArray(tournament.matches)) {
+        tournament.matches
+          .filter(function (candidate) {
+            return (
+              candidate.status !== 'finished' &&
+              candidate.teamAId &&
+              candidate.teamBId
+            );
+          })
+          .forEach(function (candidate) {
+            if (!pending) pending = candidate;
+          });
+      }
+
+      if (pending) {
+        var labelFor = function (teamId) {
+          var tag = '—';
+          (tournament.teams || []).forEach(function (registered) {
+            if (registered.teamId === teamId) {
+              tag = (registered.team && (registered.team.tag || registered.team.name)) || '—';
+            }
+          });
+          return tag;
+        };
+        match.appendChild(el('span', '', labelFor(pending.teamAId)));
+        match.appendChild(el('span', '', 'VS'));
+        match.appendChild(el('span', '', labelFor(pending.teamBId)));
+        subtitle = 'RONDA ' + pending.round + (pending.station ? ' · ' + pending.station : '');
+      } else {
+        match.appendChild(el('span', '', teamName('blue')));
+        match.appendChild(el('span', '', 'VS'));
+        match.appendChild(el('span', '', teamName('orange')));
+        var series = App.series || {};
+        var played = series.games ? series.games.length : 0;
+        if (series.available) {
+          subtitle = 'MAPA ' + (played + 1) + ' DE ' + (series.format || 3);
+        }
+      }
       wrap.appendChild(match);
-      var series = App.series || {};
-      var played = series.games ? series.games.length : 0;
-      wrap.appendChild(
-        el(
-          'div',
-          'ov-upnext-title',
-          series.available ? 'MAPA ' + (played + 1) + ' DE ' + (series.format || 3) : actualStateLabel()
-        )
-      );
+      wrap.appendChild(el('div', 'ov-upnext-title', subtitle));
       clear(node);
       node.appendChild(wrap);
     },

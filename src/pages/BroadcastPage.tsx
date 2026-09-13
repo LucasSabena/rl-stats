@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { ChatPanel } from "@/components/broadcast/ChatPanel";
 import { GameToolsPanel } from "@/components/broadcast/GameToolsPanel";
 import { ObsPanel } from "@/components/broadcast/ObsPanel";
+import { RecordingPanel } from "@/components/broadcast/RecordingPanel";
 import { RundownPanel } from "@/components/broadcast/RundownPanel";
 import { ScenePanel } from "@/components/broadcast/ScenePanel";
 import { SeriesPanel } from "@/components/broadcast/SeriesPanel";
@@ -126,6 +127,7 @@ export function BroadcastPage() {
                   onRefresh={() => void refreshData()}
                 />
                 <GameToolsPanel />
+                <RecordingPanel />
               </div>
               <div className="space-y-4">
                 <RundownPanel scene={feed.scene} />

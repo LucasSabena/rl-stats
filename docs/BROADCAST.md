@@ -90,9 +90,11 @@ The **Tournament** tab runs events end to end:
 2. Register teams from the library and mark their check-in.
 3. **Generate bracket**: single elimination uses standard seeding with byes;
    round robin uses the circle method.
-4. Report each result; winners advance automatically and a finished final
+4. Schedule each pending match with a **station** and a time; the
+   **Up next** list (and the overlay widget) shows the next matches.
+5. Report each result; winners advance automatically and a finished final
    closes the tournament. Round robin shows the standings table.
-5. **Start series** on any match: RL Stats creates the BO series (teams, colors
+6. **Start series** on any match: RL Stats creates the BO series (teams, colors
    and logos come from the library), links it to the bracket and the Control
    Room follows the live match. Report the series score from the Control tab
    when it ends.
@@ -105,6 +107,16 @@ overlay (included in the default waiting and post scenes).
 The **Chat** tab connects to Twitch (anonymous IRC over WebSocket) and/or Kick
 (Pusher). Messages are normalized with colors, badges and emotes, then fan out
 to the overlay and the Control Room. Nothing is ever sent to chat.
+
+## 4.5 Recording and replay ("retransmisión")
+
+The **Recording & replay** card in the Control tab records the broadcast feed
+to a JSONL file under `<app data>/broadcast_recordings/` (match `state` frames
+are downsampled to 5/s; chat is not recorded). Any recording can be replayed
+later on the same overlay feed with the original pacing at 0.25x–4x speed,
+optionally looping — useful to re-air a match, test overlays offline or
+recover a graphics feed. Replay events are tagged `source: "replay"` and are
+never recorded back.
 
 ## 5. Broadcast delay
 

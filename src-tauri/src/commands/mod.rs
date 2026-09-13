@@ -13,6 +13,7 @@ pub mod players;
 pub mod presets;
 pub mod profiles;
 pub mod prompt_window;
+pub mod recording;
 pub mod rlstats;
 pub mod settings;
 pub mod tournament;
