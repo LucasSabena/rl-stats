@@ -276,7 +276,9 @@
       "export": "Export pack",
       "import": "Import pack",
       "exported": "Pack exported",
-      "imported": "Pack imported: {{name}}"
+      "imported": "Pack imported: {{name}}",
+      "undo": "Undo",
+      "redo": "Redo"
     },
     "teams": {
       "title": "Teams",

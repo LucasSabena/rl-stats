@@ -152,7 +152,7 @@ const es: Copy = {
     kicker: "Overlays",
     title: "Tu transmisión con pinta de broadcast",
     body:
-      "Seis overlays listos para OBS, servidos desde tu propia máquina. Los personalizás desde Ajustes, sin tocar una línea de código, y podés escribir los tuyos con el SDK incluido.",
+      "Nueve overlays con packs de diseño, servidos desde tu propia máquina: elegí pack, tipografía y módulos, o armá tu escena módulo a módulo. Incluye Control Room para estados, series, equipos, chat de Twitch/Kick y torneos, más el SDK para escribir tus propios overlays.",
     items: [
       { name: "Enhanced", description: "Scorebug completo, rosters, serie y velocidad de pelota." },
       { name: "Scoreboard", description: "Marcador con reloj y badge de tiempo suplementario." },
@@ -161,7 +161,7 @@ const es: Copy = {
       { name: "Alerts", description: "Alertas a pantalla completa para cambiar de escena." },
       { name: "All-in-One", description: "Todo junto para escenas sin espacio para más." },
     ],
-    note: "SDK incluido para escribir tus propios overlays.",
+    note: "Control Room + SDK incluidos. Todo local: sin cuentas, sin nube.",
   },
   history: {
     kicker: "Historial",
@@ -347,7 +347,7 @@ const en: Copy = {
     kicker: "Overlays",
     title: "Give your stream a broadcast look",
     body:
-      "Six OBS-ready overlays served straight from your machine. Customize them from Settings without touching code, or write your own with the bundled SDK.",
+      "Nine design-pack overlays served straight from your machine: pick a pack, fonts and modules, or build your scene module by module. Includes a Control Room for states, series, teams, Twitch/Kick chat and tournaments, plus the SDK for your own overlays.",
     items: [
       { name: "Enhanced", description: "Full scorebug, rosters, series and ball speed." },
       { name: "Scoreboard", description: "Score with clock and overtime badge." },
@@ -356,7 +356,7 @@ const en: Copy = {
       { name: "Alerts", description: "Full-screen alerts for scene switches." },
       { name: "All-in-One", description: "Everything together for tight scenes." },
     ],
-    note: "Bundled SDK for writing your own overlays.",
+    note: "Control Room + SDK included. All local: no accounts, no cloud.",
   },
   history: {
     kicker: "History",
@@ -541,7 +541,7 @@ const pt: Copy = {
     kicker: "Overlays",
     title: "Sua transmissão com cara de broadcast",
     body:
-      "Seis overlays prontos para OBS, servidos direto da sua máquina. Personalize tudo pelas Configurações, sem tocar em código, ou escreva os seus com o SDK incluído.",
+      "Nove overlays com packs de design, servidos direto da sua máquina: escolha pack, fontes e módulos, ou monte sua cena módulo a módulo. Inclui Control Room para estados, séries, equipes, chat da Twitch/Kick e torneios, além do SDK para seus próprios overlays.",
     items: [
       { name: "Enhanced", description: "Scorebug completo, escalações, série e velocidade da bola." },
       { name: "Scoreboard", description: "Placar com relógio e badge de prorrogação." },
@@ -550,7 +550,7 @@ const pt: Copy = {
       { name: "Alerts", description: "Alertas em tela cheia para trocas de cena." },
       { name: "All-in-One", description: "Tudo junto para cenas sem espaço." },
     ],
-    note: "SDK incluído para escrever seus próprios overlays.",
+    note: "Control Room + SDK incluídos. Tudo local: sem contas, sem nuvem.",
   },
   history: {
     kicker: "Histórico",

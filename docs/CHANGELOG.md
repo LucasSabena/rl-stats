@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-09-13
+
+Broadcast Studio milestone: overlay engine with design packs, Control Room,
+chat, tournaments, recording/replay and the v2 API. This entry summarizes the
+3.1.0-3.7.0 series:
+- 3.1.0 engine + packs + Control Room + tokens/LAN + chat + OBS auto-switch
+- 3.2.0 tournaments + live team identity + focus/crossbar widgets
+- 3.3.0 recording/replay + tournament scheduling
+- 3.4.0 live-to-bracket bridge + Swiss format
+- 3.5.0 team rosters
+- 3.6.0 double elimination + portable packs + Discord alerts
+- 3.7.0 session widget + in-game overlay design packs
+
+### Added
+- Scene editor with snapping guides and undo/redo; landing copy refreshed.
+
 ## [3.7.0] - 2026-09-13
 
 ### Added

@@ -276,7 +276,9 @@
       "export": "Exportar pack",
       "import": "Importar pack",
       "exported": "Pack exportado",
-      "imported": "Pack importado: {{name}}"
+      "imported": "Pack importado: {{name}}",
+      "undo": "Deshacer",
+      "redo": "Rehacer"
     },
     "teams": {
       "title": "Equipos",

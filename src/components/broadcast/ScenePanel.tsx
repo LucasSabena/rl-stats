@@ -99,7 +99,59 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
   const [layout, setLayout] = useState<Record<string, SceneModule>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [guides, setGuides] = useState<{ x?: number; y?: number }>({});
+  const historyRef = useRef<Record<string, SceneModule>[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const importRef = useRef<HTMLInputElement>(null);
+
+  /** Snapshots the layout for undo/redo (drag end, add, remove, toggle). */
+  const commitLayout = useCallback(
+    (next: Record<string, SceneModule>) => {
+      setLayout(next);
+      const history = historyRef.current.slice(0, historyIndex + 1);
+      history.push(next);
+      historyRef.current = history.slice(-50);
+      setHistoryIndex(historyRef.current.length - 1);
+    },
+    [historyIndex],
+  );
+
+  const undo = useCallback(() => {
+    if (historyIndex <= 0) return;
+    const index = historyIndex - 1;
+    setHistoryIndex(index);
+    setLayout(historyRef.current[index]);
+  }, [historyIndex]);
+
+  const redo = useCallback(() => {
+    if (historyIndex >= historyRef.current.length - 1) return;
+    const index = historyIndex + 1;
+    setHistoryIndex(index);
+    setLayout(historyRef.current[index]);
+  }, [historyIndex]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") {
+        return;
+      }
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undo, redo]);
 
   const load = useCallback(async () => {
     const [packsResponse, sceneList] = await Promise.all([
@@ -121,9 +173,13 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
     if (scene) {
       setSceneId(scene.id);
       setPackId(scene.packId);
+      historyRef.current = [scene.layout ?? {}];
+      setHistoryIndex(0);
       setLayout(scene.layout ?? {});
     } else {
       setSceneId(null);
+      historyRef.current = [{}];
+      setHistoryIndex(0);
       setLayout({});
     }
     setSelected(null);
@@ -151,16 +207,14 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
       h: placement.h,
       enabled: true,
     };
-    setLayout((current) => ({ ...current, [key]: entry }));
+    commitLayout({ ...layout, [key]: entry });
     setSelected(key);
   };
 
   const removeModule = (key: string) => {
-    setLayout((current) => {
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
+    const next = { ...layout };
+    delete next[key];
+    commitLayout(next);
     if (selected === key) setSelected(null);
   };
 
@@ -188,20 +242,77 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
+  const SNAP_THRESHOLD = 1.6;
+
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     const bounds = canvasRef.current?.getBoundingClientRect();
     if (!drag || !bounds) return;
     const deltaX = ((event.clientX - drag.startX) / bounds.width) * 100;
     const deltaY = ((event.clientY - drag.startY) / bounds.height) * 100;
-    updateModule(drag.key, {
-      x: Math.min(100, Math.max(0, Math.round((drag.x + deltaX) * 10) / 10)),
-      y: Math.min(100, Math.max(0, Math.round((drag.y + deltaY) * 10) / 10)),
+    const dragged = layout[drag.key];
+    let x = Math.min(100, Math.max(0, drag.x + deltaX));
+    let y = Math.min(100, Math.max(0, drag.y + deltaY));
+    const width = dragged?.w ?? 0;
+    const height = dragged?.h ?? 0;
+
+    // Candidate guides: stage edges/center plus every other module's edges.
+    const xTargets: number[] = [0, 50, 100 - width];
+    const yTargets: number[] = [0, 50, 100 - height];
+    Object.entries(layout).forEach(([key, spec]) => {
+      if (key === drag.key) return;
+      xTargets.push(spec.x, spec.x + spec.w, spec.x + spec.w / 2 - width / 2);
+      yTargets.push(spec.y, spec.y + spec.h, spec.y + spec.h / 2 - height / 2);
     });
+
+    const activeGuides: { x?: number; y?: number } = {};
+    let bestX: number | null = null;
+    let bestXDistance = SNAP_THRESHOLD;
+    xTargets.forEach((target) => {
+      const distance = Math.abs(x - target);
+      if (distance < bestXDistance) {
+        bestXDistance = distance;
+        bestX = target;
+      }
+    });
+    if (bestX !== null) {
+      x = bestX;
+      activeGuides.x = bestX;
+    }
+    let bestY: number | null = null;
+    let bestYDistance = SNAP_THRESHOLD;
+    yTargets.forEach((target) => {
+      const distance = Math.abs(y - target);
+      if (distance < bestYDistance) {
+        bestYDistance = distance;
+        bestY = target;
+      }
+    });
+    if (bestY !== null) {
+      y = bestY;
+      activeGuides.y = bestY;
+    }
+    setGuides(activeGuides);
+
+    setLayout((current) => ({
+      ...current,
+      [drag.key]: {
+        ...current[drag.key],
+        x: Math.round(Math.min(100, Math.max(0, x)) * 10) / 10,
+        y: Math.round(Math.min(100, Math.max(0, y)) * 10) / 10,
+      },
+    }));
   };
 
   const onPointerUp = () => {
+    if (dragRef.current) {
+      const history = historyRef.current.slice(0, historyIndex + 1);
+      history.push(layout);
+      historyRef.current = history.slice(-50);
+      setHistoryIndex(historyRef.current.length - 1);
+    }
     dragRef.current = null;
+    setGuides({});
   };
 
   /** Downloads the selected pack as a portable `.rlskin.json` file. */
@@ -348,6 +459,22 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
               <Upload className="h-3.5 w-3.5" aria-hidden />
               {t("overlay:broadcast.scene.import")}
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={historyIndex <= 0}
+              onClick={undo}
+            >
+              {t("overlay:broadcast.scene.undo")}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={historyIndex >= historyRef.current.length - 1}
+              onClick={redo}
+            >
+              {t("overlay:broadcast.scene.redo")}
+            </Button>
             <Button size="sm" isLoading={saving} onClick={() => void save()}>
               <Save className="h-3.5 w-3.5" aria-hidden />
               {t("overlay:broadcast.scene.save")}
@@ -369,6 +496,18 @@ export function ScenePanel({ port, token, serverRunning }: ScenePanelProps) {
             <div className="absolute inset-0 flex items-center justify-center text-xs text-text-muted">
               {t("overlay:broadcast.scene.noServer")}
             </div>
+          )}
+          {guides.x !== undefined && (
+            <div
+              className="pointer-events-none absolute inset-y-0 w-px bg-accent-primary/70"
+              style={{ left: `${guides.x}%` }}
+            />
+          )}
+          {guides.y !== undefined && (
+            <div
+              className="pointer-events-none absolute inset-x-0 h-px bg-accent-primary/70"
+              style={{ top: `${guides.y}%` }}
+            />
           )}
           <div className="absolute inset-0">
             {entries.map(([key, spec]) => (

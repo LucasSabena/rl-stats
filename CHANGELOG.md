@@ -1,5 +1,68 @@
 # Changelog
 
+## v4.0.0 — RL Stats Broadcast Studio
+
+RL Stats deja de ser solo un panel de estadísticas y se convierte en una
+consola de producción para streamers y torneos. Esta release reúne todo el
+trabajo de la serie 3.1–3.7 más el pulido final.
+
+### Overlays
+
+- **Motor único** (`/overlays/live`) con 7 packs de diseño (Prime Broadcast,
+  Neon Circuit, Minimal Ink, Grid Retro, Glass Lux, League Ops, Caster Board)
+  y variantes por estado: Esperando, En vivo, Replay, Post-partido y BRB.
+- **18 módulos** combinables: marcador, serie, roster con boost, eventos,
+  chat, brand bug con logo fijo, countdown, timer, sponsors, sociales, replay,
+  próximo partido, jugador en cámara, sesión del día, llave de torneo, MVP,
+  info y overlays clásicos.
+- **Tipografías por slot** (display, cuerpo, números) con fuentes propias
+  subibles, y **logos/imágenes** persistentes.
+- **Packs portables**: exportá e importá `.rlskin.json`.
+- **El overlay in-game usa los packs**: elegí uno fijo o automático según el
+  estado de transmisión.
+
+### Control Room (`/broadcast`)
+
+- **Máquina de estados en un clic** con transición de todos los gráficos.
+- **Serie BO** con marcador, log de mapas, biblioteca de equipos (nombre, tag,
+  colores, logo y **plantel**) y **puente en vivo → serie → llave**: al
+  terminar una partida real, la serie suma el juego sola y, si cierra el BO y
+  está enlazada a un torneo, el resultado se reporta y el cuadro avanza.
+- **Rundown TAKE/OUT**, timer de intermisión y **delay de 0 a 600 s** para
+  alinear los gráficos con video retrasado.
+- **Editor de escenas**: packs, módulos, arrastre con **snapping y guías**,
+  **deshacer/rehacer**, preview en vivo y guardado en SQLite.
+- **Herramientas de juego** con los comandos oficiales: pausa, HUD, POV,
+  replay (cargar/buscar) y velocidad de reproducción.
+- **Grabación y retransmisión**: guardá el feed en JSONL y reemitilo con el
+  ritmo original a 0.25×–4×, con bucle.
+
+### Torneos
+
+- Formato **eliminación directa** (seeding + byes), **doble eliminación**
+  (winners/losers/gran final), **round robin** con tabla y **suizo** con
+  emparejamiento por puntaje y sin revanchas.
+- Inscripción con **check-in**, seeds, **estaciones y horarios** con lista de
+  próximos partidos, reporte de resultados con avance automático y **widget de
+  llave** en el overlay.
+- **Notificaciones de Discord** (serie iniciada, resultado, serie finalizada).
+
+### Streaming
+
+- **Chat de solo lectura de Twitch y Kick** con badges, colores y emotes,
+  integrado al overlay y a la Control Room.
+- **OBS auto-switch** de escena por estado vía obs-websocket.
+- **Tokens persistentes con roles** (admin / árbitro / viewer) y **modo LAN**
+  para torneos multi-PC.
+- **Dock de operador** (`/dock`) para OBS, celular o segundo monitor.
+- **API v2** (`/api/v2/scene|packs|series|teams|tournament|session|action`),
+  assets subibles por HTTP y eventos en vivo por WebSocket.
+
+### Datos en vivo
+
+- Nombres y **colores reales de equipo**, **jugador observado** (`focus`) y
+  **alerta de palo** desde la Stats API.
+
 ## v3.7.0 — Sesión en el overlay y packs en el overlay in-game
 
 ### Nuevo
