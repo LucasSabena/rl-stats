@@ -3,6 +3,11 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    # `paths-ignore` y no un whitelist: `secret-scan` también vive acá y tiene
+    # que ver todos los pushes de código. Lo que se filtra es solo lo que no
+    # puede contener un secreto ni romper un chequeo: documentación y plantillas
+    # de issues. El ahorro grande está en `rust.yml`, que sí filtra
+    # `src-tauri/**` porque es el job de 11 minutos en Windows.
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -82,90 +87,6 @@ jobs:
           retention-days: 3
 
   # ───────────────────────────────────────────────
-  # Rust checks: check, test, clippy, fmt
-  # ───────────────────────────────────────────────
-  rust-check:
-    name: Rust Check
-    runs-on: windows-latest
-    # The suite needs ~13 min plus the target-cache upload; 20 minutes
-    # cancelled the job mid-post-step even after all tests passed.
-    timeout-minutes: 45
-
-    defaults:
-      run:
-        working-directory: src-tauri
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          # Only the downloaded crates + index: caching the extracted
-          # ~/.cargo/registry/src (thousands of small files) made every cache
-          # save take ~4.5 minutes on Windows.
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git
-          # No lockfile hash: a version bump changed it and re-downloaded the
-          # whole registry. run_id + prefix restore keeps it warm.
-          key: ${{ runner.os }}-cargo-registry-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo target
-        uses: actions/cache@v4
-        with:
-          path: src-tauri/target
-          # No lockfile hash (see release.yml): version bumps change Cargo.lock
-          # on every release and wiped the whole dependency cache.
-          key: ${{ runner.os }}-cargo-target-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-target-
-
-      - name: Run cargo check
-        run: cargo check --all-targets --all-features
-
-      # The tauri test harness (commands_integration) fails to LOAD on the
-      # runner with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) before executing
-      # a single test — same failure on the pre-2.16.0 commits, and copying
-      # the Edge WebView2 loader next to the binary did not change it. It is
-      # an environment/loader issue, not a test assertion. Run the rest of
-      # the suite here and keep the harness for local runs (it passes on all
-      # development machines).
-      - name: Run cargo test (Windows subset)
-        if: runner.os == 'Windows'
-        run: |
-          cargo test --all-features --lib
-          cargo test --all-features --test integration_test --test overlay_server
-
-      - name: Run cargo test (full)
-        if: runner.os != 'Windows'
-        run: cargo test --all-targets --all-features
-
-      - name: Run cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Check formatting
-        run: cargo fmt -- --check
-
-      - name: Upload Cargo build artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-build-${{ github.run_id }}
-          path: src-tauri/target/
-          retention-days: 3
-
-  # ───────────────────────────────────────────────
   # Warm the release-profile cache for the tag that follows a release commit.
   #
   # GitHub scopes Actions caches per ref: a cache saved by a tag run is only
@@ -207,7 +128,9 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ github.run_id }}
+          # `hashFiles` + prefijo en `restore-keys` en vez de `run_id`: con
+          # `run_id` la key nunca coincide y cada run vuelve a subir la caché.
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
@@ -215,7 +138,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target
-          key: ${{ runner.os }}-cargo-release-${{ github.run_id }}
+          # Mismo lockfile que `release.yml`: el tag hace acierto exacto de esta
+          # caché y no recompila nada. Antes usaba `run_id`, así que el tag
+          # restauraba por prefijo una caché que no coincidía con la key.
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-release-
 

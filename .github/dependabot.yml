@@ -8,7 +8,13 @@ updates:
       interval: 'monthly'
       day: 'monday'
       time: '09:00'
-    open-pull-requests-limit: 10
+    # Un PR por mes, no diez. Cada PR dispara el CI (que corre el job de Rust en
+    # Windows, ~11 min); con grupos incompletos quedaban fuera del grupo
+    # `react-hook-form`, `zustand`, `zod`, `@tanstack/react-query`,
+    # `@hookform/resolvers`, `react-i18next`, `react-router-dom` y
+    # `eslint-plugin-react-refresh`, y cada uno abría su propio PR. Llegaron a
+    # acumularse 73 PRs abiertos. El catch-all `todos` los junta.
+    open-pull-requests-limit: 5
     versioning-strategy: increase-if-necessary
     ignore:
       - dependency-name: 'recharts'
@@ -34,19 +40,20 @@ updates:
       prefix: 'deps'
       include: 'scope'
     groups:
-      tauri:
+      # Catch-all: todo lo que no caiga en un grupo con nombre va acá, así el
+      # update mensual es un solo PR y un solo CI.
+      todos:
         patterns:
-          - '@tauri-apps/*'
-          - 'tauri-plugin-*'
+          - '*'
       react:
         patterns:
           - 'react'
           - 'react-dom'
           - '@types/react*'
-      tailwind:
+      tauri:
         patterns:
-          - 'tailwindcss'
-          - '@tailwindcss/*'
+          - '@tauri-apps/*'
+          - 'tauri-plugin-*'
       testing:
         patterns:
           - 'vitest'
@@ -61,7 +68,7 @@ updates:
       interval: 'monthly'
       day: 'monday'
       time: '09:00'
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     reviewers:
       - 'LucasSabena'
     assignees:
@@ -73,16 +80,13 @@ updates:
       prefix: 'deps'
       include: 'scope'
     groups:
+      # Catch-all: un solo PR y un solo CI por mes.
+      todos:
+        patterns:
+          - '*'
       tauri-rust:
         patterns:
           - 'tauri*'
-      serde:
-        patterns:
-          - 'serde'
-          - 'serde_json'
-      async:
-        patterns:
-          - 'tokio'
 
   # GitHub Actions
   - package-ecosystem: 'github-actions'

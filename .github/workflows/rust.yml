@@ -1,0 +1,117 @@
+name: Rust
+
+# El chequeo de Rust corre solo cuando cambia código Rust.
+#
+# Vivía dentro de `ci.yml` y corría en cada push y cada PR, incluidos los que
+# solo tocaban frontend o documentación: 122 ejecuciones en 17 días que sumaron
+# 1.315 minutos de runner Windows (el 87% de todo el consumo de este repo).
+# Es el job más caro del proyecto y no tiene nada que mirar cuando el cambio es
+# un componente de React o un `.md`.
+#
+# `paths` a nivel de workflow es un filtro nativo: si un push toca a la vez
+# `src-tauri/` y el frontend, corren los dos workflows, que es lo correcto.
+# El release (`release.yml`) sigue compilando Rust de punta a punta después de
+# subir el tag y no depende de este archivo.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-check:
+    name: Rust Check
+    runs-on: windows-latest
+    # The suite needs ~13 min plus the target-cache upload; 20 minutes
+    # cancelled the job mid-post-step even after all tests passed.
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        working-directory: src-tauri
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          # Only the downloaded crates + index: caching the extracted
+          # ~/.cargo/registry/src (thousands of small files) made every cache
+          # save take ~4.5 minutes on Windows.
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+          # `hashFiles` + prefijo en `restore-keys` en vez de `run_id`: con
+          # `run_id` la key nunca coincide y cada run vuelve a subir la caché.
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo target
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          # `hashFiles` + `restore-keys` en vez de `run_id`: con `run_id` la key
+          # nunca coincide, así que CADA run subía de nuevo los ~1,3 GB del
+          # target (el repo llegó a 9,6 GB de cachés, al borde del límite de
+          # 10 GB). Así, cuando el lockfile no cambió hay acierto exacto y no
+          # se sube nada; cuando cambió, `restore-keys` trae el último estado
+          # igual y Cargo recompila solo lo que cambió.
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      - name: Run cargo check
+        run: cargo check --all-targets --all-features
+
+      # The tauri test harness (commands_integration) fails to LOAD on the
+      # runner with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) before executing
+      # a single test — same failure on the pre-2.16.0 commits, and copying
+      # the Edge WebView2 loader next to the binary did not change it. It is
+      # an environment/loader issue, not a test assertion. Run the rest of
+      # the suite here and keep the harness for local runs (it passes on all
+      # development machines).
+      - name: Run cargo test (Windows subset)
+        if: runner.os == 'Windows'
+        run: |
+          cargo test --all-features --lib
+          cargo test --all-features --test integration_test --test overlay_server
+
+      - name: Run cargo test (full)
+        if: runner.os != 'Windows'
+        run: cargo test --all-targets --all-features
+
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Upload Cargo build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-build-${{ github.run_id }}
+          path: src-tauri/target/
+          retention-days: 3

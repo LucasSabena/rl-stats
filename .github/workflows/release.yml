@@ -154,9 +154,9 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git
-          # No lockfile hash: a version bump changed it and re-downloaded the
-          # whole registry. run_id + prefix restore keeps it warm.
-          key: ${{ runner.os }}-cargo-registry-${{ github.run_id }}
+          # `hashFiles` + prefijo en `restore-keys` en vez de `run_id`: con
+          # `run_id` la key nunca coincide y cada run vuelve a subir la caché.
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
@@ -164,12 +164,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/target
-          # No lockfile hash in the key: every release bumps the crate version
-          # and therefore Cargo.lock, which invalidated the cache and forced a
-          # full dependency rebuild each time. run_id saves a fresh cache per
-          # run; the prefix restore picks the most recent one and Cargo itself
-          # rebuilds only what actually changed.
-          key: ${{ runner.os }}-cargo-release-${{ github.run_id }}
+          # `hashFiles` + `restore-keys` en vez de `run_id`: con `run_id` la key
+          # nunca coincide, así que CADA run subía de nuevo los ~1,3 GB del
+          # target (el repo llegó a 9,6 GB de cachés, al borde del límite de
+          # 10 GB). Así, cuando el lockfile no cambió hay acierto exacto y no
+          # se sube nada; cuando cambió, `restore-keys` trae el último estado
+          # igual y Cargo recompila solo lo que cambió. El comentario viejo
+          # decía que un bump de versión invalidaba todo: no pasa, porque el
+          # prefijo `restore-keys` sigue encontrando la caché anterior.
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-release-
 
