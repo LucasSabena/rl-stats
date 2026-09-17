@@ -26,16 +26,34 @@ concurrency:
 
 jobs:
   # ───────────────────────────────────────────────
-  # Frontend checks: lint, typecheck, tests, build
+  # Todo el gate en un solo job: lint, typecheck, tests, build, escaneo de
+  # secretos y auditoría de dependencias.
+  #
+  # GitHub redondea al minuto POR JOB y cada job paga su propio runner,
+  # checkout y setup. `secret-scan` (9s) y `dependency-audit` (18s) costaban un
+  # minuto cada uno por separado; acá van como pasos del mismo job, que ya
+  # tiene Node, pnpm y las dependencias instaladas.
+  #
+  # `dependency-audit` era `continue-on-error` a nivel de job (advisory), así
+  # que sus pasos llevan el flag para conservar ese comportamiento.
   # ───────────────────────────────────────────────
-  frontend-check:
-    name: Frontend Check
+  gate:
+    name: Frontend, secretos y dependencias
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    # gitleaks lee los PRs para comentar los hallazgos: sin este permiso el
+    # paso falla en pull_request aunque el escaneo en sí no lo necesite.
+    permissions:
+      contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        # Historial completo para que gitleaks vea todos los commits, no solo
+        # el último: un secreto agregado en un commit anterior debe aparecer.
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v7
@@ -85,6 +103,26 @@ jobs:
           name: frontend-dist-${{ github.run_id }}
           path: dist/
           retention-days: 3
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Advisory: nunca frena. `continue-on-error` por paso porque el job ahora
+      # es el gate real y un aviso de dependencia no debe taparlo.
+      - name: pnpm audit
+        continue-on-error: true
+        run: pnpm audit --audit-level high
+
+      - name: Install cargo-audit
+        continue-on-error: true
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: cargo audit
+        continue-on-error: true
+        working-directory: src-tauri
+        run: cargo audit
 
   # ───────────────────────────────────────────────
   # Warm the release-profile cache for the tag that follows a release commit.
@@ -154,64 +192,3 @@ jobs:
         run: pnpm tauri build --no-bundle
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
-
-  # ───────────────────────────────────────────────
-  # Secret scanning: fail the build on committed keys
-  # ───────────────────────────────────────────────
-  secret-scan:
-    name: Secret Scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ───────────────────────────────────────────────
-  # Dependency audit: advisory only, never blocks
-  # ───────────────────────────────────────────────
-  dependency-audit:
-    name: Dependency Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    continue-on-error: true
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-          run_install: false
-
-      - name: Install frontend dependencies
-        # Scoped to the app: the landing (landing/) is a separate package with
-        # its own toolchain and must not affect the app build or the audit.
-        run: pnpm install --frozen-lockfile --filter rl-stats
-
-      - name: pnpm audit
-        run: pnpm audit --audit-level high
-
-      - name: Install cargo-audit
-        uses: taiki-e/install-action@cargo-audit
-
-      - name: cargo audit
-        working-directory: src-tauri
-        run: cargo audit
