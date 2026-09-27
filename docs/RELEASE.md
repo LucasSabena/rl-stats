@@ -258,6 +258,45 @@ This is useful for rebuilding artifacts if the original workflow failed.
 
 ---
 
+## Fully Local Release (no GitHub Actions)
+
+Verified working on the Linux dev box (used for v4.1.1 when the Actions
+quota was exhausted). Requires: rustup stable with the
+`x86_64-pc-windows-msvc` target, `cargo-xwin` (`cargo install cargo-xwin`),
+`clang`/`lld`/`llvm` (`clang-cl`, `lld-link`, `llvm-rc`), `nsis`, and
+`libappindicator3-dev` (tauri-cli panics without `appindicator3-0.1` in
+pkg-config even for Windows builds).
+
+```bash
+gh workflow disable release.yml          # so the tag push doesn't queue a run
+# bump version in package.json / src-tauri/Cargo.toml / src-tauri/tauri.conf.json
+git commit -am "feat: vX.Y.Z ..." && git push origin main
+git tag -a vX.Y.Z -m "RL Stats vX.Y.Z" && git push origin vX.Y.Z
+
+PATH="$HOME/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin:$PATH" \
+  TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/rl-stats.key" \
+  ./node_modules/.bin/tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
+
+# If the bundler's built-in signing step fails, sign manually:
+./node_modules/.bin/tauri signer sign \
+  "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/RL Stats_X.Y.Z_x64-setup.exe" \
+  -f ~/.tauri/rl-stats.key -p ""
+
+gh release create vX.Y.Z --title "RL Stats vX.Y.Z" --notes "..."
+gh release upload vX.Y.Z "<installer>.exe" "<installer>.exe.sig" --clobber
+# build latest.json (version without "v", signature = .sig contents,
+# url = asset browser_download_url) and upload it too
+gh workflow enable release.yml
+```
+
+The updater signing private key lives at `~/.tauri/rl-stats.key`
+(generated v4.1.1 — the previous key only existed in GitHub Secrets and was
+lost). **Back it up somewhere safe** (password manager); losing it again
+means installs can never auto-update until the pubkey is rotated once more.
+It is also stored in the `TAURI_SIGNING_PRIVATE_KEY` repo secret.
+
+---
+
 ## Troubleshooting
 
 | Problem | Solution |
