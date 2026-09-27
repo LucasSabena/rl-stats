@@ -22,13 +22,13 @@ pub async fn get_player_directory(
     tauri::async_runtime::spawn_blocking(move || {
         let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
         let player_names = resolve_player_names(&settings);
-        let local_primary_id = settings.local_primary_id.as_deref();
+        let local_primary_ids = settings.local_identity_ids();
         let limit = filters.limit.unwrap_or(100);
         let offset = filters.offset.unwrap_or(0);
 
         match storage::get_player_directory(
             &pool,
-            local_primary_id,
+            &local_primary_ids,
             &player_names,
             filters.search.as_deref(),
             filters.relationship.as_deref(),
@@ -64,9 +64,9 @@ fn player_detail_inner(
 ) -> Result<serde_json::Value, String> {
     let settings = crate::core::settings::get_settings(pool).unwrap_or_default();
     let player_names = resolve_player_names(&settings);
-    let local_primary_id = settings.local_primary_id.as_deref();
+    let local_primary_ids = settings.local_identity_ids();
 
-    match storage::get_player_detail(pool, player_id, local_primary_id, &player_names) {
+    match storage::get_player_detail(pool, player_id, &local_primary_ids, &player_names) {
         Ok(Some(detail)) => Ok(serde_json::json!(detail)),
         Ok(None) => Err("Player not found".into()),
         Err(e) => {

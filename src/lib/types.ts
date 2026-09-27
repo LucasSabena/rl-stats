@@ -114,6 +114,10 @@ export interface MatchSummary {
   teamBlueScore: number;
   teamOrangeScore: number;
   winnerTeamNum: number | null;
+  /** Match lifecycle: "completed" | "draw" | "cancelled". A null winner is a
+   * draw only when status says so — cancelled lobbies must never render as
+   * draws. */
+  status?: string | null;
   localTeamNum?: number | null;
   isOnline: boolean;
   isOvertime: boolean;
@@ -146,7 +150,7 @@ export interface Goal {
 
 export interface MatchFilters {
   search?: string;
-  result?: "win" | "loss" | null;
+  result?: "win" | "loss" | "draw" | "cancelled" | null;
   mode?: string | null;
   matchType?: MatchType | null;
   dateFrom?: number | null;
@@ -162,6 +166,13 @@ export type AnalyticsPeriod =
   | "session"
   | "year"
   | "alltime";
+
+/** Explicit local-date bounds (e.g. a competitive season). Wins over the
+ * relative-days period on the backend. */
+export interface DateRange {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+}
 
 export interface AnalyticsData {
   period: AnalyticsPeriod;
@@ -829,6 +840,8 @@ export interface CloudPushRequest {
 export interface AppSettings {
   playerName?: string;
   localPrimaryId?: string | null;
+  /** Other platform ids bound to the same local player (Steam/Epic). */
+  linkedPlayerIds?: string[];
   autoStart: boolean;
   port?: number;
   dataRetentionDays?: number;
@@ -1120,6 +1133,15 @@ export interface LiveMmrSnapshot {
   estimatedCount: number;
   unavailableCount: number;
   averageMmr: number | null;
+}
+
+/** Stored local MMR for one playlist (settings manual-MMR form). */
+export interface LocalMmrEntry {
+  mmr: number;
+  /** false = trusted (manual entry or fresh online sync); true = projected. */
+  estimated: boolean;
+  matchesSinceRefresh: number;
+  updatedAt: string;
 }
 
 export interface MmrProviderHealth {

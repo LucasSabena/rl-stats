@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTrainingAnalytics } from "@/hooks/useTrainingAnalytics";
-import type { AnalyticsPeriod } from "@/lib/types";
+import type { AnalyticsPeriod, DateRange } from "@/lib/types";
 import { Dumbbell, Clock, Repeat, Timer } from "lucide-react";
 
 function formatDurationShort(totalSeconds: number, i18nLanguage: string): string {
@@ -19,11 +19,17 @@ function formatDurationShort(totalSeconds: number, i18nLanguage: string): string
     : `${minutes}m`;
 }
 
-export function TrainingTimeCard({ period }: { period: AnalyticsPeriod }) {
+export function TrainingTimeCard({
+  period,
+  dateRange,
+}: {
+  period: AnalyticsPeriod;
+  dateRange?: DateRange;
+}) {
   const { t, i18n } = useTranslation(["analytics"]);
-  const { data, isLoading, isError, refetch } = useTrainingAnalytics(period);
+  const { data, isLoading, isError, refetch } = useTrainingAnalytics(period, dateRange);
 
-  if (period === "session") return null;
+  if (period === "session" && !dateRange) return null;
 
   if (isLoading) {
     return <Skeleton className="h-28 w-full rounded-lg" />;

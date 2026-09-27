@@ -56,7 +56,12 @@ export function HomeHub() {
   );
 
   const mmrSummary = useMemo(() => {
-    const points = mmrQuery.data?.points ?? [];
+    const all = mmrQuery.data?.points ?? [];
+    if (all.length === 0) return null;
+    // Interleaving every ladder into one line is meaningless: show the ladder
+    // of the most recent reading, same rule as the analytics chart headline.
+    const mainSeries = all[all.length - 1]?.series;
+    const points = all.filter((point) => point.series === mainSeries);
     if (points.length === 0) return null;
     const first = points[0]?.mmr ?? 0;
     const last = points[points.length - 1]?.mmr ?? 0;

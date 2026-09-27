@@ -20,7 +20,8 @@
     "blueWon": "Azul venceu",
     "orangeWon": "Laranja venceu",
     "draw": "Empate",
-    "training": "Treino"
+    "training": "Treino",
+    "cancelled": "Cancelado"
   },
   "contextMenu": {
     "viewDetail": "Ver detalhes",
@@ -83,7 +84,9 @@
       "placeholder": "Resultado",
       "all": "Todos",
       "wins": "Vitórias",
-      "losses": "Derrotas"
+      "losses": "Derrotas",
+      "draws": "Empates",
+      "cancelled": "Canceladas"
     },
     "matchTypes": {
       "placeholder": "Tipo",

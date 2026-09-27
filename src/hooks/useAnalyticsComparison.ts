@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getAnalyticsComparison } from "@/lib/api";
-import type { AnalyticsPeriod, MatchTypeFilter, PlaylistFilter } from "@/lib/types";
+import type { AnalyticsPeriod, DateRange, MatchTypeFilter, PlaylistFilter } from "@/lib/types";
 import { QUERY_STALE_TIME } from "@/lib/constants";
 
 export function useAnalyticsComparison(
@@ -8,7 +8,11 @@ export function useAnalyticsComparison(
   playerId: string | null,
   rivalId: string | null,
   period: AnalyticsPeriod,
-  filters?: { playlist?: PlaylistFilter; matchType?: MatchTypeFilter },
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    dateRange?: DateRange;
+  },
 ) {
   return useQuery({
     queryKey: [
@@ -19,6 +23,7 @@ export function useAnalyticsComparison(
       period,
       filters?.playlist,
       filters?.matchType,
+      filters?.dateRange,
     ],
     queryFn: () =>
       getAnalyticsComparison(mode, playerId, rivalId, period, filters),

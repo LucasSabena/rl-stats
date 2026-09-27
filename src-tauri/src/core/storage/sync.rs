@@ -252,7 +252,7 @@ fn hydrate_change_payload_conn(
 fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::Value> {
     conn.query_row(
         "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner,
-                is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json
+                is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json, status
          FROM matches
          WHERE guid = ?1",
         params![guid],
@@ -273,6 +273,10 @@ fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::
             let mood = row.get::<_, Option<String>>(13).unwrap_or(None);
             let notes = row.get::<_, Option<String>>(14).unwrap_or(None);
             let tags_json = row.get::<_, Option<String>>(15).unwrap_or(None);
+            let status = row
+                .get::<_, Option<String>>(16)
+                .unwrap_or(None)
+                .unwrap_or_else(|| crate::core::models::MATCH_STATUS_COMPLETED.to_string());
             let tags: serde_json::Value = tags_json
                 .and_then(|raw| serde_json::from_str(&raw).ok())
                 .unwrap_or_else(|| serde_json::json!([]));
@@ -294,6 +298,7 @@ fn hydrate_match(conn: &rusqlite::Connection, guid: &str) -> Option<serde_json::
                 "mood": mood,
                 "notes": notes,
                 "tags": tags,
+                "status": status,
             }))
         },
     )
@@ -581,6 +586,44 @@ pub fn enqueue_change(
     enqueue_change_conn(&conn, entity_type, entity_key, operation, payload)
 }
 
+/// App-setting key that arms the sync outbox. While unset, `enqueue_change_conn`
+/// is a no-op: without a configured cloud target every match write used to
+/// append outbox + entity-state rows that could never be delivered, growing
+/// the table forever. The flag flips on the first time a configured+enabled
+/// cloud target is seen (`arm_sync_outbox`), which immediately backfills
+/// history so nothing is lost.
+pub(crate) const SYNC_OUTBOX_ARMED_KEY: &str = "cloud_sync_outbox_armed";
+
+fn sync_outbox_armed_conn(conn: &rusqlite::Connection) -> bool {
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        params![SYNC_OUTBOX_ARMED_KEY],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .is_some_and(|v| v == "1")
+}
+
+/// Turn the outbox on for this profile database and backfill all existing
+/// history so rows written before sync was configured are not missed.
+/// Idempotent: arming an already-armed database does nothing.
+pub fn arm_sync_outbox(pool: &DbPool) -> AppResult<()> {
+    let conn = get_conn(pool)?;
+    if sync_outbox_armed_conn(&conn) {
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, '1')
+         ON CONFLICT(key) DO UPDATE SET value = '1'",
+        params![SYNC_OUTBOX_ARMED_KEY],
+    )
+    .map_err(|e| AppError::StorageError(e.to_string()))?;
+    crate::core::storage::enqueue_existing_history_for_sync(pool)?;
+    Ok(())
+}
+
 pub(crate) fn enqueue_change_conn(
     conn: &rusqlite::Connection,
     entity_type: &str,
@@ -588,6 +631,9 @@ pub(crate) fn enqueue_change_conn(
     operation: SyncOperation,
     payload: serde_json::Value,
 ) -> AppResult<i64> {
+    if !sync_outbox_armed_conn(conn) {
+        return Ok(0);
+    }
     let device_id = ensure_local_sync_identity_conn(conn)?;
     let now = Utc::now().to_rfc3339();
     let idempotency_key = format!(
@@ -879,7 +925,17 @@ mod tests {
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        init_storage(dir.join("test.db")).expect("init storage")
+        let pool = init_storage(dir.join("test.db")).expect("init storage");
+        // Production only writes outbox rows once a cloud target exists; the
+        // tests exercise the outbox itself, so arm it directly.
+        let conn = get_conn(&pool).unwrap();
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = '1'",
+            params![SYNC_OUTBOX_ARMED_KEY],
+        )
+        .unwrap();
+        pool
     }
 
     fn outbox_row_count(pool: &DbPool) -> i64 {

@@ -35,7 +35,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -60,7 +60,7 @@ jobs:
 
       - name: Create GitHub Release
         id: create-release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const tagName = process.env.GITHUB_REF_NAME || context.ref?.replace('refs/tags/', '') || '';
@@ -113,7 +113,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v7
@@ -121,7 +121,7 @@ jobs:
           node-version: '22'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
           version: 9
           run_install: false
@@ -132,7 +132,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -145,7 +145,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Only the downloaded crates + index: caching the extracted
           # ~/.cargo/registry/src (thousands of small files) made every cache
@@ -161,7 +161,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache Cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: src-tauri/target
           # `hashFiles` + `restore-keys` en vez de `run_id`: con `run_id` la key
@@ -247,7 +247,7 @@ jobs:
 
       - name: Upload build artifacts for debugging
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tauri-build-debug-${{ github.run_id }}
           path: |

@@ -3,9 +3,9 @@ use crate::core::cloud::{build_push_request, CloudConfig, CloudPushRequest, Clou
 use crate::core::storage::cloud_pull::{apply_remote_changes, ApplySummary, RemoteChange};
 use crate::core::storage::enqueue_existing_history_for_sync;
 use crate::core::storage::sync::{
-    get_last_pulled_revision, get_pending_hydrated_changes, get_sync_status, mark_change_failed,
-    mark_change_synced, prune_synced_outbox, scrub_settings_secrets, set_last_pulled_revision,
-    SyncStatus,
+    arm_sync_outbox, get_last_pulled_revision, get_pending_hydrated_changes, get_sync_status,
+    mark_change_failed, mark_change_synced, prune_synced_outbox, scrub_settings_secrets,
+    set_last_pulled_revision, SyncStatus,
 };
 use crate::error::{AppError, AppResult};
 use crate::AppState;
@@ -28,10 +28,17 @@ pub async fn get_cloud_config_cmd(app_handle: tauri::AppHandle) -> AppResult<Clo
 #[tauri::command]
 pub async fn set_cloud_config_cmd(
     app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
     config: CloudConfig,
 ) -> AppResult<()> {
     let app_dir = app_data_dir(&app_handle)?;
-    set_cloud_config(&app_dir, &config)
+    set_cloud_config(&app_dir, &config)?;
+    if config.enabled && config.is_configured() {
+        // Arms the outbox gate and backfills history written before sync was
+        // configured. No-op when already armed.
+        arm_sync_outbox(&state.db_pool)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -57,6 +64,10 @@ pub async fn prepare_cloud_push_batch_cmd(
     if !config.enabled || !config.is_configured() {
         return Ok(None);
     }
+
+    // A configured+enabled target reaching this point means the outbox must
+    // be armed (covers installs configured before the gate existed).
+    arm_sync_outbox(&state.db_pool)?;
 
     let device_id = get_sync_status(&state.db_pool)?.device_id;
     let changes = get_pending_hydrated_changes(&state.db_pool, limit.unwrap_or(250))?;
@@ -106,6 +117,9 @@ pub async fn mark_cloud_push_failed_cmd(
 pub async fn enqueue_existing_profile_history_for_sync_cmd(
     state: State<'_, AppState>,
 ) -> AppResult<i64> {
+    // Explicit backfill is always an intent to sync: arm the gate first so the
+    // enqueue calls below are not dropped by it.
+    arm_sync_outbox(&state.db_pool)?;
     enqueue_existing_history_for_sync(&state.db_pool)
 }
 
@@ -134,6 +148,10 @@ pub async fn apply_cloud_pull_batch_cmd(
             conn.execute("COMMIT", [])
                 .map_err(|e| AppError::StorageError(e.to_string()))?;
 
+            // Pull implies a configured sync target: make sure local writes
+            // from now on are queued for push.
+            arm_sync_outbox(pool)?;
+
             if touched_settings {
                 pool.invalidate_settings_cache();
             }
@@ -151,7 +169,7 @@ pub async fn apply_cloud_pull_batch_cmd(
                 };
                 crate::core::storage::rebuild_daily_rollups_for_identity(
                     pool,
-                    settings.local_primary_id.as_deref(),
+                    &settings.local_identity_ids(),
                     &names,
                 )?;
             }

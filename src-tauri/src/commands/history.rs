@@ -39,6 +39,7 @@ struct MatchEntry {
     duration_seconds: i32,
     match_type: Option<String>,
     playlist: Option<String>,
+    status: String,
     mood: Option<String>,
     notes: Option<String>,
     tags: Vec<String>,
@@ -56,6 +57,7 @@ impl MatchEntry {
             score_orange: m.score_orange,
             winner: m.winner,
             local_team_num,
+            status: m.status,
             is_online: m.is_online,
             is_overtime: m.is_overtime,
             duration_seconds: m.duration_seconds,
@@ -101,7 +103,7 @@ pub async fn get_matches(
 
         let settings = load_identity_settings(&pool);
         let player_names = resolve_local_player_names(&settings);
-        let local_primary_id = settings.local_primary_id.as_deref();
+        let local_primary_ids = settings.local_identity_ids();
 
         match storage::get_matches(
             &pool,
@@ -115,7 +117,7 @@ pub async fn get_matches(
                 date_from,
                 date_to,
                 search,
-                local_primary_id,
+                local_primary_ids: &local_primary_ids,
                 local_player_names: &player_names,
             },
         ) {
@@ -124,7 +126,7 @@ pub async fn get_matches(
                 let local_stats_by_match = storage::get_local_match_stats(
                     &pool,
                     &match_ids,
-                    local_primary_id,
+                    &local_primary_ids,
                     &player_names,
                 )
                 .unwrap_or_default();
@@ -176,8 +178,7 @@ pub async fn export_history_csv(
 
         let settings = load_identity_settings(&pool);
         let player_names = resolve_local_player_names(&settings);
-        let local_primary_id = settings.local_primary_id.as_deref();
-
+        let local_primary_ids = settings.local_identity_ids();
         let matches = storage::get_matches(
             &pool,
             MatchQuery {
@@ -190,7 +191,7 @@ pub async fn export_history_csv(
                 date_from: f.date_from.as_deref(),
                 date_to: f.date_to.as_deref(),
                 search: f.search.as_deref(),
-                local_primary_id,
+                local_primary_ids: &local_primary_ids,
                 local_player_names: &player_names,
             },
         )
@@ -198,7 +199,7 @@ pub async fn export_history_csv(
 
         let match_ids: Vec<i64> = matches.iter().map(|m| m.id).collect();
         let stats_by_match =
-            storage::get_local_match_stats(&pool, &match_ids, local_primary_id, &player_names)
+            storage::get_local_match_stats(&pool, &match_ids, &local_primary_ids, &player_names)
                 .map_err(|e| e.to_string())?;
 
         fn csv_field(value: &str) -> String {
@@ -222,11 +223,15 @@ pub async fn export_history_csv(
                 Some(1) => (m.score_orange, m.score_blue),
                 _ => (0, 0),
             };
-            let result = match (m.winner, local_team) {
-                (Some(w), Some(team)) if w == team => "Victoria",
-                (Some(_), Some(_)) => "Derrota",
-                (None, Some(_)) => "Empate",
-                _ => "Desconocido",
+            let result = if m.status == crate::core::models::MATCH_STATUS_CANCELLED {
+                "Cancelado"
+            } else {
+                match (m.winner, local_team) {
+                    (Some(w), Some(team)) if w == team => "Victoria",
+                    (Some(_), Some(_)) => "Derrota",
+                    (None, Some(_)) => "Empate",
+                    _ => "Desconocido",
+                }
             };
             let duration = m.duration_seconds.max(0);
             let (goals, assists, saves, shots, demos, score, kickoffs) = match stats {
@@ -282,7 +287,7 @@ pub async fn get_match_detail(
     tauri::async_runtime::spawn_blocking(move || {
         let settings = load_identity_settings(&pool);
         let player_names = resolve_local_player_names(&settings);
-        let local_primary_id = settings.local_primary_id.as_deref();
+        let local_primary_ids = settings.local_identity_ids();
         match storage::get_match_detail(&pool, match_id) {
             Ok((m, players)) => {
                 let events = storage::get_match_events(&pool, match_id)
@@ -290,7 +295,7 @@ pub async fn get_match_detail(
                     .unwrap_or_default();
                 let goals = build_goals_from_events(&events);
                 let local_team_num =
-                    storage::get_local_team_num(&pool, m.id, local_primary_id, &player_names)
+                    storage::get_local_team_num(&pool, m.id, &local_primary_ids, &player_names)
                         .ok()
                         .flatten();
 
@@ -460,7 +465,7 @@ pub async fn update_match_cmd(
                 let names = storage::identity_candidate_names(&settings);
                 if let Err(error) = storage::rebuild_daily_rollups_for_identity(
                     &pool,
-                    settings.local_primary_id.as_deref(),
+                    &settings.local_identity_ids(),
                     &names,
                 ) {
                     error!(error = %error, match_id, "Rollup rebuild after match update failed");
@@ -518,6 +523,7 @@ mod serialization_tests {
             duration_seconds: 300,
             match_type: Some("ranked".to_string()),
             playlist: Some("Doubles".to_string()),
+            status: "completed".to_string(),
             mood: None,
             notes: Some("gg".to_string()),
             tags: vec!["torneo".to_string()],
@@ -551,6 +557,7 @@ mod serialization_tests {
                 "score_blue",
                 "score_orange",
                 "start_time",
+                "status",
                 "tags",
                 "winner",
             ]

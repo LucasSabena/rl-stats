@@ -237,6 +237,10 @@
       "tournament": "Torneo",
       "training": "Entrenamiento",
       "other": "Otras"
+    },
+    "season": {
+      "all": "Todas las temporadas",
+      "label": "Temporada"
     }
   },
   "heatmap": {

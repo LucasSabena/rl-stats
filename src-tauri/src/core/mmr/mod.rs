@@ -144,7 +144,7 @@ pub async fn resolve_lobby_mmr(
     parsebot_scraper_id: Option<String>,
     parsebot_endpoint: Option<String>,
     parsebot_enabled: bool,
-    local_primary_id: Option<String>,
+    local_primary_ids: Vec<String>,
     prefer_local_estimate: bool,
     exact_playlist: Option<String>,
     scraper: Option<std::sync::Arc<webview::RlstatsScraper>>,
@@ -152,7 +152,7 @@ pub async fn resolve_lobby_mmr(
 ) -> AppResult<LiveMmrSnapshot> {
     let inference = infer_playlist(players.iter(), exact_playlist.as_deref());
     let fetched_at = Utc::now().to_rfc3339();
-    let local_identity = local_primary_id.clone();
+    let local_identity = local_primary_ids.clone();
 
     let mut join_set = JoinSet::new();
     for player in players {
@@ -163,7 +163,7 @@ pub async fn resolve_lobby_mmr(
         let parsebot_scraper_id = parsebot_scraper_id.clone();
         let parsebot_endpoint = parsebot_endpoint.clone();
         let inference = inference.clone();
-        let local_primary_id = local_primary_id.clone();
+        let local_primary_ids = local_primary_ids.clone();
         let scraper = scraper.clone();
 
         join_set.spawn(async move {
@@ -176,7 +176,7 @@ pub async fn resolve_lobby_mmr(
                 parsebot_scraper_id,
                 parsebot_endpoint,
                 parsebot_enabled,
-                local_primary_id,
+                local_primary_ids,
                 prefer_local_estimate,
                 scraper,
                 player,
@@ -196,11 +196,7 @@ pub async fn resolve_lobby_mmr(
         }
     }
 
-    apply_lobby_estimates(
-        &mut resolved,
-        local_identity.as_deref(),
-        inference.primary.as_deref(),
-    );
+    apply_lobby_estimates(&mut resolved, &local_identity, inference.primary.as_deref());
 
     resolved.sort_by(|left, right| {
         left.platform
@@ -246,22 +242,23 @@ pub async fn resolve_lobby_mmr(
 
 fn apply_lobby_estimates(
     players: &mut [LivePlayerMmr],
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     playlist: Option<&str>,
 ) {
-    let Some(local_primary_id) = local_primary_id else {
+    if local_primary_ids.is_empty() {
         return;
-    };
+    }
+    let is_local = |primary_id: &str| local_primary_ids.iter().any(|id| id == primary_id);
     let Some(baseline) = players
         .iter()
-        .find(|player| player.primary_id == local_primary_id)
+        .find(|player| is_local(&player.primary_id))
         .and_then(|player| player.mmr)
     else {
         return;
     };
 
     for player in players.iter_mut() {
-        if player.primary_id == local_primary_id || player.mmr.is_some() {
+        if is_local(&player.primary_id) || player.mmr.is_some() {
             continue;
         }
 
@@ -291,7 +288,7 @@ async fn resolve_player_mmr(
     parsebot_scraper_id: Option<String>,
     parsebot_endpoint: Option<String>,
     parsebot_enabled: bool,
-    local_primary_id: Option<String>,
+    local_primary_ids: Vec<String>,
     prefer_local_estimate: bool,
     scraper: Option<std::sync::Arc<webview::RlstatsScraper>>,
     player: LivePlayer,
@@ -322,45 +319,27 @@ async fn resolve_player_mmr(
         }
     };
 
-    let is_local_player = local_primary_id.as_deref() == Some(identity.source_primary_id.as_str());
+    let is_local_player = local_primary_ids
+        .iter()
+        .any(|id| id == &identity.source_primary_id);
 
+    // A fresh local estimate (manual entry, recent online sync or a short
+    // ±delta projection) wins over providers so the local profile is not
+    // scraped on every lobby fetch. Once the estimate goes stale it must NOT
+    // short-circuit the providers — otherwise a manually entered MMR pins the
+    // local value forever. Stale estimates only serve as the failure fallback
+    // after the providers below had their chance to re-sync.
+    let mut stale_local_estimate: Option<(String, LocalEstimateResolution)> = None;
     if prefer_local_estimate && is_local_player {
         if let Some(playlist_key) = inference.primary.as_deref() {
             if let Ok(Some(local_estimate)) =
                 resolve_local_estimate(&db_pool, &identity.source_primary_id, playlist_key)
             {
-                return LivePlayerMmr {
-                    primary_id: identity.source_primary_id,
-                    player_name: identity.player_name,
-                    platform: identity.tracker_platform,
-                    identifier: identity.identifier,
-                    playlist: Some(playlist_key.to_string()),
-                    mmr: Some(local_estimate.mmr),
-                    rank_name: None,
-                    division: None,
-                    matches_played: None,
-                    source: Some(LOCAL_ESTIMATE_PROVIDER.into()),
-                    cached: true,
-                    estimated: local_estimate.estimated,
-                    stale: local_estimate.stale,
-                    estimate_matches_since_refresh: Some(local_estimate.matches_since_refresh),
-                    updated_at: if local_estimate.updated_at.is_empty() {
-                        None
-                    } else {
-                        Some(local_estimate.updated_at.clone())
-                    },
-                    warning: if local_estimate.estimated {
-                        Some(if local_estimate.stale {
-                            "MMR local estimado. Ya acumulo varias partidas sin refrescarse online."
-                                .into()
-                        } else {
-                            "MMR local estimado a partir de tu ultimo valor conocido y resultados recientes.".into()
-                        })
-                    } else {
-                        None
-                    },
-                    error: None,
-                };
+                if local_estimate.stale {
+                    stale_local_estimate = Some((playlist_key.to_string(), local_estimate));
+                } else {
+                    return local_estimate_result(identity, playlist_key, local_estimate);
+                }
             }
         }
     }
@@ -531,6 +510,10 @@ async fn resolve_player_mmr(
                     }
                 }
             }
+        }
+
+        if let Some((playlist_key, local_estimate)) = stale_local_estimate {
+            return local_estimate_result(identity, &playlist_key, local_estimate);
         }
 
         for playlist_key in &inference.candidates {
@@ -1407,6 +1390,49 @@ pub fn playlist_label_to_key(label: &str) -> Option<&'static str> {
     playlists::normalize_label_to_key(label)
 }
 
+fn local_estimate_result(
+    identity: ProviderIdentity,
+    playlist_key: &str,
+    local_estimate: LocalEstimateResolution,
+) -> LivePlayerMmr {
+    LivePlayerMmr {
+        primary_id: identity.source_primary_id,
+        player_name: identity.player_name,
+        platform: identity.tracker_platform,
+        identifier: identity.identifier,
+        playlist: Some(playlist_key.to_string()),
+        mmr: Some(local_estimate.mmr),
+        rank_name: None,
+        division: None,
+        matches_played: None,
+        source: Some(LOCAL_ESTIMATE_PROVIDER.into()),
+        cached: true,
+        estimated: local_estimate.estimated,
+        stale: local_estimate.stale,
+        estimate_matches_since_refresh: Some(local_estimate.matches_since_refresh),
+        updated_at: if local_estimate.updated_at.is_empty() {
+            None
+        } else {
+            Some(local_estimate.updated_at.clone())
+        },
+        warning: if local_estimate.estimated {
+            Some(if local_estimate.stale {
+                "MMR local estimado. Ya acumulo varias partidas sin refrescarse online.".into()
+            } else {
+                "MMR local estimado a partir de tu ultimo valor conocido y resultados recientes."
+                    .into()
+            })
+        } else {
+            None
+        },
+        error: None,
+    }
+}
+
+/// Returns the stored local MMR estimate for a playlist, or `None` when no
+/// estimate was ever recorded. The "last MMR seen in a match" fallback lives
+/// in the caller's history pass — resolving it here disguised old match data
+/// as a fresh local value and skipped the online providers entirely.
 fn resolve_local_estimate(
     db_pool: &DbPool,
     local_primary_id: &str,
@@ -1414,17 +1440,7 @@ fn resolve_local_estimate(
 ) -> AppResult<Option<LocalEstimateResolution>> {
     let state = read_local_mmr_state(db_pool, local_primary_id)?;
     let Some(estimate) = state.playlists.get(playlist) else {
-        return Ok(
-            get_latest_player_mmr_for_playlist(db_pool, local_primary_id, playlist)?.map(|mmr| {
-                LocalEstimateResolution {
-                    mmr,
-                    estimated: false,
-                    stale: false,
-                    matches_since_refresh: 0,
-                    updated_at: String::new(),
-                }
-            }),
-        );
+        return Ok(None);
     };
 
     Ok(Some(LocalEstimateResolution {
@@ -1434,6 +1450,43 @@ fn resolve_local_estimate(
         matches_since_refresh: estimate.matches_since_refresh,
         updated_at: estimate.updated_at.clone(),
     }))
+}
+
+/// Stored local MMR for one playlist, exposed to the settings UI so the
+/// manual-entry form can show what value is currently on file instead of
+/// clearing the field and leaving the user guessing.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalMmrEntry {
+    pub mmr: i32,
+    /// `false` = trusted value (manual entry or fresh online sync);
+    /// `true` = projected from match results since the last sync.
+    pub estimated: bool,
+    pub matches_since_refresh: u32,
+    pub updated_at: String,
+}
+
+/// Returns every stored local MMR estimate for the local player.
+pub fn get_local_mmr_entries(
+    db_pool: &DbPool,
+    local_primary_id: &str,
+) -> AppResult<HashMap<String, LocalMmrEntry>> {
+    let state = read_local_mmr_state(db_pool, local_primary_id)?;
+    Ok(state
+        .playlists
+        .into_iter()
+        .map(|(playlist, estimate)| {
+            (
+                playlist,
+                LocalMmrEntry {
+                    mmr: estimate.mmr,
+                    estimated: estimate.estimated,
+                    matches_since_refresh: estimate.matches_since_refresh,
+                    updated_at: estimate.updated_at,
+                },
+            )
+        })
+        .collect())
 }
 
 /// Persist a manually-entered MMR for the local player on a given playlist.
@@ -1724,9 +1777,21 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
 mod tests {
     use super::{
         apply_lobby_estimates, infer_playlist, map_webview_profile, parse_primary_id,
-        parse_rapidapi_profile, webview, LivePlayerMmr, RLSTATS_WEBVIEW_PROVIDER,
+        parse_rapidapi_profile, resolve_local_estimate, set_local_mmr_manual,
+        sync_local_trusted_mmr, update_local_mmr_estimate, webview, LivePlayerMmr,
+        LOCAL_ESTIMATE_MAX_MATCHES, RLSTATS_WEBVIEW_PROVIDER,
     };
     use crate::core::models::LivePlayer;
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "rl-stats-mmr-{tag}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     fn mmr_player(primary_id: &str, mmr: Option<i32>) -> LivePlayerMmr {
         LivePlayerMmr {
@@ -1758,7 +1823,7 @@ mod tests {
             mmr_player("exact", Some(1_310)),
         ];
 
-        apply_lobby_estimates(&mut players, Some("local"), Some("doubles"));
+        apply_lobby_estimates(&mut players, &["local".to_string()], Some("doubles"));
 
         assert_eq!(players[1].mmr, Some(1_250));
         assert!(players[1].estimated);
@@ -1908,5 +1973,61 @@ mod tests {
         );
         assert_eq!(profile.playlists["casual"].mmr, Some(1202));
         assert_eq!(profile.playlists.len(), 2);
+    }
+
+    #[test]
+    fn local_estimate_goes_stale_without_online_refresh() {
+        let dir = temp_dir("stale");
+        let pool = crate::core::storage::init_storage(dir.join("test.db")).expect("init storage");
+
+        let pid = "Steam|abc|0";
+        set_local_mmr_manual(&pool, pid, "standard", 1400).expect("set manual mmr");
+
+        // Trusted (manual) estimate: present and fresh, wins over providers.
+        let est = resolve_local_estimate(&pool, pid, "standard")
+            .expect("resolve")
+            .expect("estimate");
+        assert_eq!(est.mmr, 1400);
+        assert!(!est.estimated);
+        assert!(!est.stale);
+
+        // Match results without an online sync push the estimate to stale; at
+        // that point resolve_player_mmr must let providers re-sync instead of
+        // pinning the manual value forever.
+        for index in 0..LOCAL_ESTIMATE_MAX_MATCHES {
+            update_local_mmr_estimate(&pool, pid, "standard", None, index % 2 == 0)
+                .expect("update estimate");
+        }
+        let est = resolve_local_estimate(&pool, pid, "standard")
+            .expect("resolve")
+            .expect("estimate");
+        assert!(est.estimated);
+        assert!(est.stale);
+        assert_eq!(est.matches_since_refresh, LOCAL_ESTIMATE_MAX_MATCHES);
+
+        // A successful online sync clears staleness again.
+        sync_local_trusted_mmr(&pool, pid, "standard", Some(1500)).expect("sync");
+        let est = resolve_local_estimate(&pool, pid, "standard")
+            .expect("resolve")
+            .expect("estimate");
+        assert_eq!(est.mmr, 1500);
+        assert!(!est.estimated);
+        assert!(!est.stale);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn local_estimate_is_empty_before_any_entry() {
+        let dir = temp_dir("empty");
+        let pool = crate::core::storage::init_storage(dir.join("test.db")).expect("init storage");
+
+        // No stored estimate must resolve to None so the caller falls through
+        // to providers/history instead of disguising old match data as fresh.
+        assert!(resolve_local_estimate(&pool, "Steam|abc|0", "standard")
+            .expect("resolve")
+            .is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

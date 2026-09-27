@@ -43,7 +43,8 @@
     "loss": "Derrota",
     "blueWon": "Azul venceu",
     "orangeWon": "Laranja venceu",
-    "draw": "Empate"
+    "draw": "Empate",
+    "cancelled": "Cancelado"
   },
   "stats": {
     "title": "Estatísticas dos jogadores",

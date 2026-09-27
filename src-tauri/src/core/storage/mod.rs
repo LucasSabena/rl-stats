@@ -70,6 +70,9 @@ pub struct FinishMatchUpdate {
     pub winner: Option<i32>,
     pub is_overtime: bool,
     pub duration_seconds: i32,
+    /// Lifecycle outcome (`completed`/`draw`/`cancelled`), derived by the
+    /// caller via `derive_match_status`.
+    pub status: &'static str,
 }
 
 pub struct MatchPlayerRow {
@@ -116,8 +119,9 @@ pub struct MatchQuery<'a> {
     pub date_from: Option<&'a str>,
     pub date_to: Option<&'a str>,
     pub search: Option<&'a str>,
-    /// Local player identity, needed to turn the `result` filter into SQL.
-    pub local_primary_id: Option<&'a str>,
+    /// Local player identities (canonical + linked platform ids), needed to
+    /// turn the `result` filter into SQL.
+    pub local_primary_ids: &'a [String],
     pub local_player_names: &'a [String],
 }
 
@@ -135,6 +139,8 @@ pub struct MatchUpsert<'a> {
     pub match_type: Option<&'a str>,
     pub playlist: Option<&'a str>,
     pub mood: Option<&'a str>,
+    /// Lifecycle outcome; `None` derives it from winner/score/duration.
+    pub status: Option<&'a str>,
 }
 
 /// Initialize the SQLite database pool and run versioned migrations.
@@ -221,6 +227,40 @@ pub fn local_date_string(start_time: &str) -> String {
     DateTime::parse_from_rfc3339(start_time)
         .map(|dt| dt.with_timezone(&Local).format("%Y-%m-%d").to_string())
         .unwrap_or_else(|_| Local::now().format("%Y-%m-%d").to_string())
+}
+
+/// Convert optional local-date bounds ('YYYY-MM-DD' or full timestamps) into
+/// an inclusive UTC instant range covering whole local days. This is the
+/// sargable equivalent of `date(start_time, 'localtime') BETWEEN x AND y`.
+pub(crate) fn local_day_range_utc_bounds(from: Option<&str>, to: Option<&str>) -> (String, String) {
+    use chrono::TimeZone;
+
+    let local_day = |v: &str| -> Option<chrono::NaiveDate> {
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
+            return Some(d);
+        }
+        // A full timestamp: keep its local calendar date.
+        DateTime::parse_from_rfc3339(v)
+            .map(|dt| dt.with_timezone(&Local).date_naive())
+            .ok()
+    };
+    let local_midnight_utc = |d: chrono::NaiveDate| -> Option<String> {
+        let naive = d.and_hms_opt(0, 0, 0)?;
+        Local
+            .from_local_datetime(&naive)
+            .earliest()
+            .map(|dt| dt.with_timezone(&Utc).to_rfc3339())
+    };
+    let lower = from
+        .and_then(local_day)
+        .and_then(local_midnight_utc)
+        .unwrap_or_else(|| "0001-01-01T00:00:00+00:00".to_string());
+    let upper = to
+        .and_then(local_day)
+        .and_then(|d| d.checked_add_signed(chrono::TimeDelta::days(1)))
+        .and_then(local_midnight_utc)
+        .unwrap_or_else(|| "9999-12-31T23:59:59+00:00".to_string());
+    (lower, upper)
 }
 
 fn weighted_avg_duration_sql() -> &'static str {
@@ -334,7 +374,7 @@ pub(crate) fn finish_match_conn(
     update: FinishMatchUpdate,
 ) -> AppResult<()> {
     conn.execute(
-        "UPDATE matches SET end_time = ?1, score_blue = ?2, score_orange = ?3, winner = ?4, is_overtime = ?5, duration_seconds = ?6 WHERE id = ?7",
+        "UPDATE matches SET end_time = ?1, score_blue = ?2, score_orange = ?3, winner = ?4, is_overtime = ?5, duration_seconds = ?6, status = ?7 WHERE id = ?8",
         params![
             update.end_time.to_rfc3339(),
             update.score_blue,
@@ -342,6 +382,7 @@ pub(crate) fn finish_match_conn(
             update.winner,
             update.is_overtime as i32,
             update.duration_seconds,
+            update.status,
             match_id
         ],
     )
@@ -672,6 +713,12 @@ fn map_match_row(row: &rusqlite::Row) -> rusqlite::Result<Match> {
             .unwrap_or(None)
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default(),
+        // `status` (v31) may be missing on very old snapshots; treat those
+        // rows as completed matches.
+        status: row
+            .get::<_, Option<String>>(16)
+            .unwrap_or(None)
+            .unwrap_or_else(|| crate::core::models::MATCH_STATUS_COMPLETED.to_string()),
     })
 }
 
@@ -681,7 +728,7 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
     let mut matches = Vec::new();
 
     let mut sql = String::from(
-        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json FROM matches WHERE 1=1"
+        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json, status FROM matches WHERE 1=1"
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -704,11 +751,13 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
         if result == "win" || result == "loss" {
             // Resolve the local player's team per match in SQL so the filter
             // applies before LIMIT/OFFSET. Mirrors get_local_team_num_from_conn:
-            // the primary id wins, then the configured player names.
+            // the platform ids win (ranked canonical-first so two linked ids
+            // in one match resolve deterministically), then the configured
+            // player names.
             let mut ors: Vec<String> = Vec::new();
-            if let Some(primary_id) = filters.local_primary_id {
+            for primary_id in filters.local_primary_ids {
                 ors.push("p.primary_id = ?".to_string());
-                args.push(Box::new(primary_id.to_string()));
+                args.push(Box::new(primary_id.clone()));
             }
             for name in filters.local_player_names {
                 ors.push("LOWER(TRIM(p.name)) = ?".to_string());
@@ -721,9 +770,15 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
             } else {
                 let team_expr = format!(
                     "(SELECT mp.team_num FROM match_players mp JOIN players p ON p.id = mp.player_id \
-                     WHERE mp.match_id = matches.id AND ({}) LIMIT 1)",
-                    ors.join(" OR ")
+                     WHERE mp.match_id = matches.id AND ({}){} LIMIT 1)",
+                    ors.join(" OR "),
+                    identity_rank_order_by("p.primary_id", filters.local_primary_ids.len()),
                 );
+                // The ORDER BY params land textually after the OR params in
+                // the subquery, so they bind next.
+                for primary_id in filters.local_primary_ids {
+                    args.push(Box::new(primary_id.clone()));
+                }
                 if result == "win" {
                     sql.push_str(&format!(" AND winner IS NOT NULL AND winner = {team_expr}"));
                 } else {
@@ -732,17 +787,22 @@ pub fn get_matches(pool: &DbPool, filters: MatchQuery<'_>) -> AppResult<Vec<Matc
                     ));
                 }
             }
+        } else if result == "draw" || result == "cancelled" {
+            sql.push_str(" AND status = ?");
+            args.push(Box::new(result.to_string()));
         }
     }
 
-    if let Some(from) = filters.date_from {
-        sql.push_str(" AND start_time >= ?");
-        args.push(Box::new(from.to_string()));
-    }
-
-    if let Some(to) = filters.date_to {
-        sql.push_str(" AND start_time <= ?");
-        args.push(Box::new(to.to_string()));
+    // Date bounds are local calendar days, the same convention the analytics
+    // `date(start_time,'localtime')` filters use. Converting the local
+    // midnights to UTC instants keeps the predicate sargable on
+    // idx_matches_start_time and — unlike the old `start_time <= 'YYYY-MM-DD'`
+    // compare — actually includes matches played on the picked end day.
+    if filters.date_from.is_some() || filters.date_to.is_some() {
+        let (lower, upper) = local_day_range_utc_bounds(filters.date_from, filters.date_to);
+        sql.push_str(" AND start_time >= ? AND start_time < ?");
+        args.push(Box::new(lower));
+        args.push(Box::new(upper));
     }
 
     if let Some(search) = filters.search {
@@ -775,7 +835,7 @@ pub fn get_match_detail(pool: &DbPool, match_id: i64) -> AppResult<(Match, Vec<P
     let conn = get_conn(pool)?;
 
     let m: Match = conn.query_row(
-        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json FROM matches WHERE id = ?1",
+        "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json, status FROM matches WHERE id = ?1",
         params![match_id],
         |row| {
             Ok(Match {
@@ -799,6 +859,10 @@ pub fn get_match_detail(pool: &DbPool, match_id: i64) -> AppResult<(Match, Vec<P
                     .unwrap_or(None)
                     .and_then(|raw| serde_json::from_str(&raw).ok())
                     .unwrap_or_default(),
+                status: row
+                    .get::<_, Option<String>>(16)
+                    .unwrap_or(None)
+                    .unwrap_or_else(|| crate::core::models::MATCH_STATUS_COMPLETED.to_string()),
             })
         },
     ).map_err(|e| AppError::StorageError(e.to_string()))?;
@@ -877,29 +941,29 @@ pub fn get_match_events(pool: &DbPool, match_id: i64) -> AppResult<Vec<MatchEven
 pub fn get_local_team_num(
     pool: &DbPool,
     match_id: i64,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
 ) -> AppResult<Option<i32>> {
-    if local_primary_id.is_none() && player_names.is_empty() {
+    if local_primary_ids.is_empty() && player_names.is_empty() {
         return Ok(None);
     }
 
     let conn = get_conn(pool)?;
-    get_local_team_num_from_conn(&conn, match_id, local_primary_id, player_names)
+    get_local_team_num_from_conn(&conn, match_id, local_primary_ids, player_names)
 }
 
 pub fn get_local_match_stats(
     pool: &DbPool,
     match_ids: &[i64],
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
 ) -> AppResult<HashMap<i64, LocalMatchStats>> {
-    if match_ids.is_empty() || (local_primary_id.is_none() && player_names.is_empty()) {
+    if match_ids.is_empty() || (local_primary_ids.is_empty() && player_names.is_empty()) {
         return Ok(HashMap::new());
     }
 
     let conn = get_conn(pool)?;
-    get_local_match_stats_from_conn(&conn, match_ids, local_primary_id, player_names)
+    get_local_match_stats_from_conn(&conn, match_ids, local_primary_ids, player_names)
 }
 
 /// Update match metadata (match_type and playlist).
@@ -1036,8 +1100,7 @@ pub fn delete_match(pool: &DbPool, match_id: i64) -> AppResult<()> {
 
     let settings = crate::core::settings::get_settings(pool).unwrap_or_default();
     let names = identity_candidate_names(&settings);
-    if let Err(e) =
-        rebuild_daily_rollups_for_identity(pool, settings.local_primary_id.as_deref(), &names)
+    if let Err(e) = rebuild_daily_rollups_for_identity(pool, &settings.local_identity_ids(), &names)
     {
         tracing::warn!(error = %e, "Failed to rebuild daily rollups after match deletion");
     }
@@ -1361,8 +1424,7 @@ pub fn apply_data_retention(pool: &DbPool, retention_days: i64) -> AppResult<usi
 
     let settings = crate::core::settings::get_settings(pool).unwrap_or_default();
     let names = identity_candidate_names(&settings);
-    if let Err(e) =
-        rebuild_daily_rollups_for_identity(pool, settings.local_primary_id.as_deref(), &names)
+    if let Err(e) = rebuild_daily_rollups_for_identity(pool, &settings.local_identity_ids(), &names)
     {
         tracing::warn!(error = %e, "Failed to rebuild rollups after retention prune");
     }
@@ -1421,9 +1483,11 @@ pub fn remove_duplicate_training_rows(pool: &DbPool) -> AppResult<usize> {
 /// player, so Free Play with a party (every player on the local team, 0–0, no
 /// winner) was persisted as a real match with the roster on a single team and
 /// an empty opponent side. History and analytics then counted it as a played
-/// match. The predicate is deliberately narrow — no score, no winner and a
-/// single team across every recorded player — so no genuine match can match
-/// it. A user who edited such a row intentionally can edit it back.
+/// match. The predicate is deliberately narrow — offline only (an online guid
+/// means a real server lobby, i.e. a cancelled game rather than Free Play),
+/// no score, no winner and a single team across every recorded player — so no
+/// genuine match can match it. A user who edited such a row intentionally can
+/// edit it back.
 pub fn reclassify_one_sided_training_rows(pool: &DbPool) -> AppResult<usize> {
     let conn = get_conn(pool)?;
     let match_ids: Vec<i64> = {
@@ -1432,6 +1496,7 @@ pub fn reclassify_one_sided_training_rows(pool: &DbPool) -> AppResult<usize> {
              FROM match_players mp
              JOIN matches m ON m.id = mp.match_id
              WHERE LOWER(COALESCE(m.match_type, '')) != 'training'
+               AND m.is_online = 0
                AND m.winner IS NULL
                AND m.score_blue = 0
                AND m.score_orange = 0
@@ -1454,6 +1519,32 @@ pub fn reclassify_one_sided_training_rows(pool: &DbPool) -> AppResult<usize> {
     }
     if updated > 0 {
         info!(updated, "Reclassified one-sided rows as training");
+    }
+    Ok(updated)
+}
+
+/// Mark rows stuck mid-flight as cancelled.
+///
+/// A match row is created when the session starts and only filled in when the
+/// match ends. If the app closes or the event stream drops first, the row
+/// stays a 'completed' shell (no end_time, no winner) that every analytics
+/// query counted as a played match. Two hours after start no live match can
+/// still be running, so cancelling is safe; the row stays visible in history.
+pub fn cancel_stale_unfinished_matches(pool: &DbPool) -> AppResult<usize> {
+    let conn = get_conn(pool)?;
+    let cutoff = (Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+    let updated = conn
+        .execute(
+            "UPDATE matches SET status = 'cancelled'
+             WHERE status = 'completed'
+               AND end_time IS NULL
+               AND winner IS NULL
+               AND start_time < ?1",
+            params![cutoff],
+        )
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    if updated > 0 {
+        info!(updated, "Cancelled stale unfinished matches");
     }
     Ok(updated)
 }
@@ -1485,18 +1576,21 @@ pub fn get_training_stats(
 
     // Per-local-day training totals (sessions = rows, time = summed duration).
     // Bucketing happens in Rust via `local_date_string` because SQLite has no
-    // access to the local-timezone helpers.
+    // access to the local-timezone helpers. The window bounds are UTC instants
+    // covering the whole local days — a plain `date()`/midnight compare used
+    // to drop stints near local midnight.
+    let (day_start, day_end) = local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut daily_stmt = conn.prepare(
         "SELECT m.start_time, COALESCE(m.duration_seconds, 0)
          FROM matches m
          WHERE m.match_type = 'training'
            AND m.start_time >= ?1
-           AND m.start_time < date(?2, '+1 day')
+           AND m.start_time < ?2
          ORDER BY m.start_time ASC",
     )?;
 
     let mut day_rows: Vec<(String, i64)> = Vec::new();
-    let mut rows = daily_stmt.query(params![start_date, end_date])?;
+    let mut rows = daily_stmt.query(params![day_start, day_end])?;
     while let Some(row) = rows.next()? {
         day_rows.push((row.get(0)?, row.get(1)?));
     }
@@ -1533,12 +1627,12 @@ pub fn get_training_stats(
          FROM matches m
          WHERE m.match_type = 'training'
            AND m.start_time >= ?1
-           AND m.start_time < date(?2, '+1 day')",
+           AND m.start_time < ?2",
     )?;
     let mut by_hour: Vec<serde_json::Value> = Vec::new();
     {
         let mut buckets: HashMap<u32, (i64, i64)> = HashMap::new();
-        let mut hour_rows = hour_stmt.query(params![start_date, end_date])?;
+        let mut hour_rows = hour_stmt.query(params![day_start, day_end])?;
         while let Some(row) = hour_rows.next()? {
             let start_time: String = row.get(0)?;
             if let Some(hour) = local_hour(&start_time) {
@@ -1631,7 +1725,7 @@ pub fn get_daily_rollups_filtered(
     pool: &DbPool,
     start_date: &str,
     end_date: &str,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
     playlist: Option<&str>,
     match_type: Option<&str>,
@@ -1639,14 +1733,18 @@ pub fn get_daily_rollups_filtered(
 ) -> AppResult<Vec<DailyRollup>> {
     let conn = get_conn(pool)?;
 
+    // Sargable UTC bounds covering the local-date window (same semantics as
+    // `date(start_time,'localtime') BETWEEN start AND end`, index-friendly).
+    let (day_start, day_end) = local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut sql = String::from(
         "SELECT id, start_time, score_blue, score_orange, winner, duration_seconds
          FROM matches
-         WHERE date(start_time, 'localtime') >= ?1 AND date(start_time, 'localtime') <= ?2",
+         WHERE start_time >= ?1 AND start_time < ?2
+           AND status != 'cancelled'",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(match_type) = LOWER(?)");
@@ -1684,7 +1782,7 @@ pub fn get_daily_rollups_filtered(
     // queries per match (the old shape was O(matches) round-trips).
     let match_ids: Vec<i64> = rows.iter().map(|row| row.0).collect();
     let stats_by_match =
-        get_local_match_stats_from_conn(&conn, &match_ids, local_primary_id, player_names)?;
+        get_local_match_stats_from_conn(&conn, &match_ids, local_primary_ids, player_names)?;
 
     for (match_id, start_time, score_blue, score_orange, winner, duration_seconds) in rows {
         let Some(stats) = stats_by_match.get(&match_id) else {
@@ -1781,7 +1879,7 @@ pub fn get_daily_rollups_filtered(
 
 pub fn rebuild_daily_rollups_for_identity(
     pool: &DbPool,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
 ) -> AppResult<()> {
     let conn = get_conn(pool)?;
@@ -1791,6 +1889,7 @@ pub fn rebuild_daily_rollups_for_identity(
             "SELECT id, start_time, score_blue, score_orange, winner, duration_seconds
              FROM matches
              WHERE LOWER(COALESCE(match_type, '')) != 'training'
+               AND status != 'cancelled'
              ORDER BY start_time ASC",
         )?;
 
@@ -1813,7 +1912,7 @@ pub fn rebuild_daily_rollups_for_identity(
     // deletions rebuild the whole table, so this ran thousands of queries).
     let match_ids: Vec<i64> = rows.iter().map(|row| row.0).collect();
     let stats_by_match =
-        get_local_match_stats_from_conn(&conn, &match_ids, local_primary_id, player_names)?;
+        get_local_match_stats_from_conn(&conn, &match_ids, local_primary_ids, player_names)?;
 
     // DELETE + inserts must land together: a crash used to leave rollups empty.
     let tx = conn
@@ -1874,23 +1973,77 @@ pub fn rebuild_daily_rollups_for_identity(
     Ok(())
 }
 
+/// Keep one row per match when several linked identities appear in the same
+/// match (Steam+Epic rows, or a mislinked id): the row of the identity that
+/// ranks earliest in `identity_ids` (canonical first) wins. Input rows are
+/// `(match_id, primary_id, payload)`; output preserves first-seen order.
+pub(crate) fn dedup_local_rows<T>(rows: Vec<(i64, String, T)>, identity_ids: &[String]) -> Vec<T> {
+    let rank = |pid: &str| {
+        identity_ids
+            .iter()
+            .position(|id| id == pid)
+            .unwrap_or(usize::MAX)
+    };
+    // match_id -> (best rank, index into out)
+    let mut best: HashMap<i64, (usize, usize)> = HashMap::new();
+    let mut out: Vec<Option<T>> = Vec::new();
+    for (match_id, primary_id, payload) in rows {
+        let r = rank(&primary_id);
+        match best.get(&match_id) {
+            Some(&(best_rank, index)) => {
+                if r < best_rank {
+                    best.insert(match_id, (r, index));
+                    out[index] = Some(payload);
+                }
+            }
+            None => {
+                best.insert(match_id, (r, out.len()));
+                out.push(Some(payload));
+            }
+        }
+    }
+    out.into_iter().flatten().collect()
+}
+
+/// `ORDER BY` fragment that ranks player rows by identity position —
+/// canonical id first — for `LIMIT 1` "which row is the local player"
+/// subqueries. The caller must bind one `?` per identity id, in order, right
+/// after the params already pushed for the subquery.
+pub(crate) fn identity_rank_order_by(column: &str, count: usize) -> String {
+    let arms: String = (0..count).map(|i| format!(" WHEN ? THEN {i}")).collect();
+    format!(" ORDER BY CASE {column}{arms} ELSE {count} END")
+}
+
 fn get_local_team_num_from_conn(
     conn: &rusqlite::Connection,
     match_id: i64,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
 ) -> AppResult<Option<i32>> {
-    if let Some(local_primary_id) = local_primary_id {
+    if !local_primary_ids.is_empty() {
+        let id_placeholders = vec!["?"; local_primary_ids.len()].join(",");
+        // Two linked ids can coexist in one match: rank them canonical-first
+        // so the team resolution is deterministic instead of row-order luck.
+        let sql = format!(
+            "SELECT mp.team_num
+             FROM match_players mp
+             JOIN players p ON mp.player_id = p.id
+             WHERE mp.match_id = ? AND p.primary_id IN ({id_placeholders})
+             {}
+             LIMIT 1",
+            identity_rank_order_by("p.primary_id", local_primary_ids.len())
+        );
+        let mut id_args: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(match_id) as Box<dyn rusqlite::ToSql>];
+        for pid in local_primary_ids {
+            id_args.push(Box::new(pid.clone()));
+        }
+        for pid in local_primary_ids {
+            id_args.push(Box::new(pid.clone()));
+        }
+        let id_refs: Vec<&dyn rusqlite::ToSql> = id_args.iter().map(|a| a.as_ref()).collect();
         let team_num = conn
-            .query_row(
-                "SELECT mp.team_num
-                 FROM match_players mp
-                 JOIN players p ON mp.player_id = p.id
-                 WHERE mp.match_id = ?1 AND p.primary_id = ?2
-                 LIMIT 1",
-                params![match_id, local_primary_id],
-                |row| row.get(0),
-            )
+            .query_row(&sql, &*id_refs, |row| row.get(0))
             .optional()
             .map_err(|e| AppError::StorageError(e.to_string()))?;
 
@@ -1924,10 +2077,10 @@ fn get_local_team_num_from_conn(
 fn get_local_match_stats_from_conn(
     conn: &rusqlite::Connection,
     match_ids: &[i64],
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
 ) -> AppResult<HashMap<i64, LocalMatchStats>> {
-    if match_ids.is_empty() || (local_primary_id.is_none() && player_names.is_empty()) {
+    if match_ids.is_empty() || (local_primary_ids.is_empty() && player_names.is_empty()) {
         return Ok(HashMap::new());
     }
 
@@ -1978,42 +2131,59 @@ fn get_local_match_stats_from_conn(
         }
     }
 
-    let mut stats_by_match: HashMap<i64, LocalMatchStats> = HashMap::new();
+    // Resolve THE local player row per match. A match is one player, not a
+    // set: several rows can satisfy the configured identity (a linked
+    // Steam+Epic pair appearing together, or a stranger sharing the display
+    // name), and blindly OR-ing them used to double-count stats or pick the
+    // opponent's team. Resolution order is deterministic:
+    //   1. any roster row whose primary_id matches a linked identity — the
+    //      canonical id (earliest in `local_primary_ids`) wins ties;
+    //   2. otherwise a name match only when exactly one roster row carries a
+    //      configured name — two same-named players are ambiguous and skip
+    //      the match instead of crediting a stranger.
+    let id_rank: HashMap<&str, usize> = local_primary_ids
+        .iter()
+        .enumerate()
+        .map(|(i, pid)| (pid.as_str(), i))
+        .collect();
+    let mut local_row: HashMap<i64, (usize, usize)> = HashMap::new();
+    let mut name_candidates: HashMap<i64, Vec<usize>> = HashMap::new();
 
-    // First pass: identify local team for each match
-    for (match_id, team_num, _, _, _, _, _, _, primary_id, name, _) in &all_rows {
-        let is_local_primary = local_primary_id == Some(primary_id.as_str());
-        let is_local_name = normalized_names.contains(&normalize_player_name(name));
-
-        if is_local_primary || is_local_name {
-            let entry = stats_by_match.entry(*match_id).or_default();
-            if is_local_primary || entry.local_team_num.is_none() {
-                entry.local_team_num = Some(*team_num);
+    for (idx, (match_id, _, _, _, _, _, _, _, primary_id, name, _)) in all_rows.iter().enumerate() {
+        if let Some(&rank) = id_rank.get(primary_id.as_str()) {
+            let replace = local_row
+                .get(match_id)
+                .map(|(_, best_rank)| rank < *best_rank)
+                .unwrap_or(true);
+            if replace {
+                local_row.insert(*match_id, (idx, rank));
             }
+        }
+        if normalized_names.contains(&normalize_player_name(name)) {
+            name_candidates.entry(*match_id).or_default().push(idx);
+        }
+    }
+    for (match_id, candidates) in &name_candidates {
+        if candidates.len() == 1 && !local_row.contains_key(match_id) {
+            local_row.insert(*match_id, (candidates[0], usize::MAX));
         }
     }
 
-    // Second pass: aggregate stats
-    for (
-        match_id,
-        team_num,
-        shots,
-        saves,
-        assists,
-        demos,
-        goals,
-        score,
-        primary_id,
-        name,
-        kickoff_goals,
-    ) in all_rows
-    {
-        if let Some(entry) = stats_by_match.get_mut(&match_id) {
-            let is_local_primary = local_primary_id == Some(primary_id.as_str());
-            let is_local_name = normalized_names.contains(&normalize_player_name(&name));
-            let is_local = is_local_primary || is_local_name;
+    let mut stats_by_match: HashMap<i64, LocalMatchStats> = HashMap::new();
+    for (match_id, (idx, _)) in &local_row {
+        let entry = stats_by_match.entry(*match_id).or_default();
+        entry.local_team_num = Some(all_rows[*idx].1);
+    }
 
-            if is_local {
+    // Second pass: aggregate stats. Personal fields come only from the
+    // resolved local row; team/opponent fields span the whole roster.
+    for (
+        idx,
+        (match_id, team_num, shots, saves, assists, demos, goals, score, _, _, kickoff_goals),
+    ) in all_rows.iter().enumerate()
+    {
+        if let Some(entry) = stats_by_match.get_mut(match_id) {
+            if local_row.get(match_id).map(|(i, _)| *i) == Some(idx) {
                 entry.shots += shots;
                 entry.saves += saves;
                 entry.assists += assists;
@@ -2023,7 +2193,7 @@ fn get_local_match_stats_from_conn(
                 entry.kickoff_goals += kickoff_goals;
             }
 
-            if Some(team_num) == entry.local_team_num {
+            if Some(*team_num) == entry.local_team_num {
                 entry.team_shots += shots;
                 entry.team_saves += saves;
                 entry.team_assists += assists;
@@ -2390,9 +2560,17 @@ pub fn upsert_match_by_guid(
     conn: &rusqlite::Connection,
     record: MatchUpsert<'_>,
 ) -> AppResult<i64> {
+    let status = record.status.unwrap_or_else(|| {
+        crate::core::models::derive_match_status(
+            record.winner,
+            record.score_blue,
+            record.score_orange,
+            record.duration_seconds,
+        )
+    });
     conn.execute(
-        "INSERT INTO matches (guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+        "INSERT INTO matches (guid, start_time, end_time, arena, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds, match_type, playlist, mood, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(guid) DO UPDATE SET
             start_time = excluded.start_time,
             end_time = coalesce(excluded.end_time, matches.end_time),
@@ -2405,7 +2583,8 @@ pub fn upsert_match_by_guid(
             duration_seconds = excluded.duration_seconds,
             match_type = coalesce(excluded.match_type, matches.match_type),
             playlist = coalesce(excluded.playlist, matches.playlist),
-            mood = coalesce(excluded.mood, matches.mood)",
+            mood = coalesce(excluded.mood, matches.mood),
+            status = excluded.status",
         params![
             record.guid,
             record.start_time,
@@ -2420,6 +2599,7 @@ pub fn upsert_match_by_guid(
             record.match_type,
             record.playlist,
             record.mood,
+            status,
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;
@@ -2643,11 +2823,15 @@ pub fn get_match_sessions(
 
     let mut sql = String::from(
         "SELECT id, guid, start_time, end_time, arena, score_blue, score_orange, winner,
-                is_online, is_overtime, duration_seconds, match_type, playlist
+                is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json, status
          FROM matches
          WHERE 1=1",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    // Cancelled/abandoned matches never produced a result: they are kept in
+    // history but must not anchor or join a play-session grouping.
+    sql.push_str(" AND status != 'cancelled'");
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(match_type) = LOWER(?)");
@@ -2710,7 +2894,7 @@ pub fn get_match_sessions(
     let local_stats_by_match = get_local_match_stats_from_conn(
         &conn,
         &matches.iter().map(|m| m.id).collect::<Vec<_>>(),
-        settings.local_primary_id.as_deref(),
+        &settings.local_identity_ids(),
         &player_names,
     )?;
     let is_individual = scope == Some("me");
@@ -3042,6 +3226,7 @@ pub fn get_latest_player_mmr_for_playlist(
          WHERE p.primary_id = ?1
            AND LOWER(COALESCE(m.playlist, '')) = LOWER(?2)
            AND mp.mmr IS NOT NULL
+           AND m.status != 'cancelled'
          ORDER BY m.start_time DESC
          LIMIT 1",
         params![primary_id, playlist],
@@ -3070,6 +3255,7 @@ pub fn get_player_mmr_history_for_playlist(
              WHERE p.primary_id = ?1
                AND LOWER(COALESCE(m.playlist, '')) = LOWER(?2)
                AND mp.mmr IS NOT NULL
+               AND m.status != 'cancelled'
              ORDER BY m.start_time DESC
              LIMIT ?3",
         )
@@ -3093,37 +3279,89 @@ pub struct MmrHistoryPoint {
     pub start_time: String,
     pub mmr: i32,
     pub playlist: Option<String>,
+    /// Canonical ladder key (`match_type:playlist`, e.g. `ranked:Standard`,
+    /// `casual:Duel`). Raw playlist labels collide across ladders — casual
+    /// "Doubles" and ranked "Doubles" share a label but are different MMRs —
+    /// so series must never be keyed by playlist alone.
+    pub series: String,
     pub is_win: bool,
     pub overtime: bool,
 }
 
+/// Build the canonical MMR series key for one match row.
+pub(crate) fn mmr_series_key(match_type: &str, playlist: &str) -> String {
+    let mt = {
+        let m = match_type.trim().to_ascii_lowercase();
+        if m.is_empty() {
+            "other".to_string()
+        } else {
+            m
+        }
+    };
+    let pl = {
+        let p = playlist.trim().to_ascii_lowercase();
+        if p.is_empty() {
+            "other".to_string()
+        } else {
+            p
+        }
+    };
+    format!("{mt}:{pl}")
+}
+
+/// Parse a canonical series key back into `(match_type, playlist)` for SQL
+/// filtering. Returns `None` for a malformed key.
+fn split_mmr_series_key(series: &str) -> Option<(String, String)> {
+    let (mt, pl) = series.split_once(':')?;
+    if mt.is_empty() || pl.is_empty() {
+        return None;
+    }
+    Some((mt.to_string(), pl.to_string()))
+}
+
 /// MMR readings for a player over a local-date window, oldest first.
+/// `series` filters by canonical ladder key (`match_type:playlist`).
 pub fn get_mmr_history_points(
     pool: &DbPool,
-    primary_id: &str,
-    playlist: Option<&str>,
+    primary_ids: &[String],
+    series: Option<&str>,
     start_date: &str,
     end_date: &str,
 ) -> AppResult<Vec<MmrHistoryPoint>> {
     let conn = get_conn(pool)?;
-    let mut sql = String::from(
-        "SELECT m.id, m.start_time, mp.mmr, m.playlist, m.winner, m.is_overtime, mp.team_num
+    let id_placeholders = vec!["?"; primary_ids.len().max(1)].join(", ");
+    let (day_start, day_end) = local_day_range_utc_bounds(Some(start_date), Some(end_date));
+    let mut sql = format!(
+        "SELECT m.id, m.start_time, mp.mmr, m.playlist, m.winner, m.is_overtime, mp.team_num,
+                COALESCE(m.match_type, '')
          FROM match_players mp
          JOIN players p ON p.id = mp.player_id
          JOIN matches m ON m.id = mp.match_id
-         WHERE p.primary_id = ?1
+         WHERE p.primary_id IN ({id_placeholders})
            AND mp.mmr IS NOT NULL
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    for pid in primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
 
-    if let Some(pl) = playlist {
-        sql.push_str(" AND LOWER(COALESCE(m.playlist, '')) = LOWER(?)");
-        args.push(Box::new(pl.to_string()));
+    if let Some(series) = series.and_then(split_mmr_series_key) {
+        let (mt, pl) = series;
+        sql.push_str(
+            " AND LOWER(COALESCE(m.match_type, '')) = ?
+              AND LOWER(COALESCE(m.playlist, '')) = ?",
+        );
+        // 'other' stands for an absent/blank column value.
+        args.push(Box::new(if mt == "other" { String::new() } else { mt }));
+        args.push(Box::new(if pl == "other" { String::new() } else { pl }));
     }
     sql.push_str(" ORDER BY m.start_time ASC");
     sql.push_str(" LIMIT 5000");
@@ -3134,11 +3372,14 @@ pub fn get_mmr_history_points(
         .query_map(&*params_refs, |row| {
             let winner: Option<i32> = row.get(4)?;
             let team_num: i32 = row.get(6)?;
+            let playlist: Option<String> = row.get(3)?;
+            let match_type: String = row.get(7)?;
             Ok(MmrHistoryPoint {
                 match_id: row.get(0)?,
                 start_time: row.get(1)?,
                 mmr: row.get(2)?,
-                playlist: row.get(3)?,
+                series: mmr_series_key(&match_type, playlist.as_deref().unwrap_or("")),
+                playlist,
                 is_win: winner == Some(team_num),
                 overtime: row.get::<_, i32>(5)? != 0,
             })
@@ -3152,27 +3393,41 @@ pub fn get_mmr_history_points(
     Ok(points)
 }
 
-/// Distinct playlists that have persisted MMR readings for a player.
-pub fn get_mmr_history_playlists(pool: &DbPool, primary_id: &str) -> AppResult<Vec<String>> {
+/// Distinct MMR ladders (canonical `match_type:playlist` keys) that have
+/// persisted readings for a player.
+pub fn get_mmr_history_playlists(pool: &DbPool, primary_ids: &[String]) -> AppResult<Vec<String>> {
     let conn = get_conn(pool)?;
-    let mut stmt = conn.prepare(
-        "SELECT DISTINCT m.playlist
+    let id_placeholders = vec!["?"; primary_ids.len().max(1)].join(", ");
+    let sql = format!(
+        "SELECT DISTINCT COALESCE(m.match_type, ''), COALESCE(m.playlist, '')
          FROM match_players mp
          JOIN players p ON p.id = mp.player_id
          JOIN matches m ON m.id = mp.match_id
-         WHERE p.primary_id = ?1
+         WHERE p.primary_id IN ({id_placeholders})
            AND mp.mmr IS NOT NULL
-           AND m.playlist IS NOT NULL
-           AND m.playlist != ''
-         ORDER BY m.playlist ASC",
-    )?;
+           AND m.status != 'cancelled'
+         ORDER BY 1 ASC, 2 ASC",
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    for pid in primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
+    let arg_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
     let rows = stmt
-        .query_map(params![primary_id], |row| row.get::<_, String>(0))
+        .query_map(&*arg_refs, |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(|e| AppError::StorageError(e.to_string()))?;
     let mut playlists = Vec::new();
     for row in rows {
-        playlists.push(row.map_err(|e| AppError::StorageError(e.to_string()))?);
+        let (mt, pl) = row.map_err(|e| AppError::StorageError(e.to_string()))?;
+        playlists.push(mmr_series_key(&mt, &pl));
     }
+    playlists.dedup();
     Ok(playlists)
 }
 
@@ -3370,7 +3625,7 @@ pub struct PlayerTeammateEntry {
 #[allow(clippy::too_many_arguments)]
 pub fn get_player_directory(
     pool: &DbPool,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
     search: Option<&str>,
     relationship: Option<&str>, // "teammate", "opponent", or None for all
@@ -3380,21 +3635,15 @@ pub fn get_player_directory(
 ) -> AppResult<Vec<PlayerDirectoryEntry>> {
     let conn = get_conn(pool)?;
 
-    let local_id = if let Some(pid) = local_primary_id {
-        get_player_id_by_primary_id(&conn, pid)?
-    } else if !player_names.is_empty() {
-        get_player_id_by_name(&conn, &player_names[0])?
-    } else {
-        None
-    };
-
-    let Some(local_id) = local_id else {
+    let local_ids = get_local_player_row_ids(&conn, local_primary_ids, player_names)?;
+    if local_ids.is_empty() {
         return Ok(Vec::new());
-    };
+    }
 
+    let local_ph = vec!["?"; local_ids.len()].join(", ");
     let has_search = search.is_some();
     let search_filter = if has_search {
-        "AND (LOWER(p.name) LIKE '%' || LOWER(?2) || '%' OR LOWER(p.primary_id) LIKE '%' || LOWER(?3) || '%')".to_string()
+        "AND (LOWER(p.name) LIKE '%' || LOWER(?) || '%' OR LOWER(p.primary_id) LIKE '%' || LOWER(?) || '%')".to_string()
     } else {
         String::new()
     };
@@ -3413,9 +3662,6 @@ pub fn get_player_directory(
         "wins_against" => "wins_against DESC",
         _ => "total_matches DESC",
     };
-
-    let limit_param = if has_search { "?4" } else { "?2" };
-    let offset_param = if has_search { "?5" } else { "?3" };
 
     let sql = format!(
         r#"SELECT
@@ -3438,24 +3684,30 @@ pub fn get_player_directory(
         JOIN match_players mp_other ON p.id = mp_other.player_id
         JOIN matches m ON mp_other.match_id = m.id
         JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id != p.id
-        WHERE mp_local.player_id = ?1
-          AND p.id != ?1
+        WHERE mp_local.player_id IN ({local_ph})
+          AND p.id NOT IN ({local_ph})
           AND LOWER(COALESCE(m.match_type, '')) != 'training'
+          AND m.status != 'cancelled'
           {search_filter}
           {rel_join}
         GROUP BY p.id
         ORDER BY {order}
-        LIMIT {limit_param} OFFSET {offset_param}"#,
+        LIMIT ? OFFSET ?"#,
+        local_ph = local_ph,
         search_filter = search_filter,
         rel_join = rel_join,
         order = order,
-        limit_param = limit_param,
-        offset_param = offset_param,
     );
 
     let mut stmt = conn.prepare(&sql)?;
 
-    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(local_id)];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    for id in &local_ids {
+        params.push(Box::new(*id));
+    }
+    for id in &local_ids {
+        params.push(Box::new(*id));
+    }
     if let Some(s) = search {
         params.push(Box::new(s.to_string()));
         params.push(Box::new(s.to_string()));
@@ -3495,24 +3747,18 @@ pub fn get_player_directory(
 pub fn get_player_detail(
     pool: &DbPool,
     target_player_id: i64,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
 ) -> AppResult<Option<PlayerDetailRecord>> {
     let conn = get_conn(pool)?;
 
-    let local_id = if let Some(pid) = local_primary_id {
-        get_player_id_by_primary_id(&conn, pid)?
-    } else if !player_names.is_empty() {
-        get_player_id_by_name(&conn, &player_names[0])?
-    } else {
-        None
-    };
-
-    let Some(local_id) = local_id else {
+    let local_ids = get_local_player_row_ids(&conn, local_primary_ids, player_names)?;
+    if local_ids.is_empty() {
         return Ok(None);
-    };
+    }
 
-    let summary = conn.query_row(
+    let local_ph = vec!["?"; local_ids.len()].join(", ");
+    let sql = format!(
         r#"SELECT
             p.id, p.primary_id, p.name,
             COUNT(DISTINCT m.id) AS total_matches,
@@ -3536,11 +3782,20 @@ pub fn get_player_detail(
         JOIN match_players mp_other ON p.id = mp_other.player_id
         JOIN matches m ON mp_other.match_id = m.id
         JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id != p.id
-        WHERE p.id = ?1 AND mp_local.player_id = ?2
+        WHERE p.id = ? AND mp_local.player_id IN ({local_ph})
           AND LOWER(COALESCE(m.match_type, '')) != 'training'
+          AND m.status != 'cancelled'
         GROUP BY p.id"#,
-        params![target_player_id, local_id],
-        |row| {
+        local_ph = local_ph,
+    );
+
+    let mut summary_args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(target_player_id)];
+    for id in &local_ids {
+        summary_args.push(Box::new(*id));
+    }
+    let summary_refs: Vec<&dyn rusqlite::ToSql> = summary_args.iter().map(|a| a.as_ref()).collect();
+    let summary = conn
+        .query_row(&sql, &*summary_refs, |row| {
             Ok(PlayerDetailRecord {
                 player_id: row.get(0)?,
                 primary_id: row.get(1)?,
@@ -3564,27 +3819,36 @@ pub fn get_player_detail(
                 total_shots_against: row.get(19)?,
                 recent_matches: Vec::new(),
             })
-        },
-    ).optional().map_err(|e| AppError::StorageError(e.to_string()))?;
+        })
+        .optional()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
 
     let Some(mut summary) = summary else {
         return Ok(None);
     };
 
-    let mut stmt = conn.prepare(
+    let recent_sql = format!(
         r#"SELECT
             m.id, m.guid, m.start_time, m.arena, m.playlist,
             CASE WHEN mp_other.team_num = mp_local.team_num THEN 'teammate' ELSE 'opponent' END AS relationship,
             mp_other.goals, mp_other.assists, mp_other.saves, mp_other.shots, mp_other.score, mp_other.demos
         FROM matches m
-        JOIN match_players mp_other ON m.id = mp_other.match_id AND mp_other.player_id = ?1
-        JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id = ?2
+        JOIN match_players mp_other ON m.id = mp_other.match_id AND mp_other.player_id = ?
+        JOIN match_players mp_local ON m.id = mp_local.match_id AND mp_local.player_id IN ({local_ph})
         WHERE LOWER(COALESCE(m.match_type, '')) != 'training'
+          AND m.status != 'cancelled'
         ORDER BY m.start_time DESC
         LIMIT 50"#,
-    )?;
+        local_ph = local_ph,
+    );
+    let mut stmt = conn.prepare(&recent_sql)?;
 
-    let iter = stmt.query_map(params![target_player_id, local_id], |row| {
+    let mut recent_args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(target_player_id)];
+    for id in &local_ids {
+        recent_args.push(Box::new(*id));
+    }
+    let recent_refs: Vec<&dyn rusqlite::ToSql> = recent_args.iter().map(|a| a.as_ref()).collect();
+    let iter = stmt.query_map(&*recent_refs, |row| {
         Ok(PlayerMatchEntry {
             match_id: row.get(0)?,
             match_guid: row.get(1)?,
@@ -3633,6 +3897,33 @@ fn get_player_id_by_name(conn: &rusqlite::Connection, name: &str) -> AppResult<O
     .map_err(|e| AppError::StorageError(e.to_string()))
 }
 
+/// Resolves the local player's `players` row ids for every configured
+/// platform id (canonical + linked). Falls back to the configured player
+/// names when no platform id produced a row.
+fn get_local_player_row_ids(
+    conn: &rusqlite::Connection,
+    local_primary_ids: &[String],
+    player_names: &[String],
+) -> AppResult<Vec<i64>> {
+    let mut ids: Vec<i64> = Vec::new();
+    for pid in local_primary_ids {
+        if let Some(id) = get_player_id_by_primary_id(conn, pid)? {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    if ids.is_empty() {
+        for name in player_names {
+            if let Some(id) = get_player_id_by_name(conn, name)? {
+                ids.push(id);
+                break;
+            }
+        }
+    }
+    Ok(ids)
+}
+
 /// Summary of individual player stats for a date range.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3654,11 +3945,13 @@ pub struct IndividualAnalyticsSummary {
     pub total_kickoff_conceded: i32,
 }
 
-/// Compute analytics summary for a specific player identity across a date range.
-/// Aggregates individual stats from match_players joined with matches.
+/// Compute analytics summary for a set of player identities across a date
+/// range. A single-element slice covers the classic one-account case; the
+/// local player passes its canonical id plus every linked platform id so
+/// matches played on another launcher still count as "me".
 pub fn get_analytics_summary_for_identity(
     pool: &DbPool,
-    local_primary_id: &str,
+    identity_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -3666,8 +3959,13 @@ pub fn get_analytics_summary_for_identity(
 ) -> AppResult<IndividualAnalyticsSummary> {
     let conn = get_conn(pool)?;
 
-    let mut sql = String::from(
-        "SELECT m.winner, mp.team_num, m.score_blue, m.score_orange, m.duration_seconds,
+    if identity_ids.is_empty() {
+        return Ok(IndividualAnalyticsSummary::default());
+    }
+
+    let id_placeholders = vec!["?"; identity_ids.len()].join(", ");
+    let mut sql = format!(
+        "SELECT m.id, p.primary_id, m.winner, mp.team_num, m.score_blue, m.score_orange, m.duration_seconds,
                 mp.goals, mp.shots, mp.saves, mp.assists, mp.demos, mp.score, mp.speed, mp.boost,
                 mp.kickoff_goals,
                 (SELECT COALESCE(SUM(mp2.kickoff_goals), 0)
@@ -3676,14 +3974,18 @@ pub fn get_analytics_summary_for_identity(
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
-         WHERE p.primary_id = ?1
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+         WHERE p.primary_id IN ({id_placeholders})
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
+    let (day_start, day_end) = local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(local_primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    for pid in identity_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -3698,47 +4000,72 @@ pub fn get_analytics_summary_for_identity(
 
     let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(&*params_refs, |row| {
+    let raw = stmt.query_map(&*params_refs, |row| {
         Ok((
-            row.get::<_, Option<i32>>(0)?,
-            row.get::<_, i32>(1)?,
-            row.get::<_, i32>(2)?,
-            row.get::<_, i32>(3)?,
-            row.get::<_, i32>(4)?,
-            row.get::<_, i32>(5)?,
-            row.get::<_, i32>(6)?,
-            row.get::<_, i32>(7)?,
-            row.get::<_, i32>(8)?,
-            row.get::<_, i32>(9)?,
-            row.get::<_, i32>(10)?,
-            row.get::<_, f64>(11)?,
-            row.get::<_, i32>(12)?,
-            row.get::<_, i32>(13)?,
-            row.get::<_, i32>(14)?,
+            row.get::<_, i64>(0)?,
+            row.get::<_, String>(1)?,
+            (
+                row.get::<_, Option<i32>>(2)?,
+                row.get::<_, i32>(3)?,
+                row.get::<_, i32>(4)?,
+                row.get::<_, i32>(5)?,
+                row.get::<_, i32>(6)?,
+                row.get::<_, i32>(7)?,
+                row.get::<_, i32>(8)?,
+                row.get::<_, i32>(9)?,
+                row.get::<_, i32>(10)?,
+                row.get::<_, i32>(11)?,
+                row.get::<_, i32>(12)?,
+                row.get::<_, f64>(13)?,
+                row.get::<_, i32>(14)?,
+                row.get::<_, i32>(15)?,
+                row.get::<_, i32>(16)?,
+            ),
         ))
     })?;
+    type IndividualRow = (
+        Option<i32>,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        f64,
+        i32,
+        i32,
+        i32,
+    );
+    let raw: Vec<(i64, String, IndividualRow)> = raw
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::StorageError(e.to_string()))?;
+    // Several linked identities in one match (Steam+Epic) count it once.
+    let rows = dedup_local_rows(raw, identity_ids);
 
     let mut summary = IndividualAnalyticsSummary::default();
 
-    for row in rows {
-        let (
-            winner,
-            team_num,
-            score_blue,
-            score_orange,
-            duration,
-            goals,
-            shots,
-            saves,
-            assists,
-            demos,
-            score,
-            speed,
-            boost,
-            kickoff_goals,
-            opponent_kickoff_goals,
-        ) = row.map_err(|e| AppError::StorageError(e.to_string()))?;
-
+    for (
+        winner,
+        team_num,
+        score_blue,
+        score_orange,
+        duration,
+        goals,
+        shots,
+        saves,
+        assists,
+        demos,
+        score,
+        speed,
+        boost,
+        kickoff_goals,
+        opponent_kickoff_goals,
+    ) in rows
+    {
         summary.total_matches += 1;
         if winner == Some(team_num) {
             summary.wins += 1;
@@ -3785,7 +4112,7 @@ pub fn get_analytics_summary_for_identity(
 /// UI is showing. Wiring it up would not change a single number.
 pub fn get_insights(
     pool: &DbPool,
-    player_primary_id: &str,
+    identity_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -3794,22 +4121,31 @@ pub fn get_insights(
 ) -> AppResult<serde_json::Value> {
     let conn = get_conn(pool)?;
 
-    let mut sql = String::from(
-        "SELECT m.id, m.winner, mp.team_num, m.playlist, m.start_time,
+    let id_placeholders = vec!["?"; identity_ids.len().max(1)].join(", ");
+    let mut sql = format!(
+        "SELECT m.id, p.primary_id, m.winner, mp.team_num, m.playlist, m.start_time,
                 m.is_overtime, m.score_blue, m.score_orange,
                 mp.score, mp.goals, mp.assists, mp.saves, mp.shots, mp.demos,
                 m.arena
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
-         WHERE p.primary_id = ?1
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+         WHERE p.primary_id IN ({id_placeholders})
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
+    let (day_start, day_end) = local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(player_primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    for pid in identity_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if identity_ids.is_empty() {
+        // An unconfigured identity should match nothing, not error.
+        args.push(Box::new(String::new()));
+    }
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -3853,27 +4189,33 @@ pub fn get_insights(
         i32,
         Option<String>,
     );
-    let rows: Vec<MatchPlayerRow> = stmt
+    let raw: Vec<(i64, String, MatchPlayerRow)> = stmt
         .query_map(&*params_refs, |row| {
             Ok((
                 row.get(0)?,
                 row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
-                row.get(11)?,
-                row.get(12)?,
-                row.get(13)?,
-                row.get(14)?,
+                (
+                    row.get(0)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                    row.get(12)?,
+                    row.get(13)?,
+                    row.get(14)?,
+                    row.get(15)?,
+                ),
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    // Two linked identities in the same match must not double-count it.
+    let rows = dedup_local_rows(raw, identity_ids);
 
     if rows.is_empty() {
         return Ok(serde_json::json!({ "available": false, "totalMatches": 0 }));
@@ -4025,7 +4367,7 @@ pub fn get_insights(
         total_my_demos += demos;
     }
 
-    let mut team_sql = String::from(
+    let mut team_sql = format!(
         "SELECT COALESCE(SUM(mp.assists), 0), COALESCE(SUM(mp.saves), 0),
                 COALESCE(SUM(mp.shots), 0), COALESCE(SUM(mp.demos), 0)
          FROM match_players mp
@@ -4033,21 +4375,35 @@ pub fn get_insights(
          WHERE mp.match_id IN (
                  SELECT mp2.match_id FROM match_players mp2
                  JOIN players p2 ON p2.id = mp2.player_id
-                 WHERE p2.primary_id = ?1
+                 WHERE p2.primary_id IN ({id_placeholders})
              )
            AND mp.team_num = (
                  SELECT mp3.team_num FROM match_players mp3
                  JOIN players p3 ON p3.id = mp3.player_id
-                 WHERE mp3.match_id = m.id AND p3.primary_id = ?1
+                 WHERE mp3.match_id = m.id AND p3.primary_id IN ({id_placeholders})
                  LIMIT 1
              )
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
+    let (team_day_start, team_day_end) =
+        local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut team_args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    team_args.push(Box::new(player_primary_id.to_string()));
-    team_args.push(Box::new(start_date.to_string()));
-    team_args.push(Box::new(end_date.to_string()));
+    for pid in identity_ids {
+        team_args.push(Box::new(pid.clone()));
+    }
+    if identity_ids.is_empty() {
+        team_args.push(Box::new(String::new()));
+    }
+    for pid in identity_ids {
+        team_args.push(Box::new(pid.clone()));
+    }
+    if identity_ids.is_empty() {
+        team_args.push(Box::new(String::new()));
+    }
+    team_args.push(Box::new(team_day_start));
+    team_args.push(Box::new(team_day_end));
 
     if let Some(mt) = match_type {
         team_sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -4333,13 +4689,15 @@ pub fn get_player_analytics_matches(
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
          WHERE p.primary_id = ?1
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?2
+           AND m.start_time < ?3",
     );
+    let (day_start, day_end) = local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     args.push(Box::new(player_primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -4484,10 +4842,10 @@ pub fn get_player_analytics_matches(
 
 pub(crate) fn compute_head_to_head_conn(
     conn: &rusqlite::Connection,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
     opponent_ids: &[String],
 ) -> AppResult<HashMap<String, HeadToHeadRecord>> {
-    if opponent_ids.is_empty() {
+    if opponent_ids.is_empty() || local_primary_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
@@ -4497,6 +4855,12 @@ pub(crate) fn compute_head_to_head_conn(
         .map(|(i, _)| format!("?{}", i + 1))
         .collect();
     let in_clause = placeholders.join(",");
+    let local_placeholders: Vec<String> = local_primary_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", opponent_ids.len() + i + 1))
+        .collect();
+    let local_in_clause = local_placeholders.join(",");
 
     let sql = format!(
         "SELECT p_other.primary_id,
@@ -4510,18 +4874,21 @@ pub(crate) fn compute_head_to_head_conn(
          JOIN players p_other ON mp_other.player_id = p_other.id
          JOIN matches m ON mp_local.match_id = m.id
          WHERE p_other.primary_id IN ({in_clause})
-           AND p_local.primary_id = ?{n}
+           AND p_local.primary_id IN ({local_in_clause})
            AND LOWER(COALESCE(m.match_type, '')) != 'training'
+           AND m.status != 'cancelled'
          GROUP BY p_other.primary_id",
         in_clause = in_clause,
-        n = opponent_ids.len() + 1
+        local_in_clause = local_in_clause,
     );
 
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     for id in opponent_ids {
         params.push(Box::new(id.clone()));
     }
-    params.push(Box::new(local_primary_id.to_string()));
+    for id in local_primary_ids {
+        params.push(Box::new(id.clone()));
+    }
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|a| a.as_ref()).collect();
 
@@ -4553,10 +4920,10 @@ pub(crate) fn compute_head_to_head_conn(
 
 pub fn get_head_to_head_records(
     pool: &DbPool,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
     opponent_ids: &[String],
 ) -> AppResult<HashMap<String, HeadToHeadRecord>> {
-    if opponent_ids.is_empty() {
+    if opponent_ids.is_empty() || local_primary_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
@@ -4567,6 +4934,12 @@ pub fn get_head_to_head_records(
         .map(|(i, _)| format!("?{}", i + 1))
         .collect();
     let in_clause = placeholders.join(",");
+    let local_placeholders: Vec<String> = local_primary_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", opponent_ids.len() + i + 1))
+        .collect();
+    let local_in_clause = local_placeholders.join(",");
 
     let sql = format!(
         "SELECT p_other.primary_id,
@@ -4580,18 +4953,21 @@ pub fn get_head_to_head_records(
          JOIN players p_other ON mp_other.player_id = p_other.id
          JOIN matches m ON mp_local.match_id = m.id
          WHERE p_other.primary_id IN ({in_clause})
-           AND p_local.primary_id = ?{n}
+           AND p_local.primary_id IN ({local_in_clause})
            AND LOWER(COALESCE(m.match_type, '')) != 'training'
+           AND m.status != 'cancelled'
          GROUP BY p_other.primary_id",
         in_clause = in_clause,
-        n = opponent_ids.len() + 1
+        local_in_clause = local_in_clause,
     );
 
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
     for id in opponent_ids {
         params.push(Box::new(id.clone()));
     }
-    params.push(Box::new(local_primary_id.to_string()));
+    for id in local_primary_ids {
+        params.push(Box::new(id.clone()));
+    }
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|a| a.as_ref()).collect();
 
@@ -4829,22 +5205,25 @@ pub struct CareerRecords {
 /// Career records for the local player, computed in one pass over their rows.
 pub fn get_career_records(
     pool: &DbPool,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
     session_gap_minutes: u32,
 ) -> AppResult<CareerRecords> {
     let conn = get_conn(pool)?;
 
-    let mut stmt = conn.prepare(
-        "SELECT m.id, m.guid, m.start_time, m.duration_seconds, m.is_overtime, m.winner,
+    let id_placeholders = vec!["?"; local_primary_ids.len()].join(", ");
+    let sql = format!(
+        "SELECT m.id, p.primary_id, m.guid, m.start_time, m.duration_seconds, m.is_overtime, m.winner,
                 m.score_blue, m.score_orange, mp.team_num, mp.score, mp.goals, mp.assists,
                 mp.saves, mp.shots, mp.demos, mp.speed, mp.boost
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
-         WHERE p.primary_id = ?1
+         WHERE p.primary_id IN ({id_placeholders})
            AND LOWER(COALESCE(m.match_type, '')) != 'training'
+           AND m.status != 'cancelled'
          ORDER BY m.start_time ASC",
-    )?;
+    );
+    let mut stmt = conn.prepare(&sql)?;
 
     struct Row {
         id: i64,
@@ -4864,28 +5243,38 @@ pub fn get_career_records(
         boost: i32,
     }
 
-    let rows = stmt
-        .query_map(params![local_primary_id], |row| {
-            Ok(Row {
-                id: row.get(0)?,
-                guid: row.get(1)?,
-                start_time: row.get(2)?,
-                duration: row.get(3)?,
-                is_overtime: row.get(4)?,
-                winner: row.get(5)?,
-                team_num: row.get(8)?,
-                score: row.get(9)?,
-                goals: row.get(10)?,
-                assists: row.get(11)?,
-                saves: row.get(12)?,
-                shots: row.get(13)?,
-                demos: row.get(14)?,
-                speed: row.get(15)?,
-                boost: row.get(16)?,
-            })
+    let id_args: Vec<&dyn rusqlite::ToSql> = local_primary_ids
+        .iter()
+        .map(|pid| pid as &dyn rusqlite::ToSql)
+        .collect();
+    let raw: Vec<(i64, String, Row)> = stmt
+        .query_map(&*id_args, |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                Row {
+                    id: row.get(0)?,
+                    guid: row.get(2)?,
+                    start_time: row.get(3)?,
+                    duration: row.get(4)?,
+                    is_overtime: row.get(5)?,
+                    winner: row.get(6)?,
+                    team_num: row.get(9)?,
+                    score: row.get(10)?,
+                    goals: row.get(11)?,
+                    assists: row.get(12)?,
+                    saves: row.get(13)?,
+                    shots: row.get(14)?,
+                    demos: row.get(15)?,
+                    speed: row.get(16)?,
+                    boost: row.get(17)?,
+                },
+            ))
         })?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+    // A match with two linked identities (Steam+Epic) counts once.
+    let rows = dedup_local_rows(raw, local_primary_ids);
 
     let mut records = CareerRecords {
         total_matches: 0,
@@ -4986,7 +5375,7 @@ pub fn get_career_records(
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     if let Ok(streak) = crate::core::metrics::calculate_streaks(
         pool,
-        local_primary_id,
+        local_primary_ids,
         "1970-01-01",
         &today,
         None,
@@ -5150,6 +5539,12 @@ mod tests {
     fn match_mmr_enrichment_only_fills_nulls_and_enqueues_sync() {
         let pool = temp_pool("mmr-enrich");
         let conn = get_conn(&pool).unwrap();
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = '1'",
+            params![sync::SYNC_OUTBOX_ARMED_KEY],
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO matches (guid, start_time, score_blue, score_orange, winner, is_online, is_overtime, duration_seconds)
              VALUES ('g1', '2026-01-01T00:00:00+00:00', 1, 0, 0, 1, 0, 300)",
@@ -5329,7 +5724,7 @@ mod mood_roundtrip_tests {
                     date_from: None,
                     date_to: None,
                     search: None,
-                    local_primary_id: None,
+                    local_primary_ids: &[],
                     local_player_names: &[],
                 },
             )
@@ -5377,6 +5772,7 @@ mod mood_roundtrip_tests {
                     match_type: Some("ranked"),
                     playlist: Some("Doubles"),
                     mood: None,
+                    status: None,
                 },
             )
             .unwrap();
@@ -5394,6 +5790,7 @@ mod mood_roundtrip_tests {
             .unwrap();
         }
 
+        let local_ids = vec!["local-1".to_string()];
         let query = |result: Option<&'static str>, limit: i64, offset: i64| MatchQuery {
             limit,
             offset,
@@ -5404,7 +5801,7 @@ mod mood_roundtrip_tests {
             date_from: None,
             date_to: None,
             search: None,
-            local_primary_id: Some("local-1"),
+            local_primary_ids: &local_ids,
             local_player_names: &[],
         };
 
@@ -5508,6 +5905,7 @@ mod mood_roundtrip_tests {
                     winner: None,
                     is_overtime: false,
                     duration_seconds: 600,
+                    status: "completed",
                 },
             )
             .unwrap();
@@ -5568,6 +5966,7 @@ mod mood_roundtrip_tests {
                     winner: None,
                     is_overtime: false,
                     duration_seconds: 600,
+                    status: "completed",
                 },
             )
             .unwrap();
@@ -5592,6 +5991,7 @@ mod mood_roundtrip_tests {
                     winner: Some(0),
                     is_overtime: false,
                     duration_seconds: 300,
+                    status: "completed",
                 },
             )
             .unwrap();
@@ -5652,7 +6052,7 @@ mod mood_roundtrip_tests {
             &pool,
             &today,
             &today,
-            Some("Steam|local"),
+            &["Steam|local".to_string()],
             &[],
             None,
             None,
@@ -5665,9 +6065,15 @@ mod mood_roundtrip_tests {
         assert_eq!(total_wins, 1);
 
         // Per-identity summary: one match, one win, no phantom games.
-        let summary =
-            get_analytics_summary_for_identity(&pool, "Steam|local", &today, &today, None, None)
-                .unwrap();
+        let summary = get_analytics_summary_for_identity(
+            &pool,
+            &["Steam|local".to_string()],
+            &today,
+            &today,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(summary.total_matches, 1);
         assert_eq!(summary.wins, 1);
         assert_eq!(summary.losses, 0);
@@ -5707,6 +6113,7 @@ mod mood_roundtrip_tests {
                         winner: None,
                         is_overtime: false,
                         duration_seconds: duration,
+                        status: "completed",
                     },
                 )
                 .unwrap();
@@ -5777,6 +6184,12 @@ mod mood_roundtrip_tests {
                     winner,
                     is_overtime: false,
                     duration_seconds: 300,
+                    status: crate::core::models::derive_match_status(
+                        winner,
+                        score_blue,
+                        score_orange,
+                        300,
+                    ),
                 },
             )
             .unwrap();

@@ -5,10 +5,12 @@ use crate::core::profiles::{
 };
 use crate::core::settings::{set_settings, AppSettings};
 use crate::core::storage::init_storage;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
+use crate::AppState;
 use rusqlite::{params, OpenFlags};
 use serde::Serialize;
 use tauri::Manager;
+use tauri::State;
 use tracing::info;
 
 fn app_data_dir(app_handle: &tauri::AppHandle) -> AppResult<std::path::PathBuf> {
@@ -89,7 +91,8 @@ pub async fn get_profile_comparison_cmd(
         row.matches = conn
             .query_row(
                 "SELECT COUNT(*) FROM matches
-                 WHERE LOWER(COALESCE(match_type, '')) != 'training'",
+                 WHERE LOWER(COALESCE(match_type, '')) != 'training'
+                   AND status != 'cancelled'",
                 [],
                 |r| r.get(0),
             )
@@ -209,4 +212,47 @@ pub async fn update_profile_player_identity_cmd(
 ) -> AppResult<()> {
     let app_dir = app_data_dir(&app_handle)?;
     update_profile_player_identity(&app_dir, &profile_id, &primary_id, &player_name)
+}
+
+/// Links an additional platform id (e.g. the Epic id of an account that also
+/// runs on Steam) to the active profile. From then on match detection and
+/// analytics treat every linked id as the same local player, so history is
+/// never split per platform.
+#[tauri::command]
+pub async fn link_player_identity_cmd(
+    state: State<'_, AppState>,
+    primary_id: String,
+    player_name: Option<String>,
+) -> AppResult<()> {
+    let primary_id = primary_id.trim().to_string();
+    if primary_id.is_empty() {
+        return Err(AppError::ConfigError("primary_id is empty".into()));
+    }
+    let pool = state.db_pool.clone();
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+        let mut settings = crate::core::settings::get_settings(&pool)?;
+        if !settings.link_player_id(&primary_id) {
+            return Ok(());
+        }
+        if settings.player_name.trim().is_empty() {
+            if let Some(name) = player_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+            {
+                settings.player_name = name.to_string();
+            }
+        }
+        set_settings(&pool, &settings)?;
+        let names = crate::core::storage::identity_candidate_names(&settings);
+        crate::core::storage::rebuild_daily_rollups_for_identity(
+            &pool,
+            &settings.local_identity_ids(),
+            &names,
+        )?;
+        info!(primary_id = %primary_id, "Linked platform identity to active profile");
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::ConfigError(format!("task join error: {e}")))?
 }

@@ -481,6 +481,27 @@ pub static MIGRATIONS: &[Migration] = &[
         );
         CREATE INDEX IF NOT EXISTS idx_team_roster_team ON team_roster(team_id);",
     },
+    Migration {
+        version: 31,
+        name: "add_match_status_and_backfill",
+        // Matches that never produced a result (lobby cancelled before
+        // kickoff, game abandoned early) used to surface as "draws" and still
+        // counted as played matches in analytics. `status` separates the real
+        // outcomes: a backfilled 'draw' requires a tied scoreboard after at
+        // least ~regulation wall time; every other winnerless match is
+        // 'cancelled' and excluded from aggregates. The thresholds mirror
+        // `derive_match_status` / `DRAW_MIN_DURATION_SECONDS`.
+        sql: "ALTER TABLE matches ADD COLUMN status TEXT NOT NULL DEFAULT 'completed';
+             UPDATE matches SET status = 'draw'
+               WHERE winner IS NULL
+                 AND LOWER(COALESCE(match_type, '')) != 'training'
+                 AND score_blue = score_orange
+                 AND duration_seconds >= 280;
+             UPDATE matches SET status = 'cancelled'
+               WHERE winner IS NULL
+                 AND LOWER(COALESCE(match_type, '')) != 'training'
+                 AND status = 'completed';",
+    },
 ];
 
 /// Run all pending migrations against the given connection.

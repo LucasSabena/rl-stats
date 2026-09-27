@@ -912,7 +912,7 @@ async fn v1_matches_handler(
                 date_from: None,
                 date_to: None,
                 search: search.as_deref(),
-                local_primary_id: settings.local_primary_id.as_deref(),
+                local_primary_ids: &settings.local_identity_ids(),
                 local_player_names: &names,
             },
         )
@@ -958,8 +958,8 @@ async fn v1_stats_handler(
     let task =
         tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
             let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
-            let identity = settings.local_primary_id.clone().unwrap_or_default();
-            if identity.trim().is_empty() {
+            let identity = settings.local_identity_ids();
+            if identity.is_empty() {
                 return Ok(serde_json::json!({ "available": false }));
             }
             if days == 0 {
@@ -1235,8 +1235,8 @@ async fn v2_session_handler(
     let task =
         tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
             let settings = crate::core::settings::get_settings(&pool).unwrap_or_default();
-            let identity = settings.local_primary_id.clone().unwrap_or_default();
-            if identity.trim().is_empty() {
+            let identity = settings.local_identity_ids();
+            if identity.is_empty() {
                 return Ok(serde_json::json!({ "available": false }));
             }
             let end = chrono::Local::now().format("%Y-%m-%d").to_string();

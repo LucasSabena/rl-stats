@@ -10,6 +10,7 @@ import { useTeammateStats } from "@/hooks/useAnalytics";
 import type {
   AnalyticsPeriod,
   DataScope,
+  DateRange,
   MatchTypeFilter,
   PlaylistFilter,
   ShareContext,
@@ -25,6 +26,7 @@ interface ChemistryPanelProps {
   username: string;
   friendsPresent: string[];
   dateLabel: string;
+  dateRange?: DateRange;
 }
 
 export const ChemistryPanel = memo(function ChemistryPanel({
@@ -36,13 +38,14 @@ export const ChemistryPanel = memo(function ChemistryPanel({
   username,
   friendsPresent,
   dateLabel,
+  dateRange,
 }: ChemistryPanelProps) {
   const { t } = useTranslation(["analytics", "common"]);
   const [shareOpen, setShareOpen] = useState(false);
 
   const filters = useMemo(
-    () => ({ playlist, matchType, scope, playerId }),
-    [playlist, matchType, scope, playerId],
+    () => ({ playlist, matchType, scope, playerId, dateRange }),
+    [playlist, matchType, scope, playerId, dateRange],
   );
   const { data, isLoading, isError, refetch } = useTeammateStats(period, filters);
   const minSample = data?.minSample ?? 3;

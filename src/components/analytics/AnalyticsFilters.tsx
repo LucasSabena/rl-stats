@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { AnalyticsPeriod, PlaylistFilter, MatchTypeFilter, DataScope } from "@/lib/types";
 import { PeriodTabs } from "./PeriodTabs";
 import { Select } from "@/components/ui/Select";
+import { RL_SEASONS } from "@/lib/seasons";
 
 interface AnalyticsFiltersProps {
   period: AnalyticsPeriod;
@@ -15,6 +16,8 @@ interface AnalyticsFiltersProps {
   playerId: string | null;
   onPlayerChange: (playerId: string | null) => void;
   playerOptions: { primary_id: string; name: string }[];
+  season: number | null;
+  onSeasonChange: (season: number | null) => void;
   isLoading?: boolean;
 }
 
@@ -52,9 +55,19 @@ export function AnalyticsFilters({
   playerId,
   onPlayerChange,
   playerOptions,
+  season,
+  onSeasonChange,
   isLoading,
 }: AnalyticsFiltersProps) {
   const { t } = useTranslation(["analytics", "common"]);
+
+  const seasonOptions = [
+    { value: "", label: t("analytics:filters.season.all") },
+    ...[...RL_SEASONS].reverse().map((s) => ({
+      value: String(s.number),
+      label: `${t("analytics:filters.season.label")} ${s.number}`,
+    })),
+  ];
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -110,6 +123,17 @@ export function AnalyticsFilters({
           onChange={(val) => onMatchTypeChange(val as MatchTypeFilter)}
           options={matchTypeKeys.map(opt => ({ value: opt.value, label: t(opt.key) }))}
           aria-label={t("analytics:filters.matchTypes.all")}
+          disabled={isLoading}
+          className="w-full"
+        />
+      </div>
+
+      <div className="relative w-full sm:w-auto min-w-[140px]">
+        <Select
+          value={season === null ? "" : String(season)}
+          onChange={(val) => onSeasonChange(val === "" ? null : Number(val))}
+          options={seasonOptions}
+          aria-label={t("analytics:filters.season.all")}
           disabled={isLoading}
           className="w-full"
         />

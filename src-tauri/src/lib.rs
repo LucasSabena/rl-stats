@@ -165,6 +165,7 @@ pub fn run() {
             commands::mmr::fetch_live_mmr_snapshot,
             commands::mmr::set_session_mmr_snapshot,
             commands::mmr::set_local_mmr,
+            commands::mmr::get_local_mmr,
             commands::mmr::get_mmr_provider_health,
             commands::mmr::test_mmr_provider,
             commands::mmr::get_mmr_history,
@@ -312,6 +313,7 @@ pub fn run() {
             commands::profiles::rename_profile_cmd,
             commands::profiles::find_matching_profile_cmd,
             commands::profiles::update_profile_player_identity_cmd,
+            commands::profiles::link_player_identity_cmd,
             commands::profiles::get_profile_comparison_cmd,
             commands::friends::add_friend_cmd,
             commands::friends::remove_friend_cmd,
@@ -523,6 +525,17 @@ pub fn run() {
                         }
                     }
 
+                    // Match rows created but never finished (app closed or the
+                    // stream dropped mid-game) stay 'completed' shells with no
+                    // winner forever and used to count as played matches. Mark
+                    // stale ones cancelled; runs every startup since new stale
+                    // rows can appear after any unclean exit.
+                    if let Err(error) =
+                        crate::core::storage::cancel_stale_unfinished_matches(&pool)
+                    {
+                        tracing::warn!(error = %error, "Stale match cleanup failed");
+                    }
+
                     // Free Play with a party used to be persisted as a real
                     // match: every player sat on one team, 0–0, with no winner.
                     // Reclassify those legacy rows before the rollup rebuild so
@@ -550,7 +563,7 @@ pub fn run() {
                         if let Err(error) =
                             crate::core::storage::rebuild_daily_rollups_for_identity(
                                 &pool,
-                                settings.local_primary_id.as_deref(),
+                                &settings.local_identity_ids(),
                                 &names,
                             )
                         {
@@ -1207,13 +1220,12 @@ async fn persist_finished_session(
 
             if let Some(winner) = summary.winner {
                 let settings = get_settings(db_pool).unwrap_or_default();
-                let local_team = settings.local_primary_id.as_ref().and_then(|pid| {
-                    summary
-                        .players
-                        .iter()
-                        .find(|p| &p.primary_id == pid)
-                        .map(|p| p.team_num)
-                });
+                let identity_ids = settings.local_identity_ids();
+                let local_team = summary
+                    .players
+                    .iter()
+                    .find(|p| identity_ids.iter().any(|id| id == &p.primary_id))
+                    .map(|p| p.team_num);
                 let is_win = local_team == Some(winner);
                 if is_win {
                     tally.wins += 1;
@@ -1249,8 +1261,12 @@ async fn persist_finished_session(
             // When the focus prompt is enabled, show the generic
             // prompt window on top of the game instead: the
             // desktop modal stands down (see `promptShown`).
+            let is_cancelled = summary.status == crate::core::models::MATCH_STATUS_CANCELLED;
             let prompt_settings = get_settings(db_pool).unwrap_or_default();
+            // A cancelled lobby never produced a match — asking for a mood is
+            // noise, so the prompt only fires for real finishes.
             let prompt_shown = !is_training
+                && !is_cancelled
                 && prompt_settings.prompt_focus_enabled
                 && (!prompt_settings.prompt_only_when_game_running || prompt_settings.game_running)
                 && crate::commands::prompt_window::show_prompt_window(
@@ -1271,6 +1287,7 @@ async fn persist_finished_session(
                     "winner": summary.winner,
                     "scoreBlue": summary.score_blue,
                     "scoreOrange": summary.score_orange,
+                    "status": summary.status,
                     "promptShown": prompt_shown,
                 }),
             );
@@ -1291,7 +1308,18 @@ async fn persist_finished_session(
                             .map(|profile| profile.id != active_profile.id)
                             .unwrap_or(false);
 
-                        if !belongs_to_other_profile {
+                        // Only write the detected id back when it already IS
+                        // the profile's canonical identity (including the id
+                        // persist_match just learned on a fresh profile). A
+                        // different platform id — Steam vs Epic for the same
+                        // Rocket League account — must never overwrite the
+                        // stored primary id or prior match history stops
+                        // resolving to the local player.
+                        let settings = get_settings(db_pool).unwrap_or_default();
+                        let is_canonical =
+                            settings.local_primary_id.as_deref() == Some(pid.as_str());
+
+                        if !belongs_to_other_profile && is_canonical {
                             let _ = update_profile_player_identity(
                                 &app_dir,
                                 &active_profile.id,
@@ -1485,11 +1513,9 @@ async fn process_events(
                     resolve_local_player_identity(session.players().values(), &settings);
 
                 if let Some((detected_pid, _detected_team)) = &local_identity {
-                    let current_profile_pid = settings.local_primary_id.as_deref();
-                    let is_mismatch = match current_profile_pid {
-                        Some(current_pid) => current_pid != detected_pid.as_str(),
-                        None => true,
-                    };
+                    // A detected platform id that belongs to the linked
+                    // identity set is the same local player, not a mismatch.
+                    let is_mismatch = !settings.is_local_id(detected_pid);
 
                     if is_mismatch && settings.warn_on_profile_mismatch {
                         let detected_player_name = session
@@ -1839,7 +1865,7 @@ fn spawn_match_mmr_enrichment(
             settings.parsebot_scraper_id.clone(),
             settings.parsebot_endpoint.clone(),
             settings.parsebot_enabled,
-            settings.local_primary_id.clone(),
+            settings.local_identity_ids(),
             true,
             playlist,
             settings.mmr_scraper_enabled.then_some(scraper).flatten(),

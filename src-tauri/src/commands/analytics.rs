@@ -23,12 +23,12 @@ pub(crate) fn local_window(days: i64) -> (String, String) {
 }
 
 fn is_local_identity(
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
     primary_id: &str,
     name: &str,
 ) -> bool {
-    if local_primary_id == Some(primary_id) {
+    if local_primary_ids.iter().any(|id| id == primary_id) {
         return true;
     }
 
@@ -43,7 +43,7 @@ fn get_session_scope_stats(
     pool: &crate::core::storage::DbPool,
     start_time: &str,
     end_time: &str,
-    local_primary_id: Option<&str>,
+    local_primary_ids: &[String],
     player_names: &[String],
     playlist: Option<&str>,
     match_type: Option<&str>,
@@ -51,8 +51,9 @@ fn get_session_scope_stats(
 ) -> Result<(f64, f64), String> {
     let conn = get_conn(pool).map_err(|e| e.to_string())?;
 
-    let mut sql =
-        String::from("SELECT id FROM matches WHERE start_time >= ?1 AND start_time <= ?2");
+    let mut sql = String::from(
+        "SELECT id FROM matches WHERE start_time >= ?1 AND start_time <= ?2 AND status != 'cancelled'",
+    );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(start_time.to_string()),
         Box::new(end_time.to_string()),
@@ -82,7 +83,7 @@ fn get_session_scope_stats(
     }
 
     let local_stats_by_match =
-        storage::get_local_match_stats(pool, &match_ids, local_primary_id, player_names)
+        storage::get_local_match_stats(pool, &match_ids, local_primary_ids, player_names)
             .map_err(|e| e.to_string())?;
 
     let mut total_score = 0i32;
@@ -131,7 +132,7 @@ fn get_session_scope_stats(
         };
 
         let include = if scope == "me" {
-            is_local_identity(local_primary_id, player_names, &primary_id, &name)
+            is_local_identity(local_primary_ids, player_names, &primary_id, &name)
         } else {
             local_stats.local_team_num == Some(team_num)
         };
@@ -153,6 +154,80 @@ fn get_session_scope_stats(
 #[derive(Deserialize)]
 pub struct AnalyticsPeriod {
     pub days: i32,
+    /// Explicit `YYYY-MM-DD` bounds (season filters). Serde keeps snake_case
+    /// inside nested structs, so the frontend sends `start_date`/`end_date`.
+    #[serde(default)]
+    pub start_date: Option<String>,
+    #[serde(default)]
+    pub end_date: Option<String>,
+}
+
+impl AnalyticsPeriod {
+    /// Whether the request carries an explicit (season) date range. Sent as a
+    /// pair; a single-sided range is treated as absent.
+    pub fn has_explicit_range(&self) -> bool {
+        self.start_date.is_some() && self.end_date.is_some()
+    }
+
+    /// Resolves the query window in local `YYYY-MM-DD` dates. An explicit
+    /// range (e.g. a season) wins over the relative-days window; malformed or
+    /// half-specified ranges fall back to `days` (0 = a year of history, the
+    /// existing "session"/"all" convention).
+    pub fn window(&self) -> (String, String) {
+        if let (Some(start), Some(end)) = (&self.start_date, &self.end_date) {
+            if let (Ok(start), Ok(end)) = (
+                chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d"),
+                chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d"),
+            ) {
+                let (start, end) = if start <= end {
+                    (start, end)
+                } else {
+                    (end, start)
+                };
+                return (
+                    start.format("%Y-%m-%d").to_string(),
+                    end.format("%Y-%m-%d").to_string(),
+                );
+            }
+        }
+        local_window(if self.days == 0 {
+            365
+        } else {
+            self.days as i64
+        })
+    }
+
+    /// The window immediately before the current one, used by
+    /// period-over-period comparisons. Explicit ranges compare against a span
+    /// of equal duration ending the day before; relative `days` keeps the
+    /// historical `local_window_ago(days*2, days+1)` convention.
+    fn previous_window(&self) -> (String, String) {
+        if let (Some(start), Some(end)) = (&self.start_date, &self.end_date) {
+            if let (Ok(start), Ok(end)) = (
+                chrono::NaiveDate::parse_from_str(start, "%Y-%m-%d"),
+                chrono::NaiveDate::parse_from_str(end, "%Y-%m-%d"),
+            ) {
+                let (start, end) = if start <= end {
+                    (start, end)
+                } else {
+                    (end, start)
+                };
+                let len = (end - start).num_days().max(0) + 1;
+                let prev_end = start - chrono::Duration::days(1);
+                let prev_start = prev_end - chrono::Duration::days(len - 1);
+                return (
+                    prev_start.format("%Y-%m-%d").to_string(),
+                    prev_end.format("%Y-%m-%d").to_string(),
+                );
+            }
+        }
+        let days = if self.days == 0 {
+            365
+        } else {
+            i64::from(self.days)
+        };
+        local_window_ago(days * 2, days + 1)
+    }
 }
 
 #[derive(Deserialize)]
@@ -174,16 +249,11 @@ pub async fn get_player_analytics_summary(
 ) -> Result<serde_json::Value, String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let days = if period.days == 0 {
-            365
-        } else {
-            period.days as i64
-        };
-        let (start_str, end_str) = local_window(days);
+        let (start_str, end_str) = period.window();
 
         let summary = storage::get_analytics_summary_for_identity(
             &pool,
-            &player_id,
+            std::slice::from_ref(&player_id),
             &start_str,
             &end_str,
             playlist.as_deref(),
@@ -193,7 +263,7 @@ pub async fn get_player_analytics_summary(
 
         let streak = metrics::calculate_streaks(
             &pool,
-            &player_id,
+            std::slice::from_ref(&player_id),
             &start_str,
             &end_str,
             playlist.as_deref(),
@@ -271,25 +341,19 @@ pub async fn get_analytics_comparison(
     tauri::async_runtime::spawn_blocking(move || {
         let settings = get_settings(&pool).unwrap_or_default();
         let identity = match player_id {
-            Some(pid) if !pid.trim().is_empty() => pid,
-            _ => settings.local_primary_id.clone().unwrap_or_default(),
+            Some(pid) if !pid.trim().is_empty() => vec![pid],
+            _ => settings.local_identity_ids(),
         };
-        if identity.trim().is_empty() {
+        if identity.is_empty() {
             return Ok(serde_json::json!({ "available": false }));
         }
 
-        let days = if period.days == 0 {
-            365
-        } else {
-            i64::from(period.days)
-        }
-        .max(1);
-        let (cur_start, cur_end) = local_window(days);
+        let (cur_start, cur_end) = period.window();
         // Previous window ends the day before the current one starts, so the two
         // windows never double-count a day.
-        let (prev_start, prev_end) = local_window_ago(days * 2, days + 1);
+        let (prev_start, prev_end) = period.previous_window();
 
-        let summarize = |who: &str, start: &str, end: &str| {
+        let summarize = |who: &[String], start: &str, end: &str| {
             storage::get_analytics_summary_for_identity(
                 &pool,
                 who,
@@ -312,7 +376,8 @@ pub async fn get_analytics_comparison(
                     _ => return Ok(serde_json::json!({ "available": false })),
                 };
                 let a = summarize(&identity, &cur_start, &cur_end).map_err(|e| e.to_string())?;
-                let b = summarize(&rival, &cur_start, &cur_end).map_err(|e| e.to_string())?;
+                let b = summarize(std::slice::from_ref(&rival), &cur_start, &cur_end)
+                    .map_err(|e| e.to_string())?;
                 (
                     a,
                     b,
@@ -347,17 +412,17 @@ pub async fn get_analytics(
     tauri::async_runtime::spawn_blocking(move || {
         let scope_str = scope.as_deref().unwrap_or("team");
 
-        if period.days == 0 {
+        if period.days == 0 && !period.has_explicit_range() {
             return get_session_analytics_inner(&pool, playlist, match_type, scope);
         }
 
-        let (start_str, end_str) = local_window(period.days as i64);
+        let (start_str, end_str) = period.window();
 
         let settings = get_settings(&pool).unwrap_or_default();
         let player_names = storage::identity_candidate_names(&settings);
 
         let is_individual = scope_str == "me";
-        let local_id = settings.local_primary_id.as_deref();
+        let local_ids = settings.local_identity_ids();
 
         let has_filters = playlist.is_some() || match_type.is_some();
         let rollups = if has_filters || is_individual {
@@ -365,7 +430,7 @@ pub async fn get_analytics(
                 &pool,
                 &start_str,
                 &end_str,
-                local_id,
+                &local_ids,
                 &player_names,
                 playlist.as_deref(),
                 match_type.as_deref(),
@@ -391,10 +456,10 @@ pub async fn get_analytics(
             peak_speed,
             streak,
         ) = if is_individual {
-            if let Some(local_id_str) = local_id {
+            if !local_ids.is_empty() {
                 let summary = storage::get_analytics_summary_for_identity(
                     &pool,
-                    local_id_str,
+                    &local_ids,
                     &start_str,
                     &end_str,
                     playlist.as_deref(),
@@ -403,7 +468,7 @@ pub async fn get_analytics(
                 .map_err(|e| e.to_string())?;
                 let streak_data = metrics::calculate_streaks(
                     &pool,
-                    local_id_str,
+                    &local_ids,
                     &start_str,
                     &end_str,
                     playlist.as_deref(),
@@ -510,10 +575,10 @@ pub async fn get_analytics(
                 0.0
             };
 
-            let (peak_speed, streak) = if let Some(ref local_id_str) = settings.local_primary_id {
+            let (peak_speed, streak) = if !local_ids.is_empty() {
                 let speed = get_team_period_peak_speed(
                     &pool,
-                    local_id_str,
+                    &local_ids,
                     &start_str,
                     &end_str,
                     playlist.as_deref(),
@@ -522,7 +587,7 @@ pub async fn get_analytics(
                 .unwrap_or(0.0);
                 let streak_data = metrics::calculate_streaks(
                     &pool,
-                    local_id_str,
+                    &local_ids,
                     &start_str,
                     &end_str,
                     playlist.as_deref(),
@@ -560,18 +625,19 @@ pub async fn get_analytics(
             )
         };
 
-        let avg_boost = match local_id {
-            Some(id) => get_period_avg_boost(
+        let avg_boost = if !local_ids.is_empty() {
+            get_period_avg_boost(
                 &pool,
-                id,
+                &local_ids,
                 &start_str,
                 &end_str,
                 playlist.as_deref(),
                 match_type.as_deref(),
                 scope_str,
             )
-            .unwrap_or(0.0),
-            None => 0.0,
+            .unwrap_or(0.0)
+        } else {
+            0.0
         };
 
         let avg_goals = if total_matches > 0 {
@@ -690,7 +756,7 @@ pub async fn get_daily_rollups(
                 &pool,
                 &start_date,
                 &end_date,
-                settings.local_primary_id.as_deref(),
+                &settings.local_identity_ids(),
                 &player_names,
                 playlist.as_deref(),
                 match_type.as_deref(),
@@ -731,6 +797,7 @@ pub async fn get_session_matches(
          FROM matches m
          WHERE m.start_time >= ?1 AND m.start_time <= ?2
            AND LOWER(COALESCE(m.match_type, '')) != 'training'
+           AND m.status != 'cancelled'
          ORDER BY m.start_time ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -837,10 +904,15 @@ pub async fn get_session_matches(
             // Prefer the primary id; fall back to the configured player names so a
             // match recorded before the id was learned still resolves the local
             // team (the same fallback get_local_match_stats uses).
-            let local_team = if let Some(ref lid) = settings.local_primary_id {
+            let local_ids = settings.local_identity_ids();
+            let local_team = if !local_ids.is_empty() {
                 players
                     .iter()
-                    .find(|p| p["primary_id"].as_str() == Some(lid.as_str()))
+                    .find(|p| {
+                        p["primary_id"]
+                            .as_str()
+                            .is_some_and(|pid| local_ids.iter().any(|id| id == pid))
+                    })
                     .or_else(|| {
                         player_names.iter().find_map(|name| {
                             players.iter().find(|p| {
@@ -954,19 +1026,14 @@ pub async fn get_insights(
         // recorded player) is given, insights are computed for that player instead
         // of the local identity.
         let local_id = match player_id {
-            Some(pid) if !pid.trim().is_empty() => pid,
-            _ => match settings.local_primary_id {
-                Some(ref id) => id.clone(),
-                None => return Ok(serde_json::json!({ "available": false })),
+            Some(pid) if !pid.trim().is_empty() => vec![pid],
+            _ => match settings.local_identity_ids() {
+                ids if !ids.is_empty() => ids,
+                _ => return Ok(serde_json::json!({ "available": false })),
             },
         };
 
-        let days = if period.days == 0 {
-            365
-        } else {
-            period.days as i64
-        };
-        let (start_str, end_str) = local_window(days);
+        let (start_str, end_str) = period.window();
 
         let scope_str = scope.as_deref().unwrap_or("team");
 
@@ -998,12 +1065,7 @@ pub async fn get_player_analytics_matches(
 ) -> Result<serde_json::Value, String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let days = if period.days == 0 {
-            365
-        } else {
-            period.days as i64
-        };
-        let (start_str, end_str) = local_window(days);
+        let (start_str, end_str) = period.window();
 
         let matches = storage::get_player_analytics_matches(
             &pool,
@@ -1083,7 +1145,7 @@ fn get_session_analytics_inner(
             pool,
             &recent_session.start_time,
             &recent_session.end_time,
-            settings.local_primary_id.as_deref(),
+            &settings.local_identity_ids(),
             &player_names,
             playlist.as_deref(),
             match_type.as_deref(),
@@ -1102,24 +1164,26 @@ fn get_session_analytics_inner(
         0.0
     };
 
-    let avg_boost = match settings.local_primary_id.as_deref() {
-        Some(id) if total_matches > 0 => get_period_avg_boost(
+    let session_identity_ids = settings.local_identity_ids();
+    let avg_boost = if !session_identity_ids.is_empty() && total_matches > 0 {
+        get_period_avg_boost(
             pool,
-            id,
+            &session_identity_ids,
             &start_str,
             &end_str,
             playlist.as_deref(),
             match_type.as_deref(),
             scope_str,
         )
-        .unwrap_or(0.0),
-        _ => 0.0,
+        .unwrap_or(0.0)
+    } else {
+        0.0
     };
 
-    let streak = if let Some(ref local_id) = settings.local_primary_id {
+    let streak = if !session_identity_ids.is_empty() {
         metrics::calculate_streaks(
             pool,
-            local_id,
+            &session_identity_ids,
             &start_str,
             &end_str,
             playlist.as_deref(),
@@ -1208,7 +1272,7 @@ fn get_session_analytics_inner(
 /// session showed two different peaks.
 fn get_team_period_peak_speed(
     pool: &crate::core::storage::DbPool,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -1216,24 +1280,33 @@ fn get_team_period_peak_speed(
 ) -> Result<f64, String> {
     let conn = get_conn(pool).map_err(|e| e.to_string())?;
 
-    let mut sql = String::from(
+    let id_placeholders = vec!["?"; local_primary_ids.len().max(1)].join(", ");
+    let mut sql = format!(
         "SELECT COALESCE(MAX(mp.speed), 0.0)
          FROM match_players mp
          JOIN matches m ON mp.match_id = m.id
-         WHERE date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3
+         WHERE m.start_time >= ?
+           AND m.start_time < ?
+           AND m.status != 'cancelled'
            AND mp.team_num = (
                 SELECT mp2.team_num
                 FROM match_players mp2
                 JOIN players p2 ON p2.id = mp2.player_id
-                WHERE mp2.match_id = m.id AND p2.primary_id = ?1
+                WHERE mp2.match_id = m.id AND p2.primary_id IN ({id_placeholders})
                 LIMIT 1
            )",
     );
+    let (day_start, day_end) =
+        storage::local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(local_primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
+    for pid in local_primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if local_primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -1259,7 +1332,7 @@ fn get_team_period_peak_speed(
 /// the local player's team, matching how the rest of the summary aggregates.
 fn get_period_avg_boost(
     pool: &crate::core::storage::DbPool,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -1268,37 +1341,58 @@ fn get_period_avg_boost(
 ) -> Result<f64, String> {
     let conn = get_conn(pool).map_err(|e| e.to_string())?;
     let individual = scope.eq_ignore_ascii_case("me");
+    let id_placeholders = vec!["?"; local_primary_ids.len().max(1)].join(", ");
 
     let mut sql = if individual {
-        String::from(
+        format!(
             "SELECT COALESCE(AVG(mp.boost), 0.0)
              FROM match_players mp
              JOIN players p ON p.id = mp.player_id
              JOIN matches m ON mp.match_id = m.id
-             WHERE p.primary_id = ?1
-               AND date(m.start_time, 'localtime') >= ?2
-               AND date(m.start_time, 'localtime') <= ?3",
+             WHERE p.primary_id IN ({id_placeholders})
+               AND m.status != 'cancelled'
+               AND m.start_time >= ?
+               AND m.start_time < ?",
         )
     } else {
-        String::from(
+        format!(
             "SELECT COALESCE(AVG(mp.boost), 0.0)
              FROM match_players mp
              JOIN matches m ON mp.match_id = m.id
-             WHERE date(m.start_time, 'localtime') >= ?2
-               AND date(m.start_time, 'localtime') <= ?3
+             WHERE m.start_time >= ?
+               AND m.start_time < ?
+               AND m.status != 'cancelled'
                AND mp.team_num = (
                     SELECT mp2.team_num
                     FROM match_players mp2
                     JOIN players p2 ON p2.id = mp2.player_id
-                    WHERE mp2.match_id = m.id AND p2.primary_id = ?1
+                    WHERE mp2.match_id = m.id AND p2.primary_id IN ({id_placeholders})
                     LIMIT 1
                )",
         )
     };
+    let (day_start, day_end) =
+        storage::local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(local_primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    if individual {
+        for pid in local_primary_ids {
+            args.push(Box::new(pid.clone()));
+        }
+        if local_primary_ids.is_empty() {
+            args.push(Box::new(String::new()));
+        }
+        args.push(Box::new(day_start));
+        args.push(Box::new(day_end));
+    } else {
+        args.push(Box::new(day_start));
+        args.push(Box::new(day_end));
+        for pid in local_primary_ids {
+            args.push(Box::new(pid.clone()));
+        }
+        if local_primary_ids.is_empty() {
+            args.push(Box::new(String::new()));
+        }
+    }
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -1324,23 +1418,18 @@ fn get_period_avg_boost(
 /// mirroring `get_insights`.
 fn pattern_window(
     pool: &crate::core::storage::DbPool,
-    period_days: i32,
+    period: &AnalyticsPeriod,
     player_id: Option<String>,
-) -> Result<(String, String, String), String> {
+) -> Result<(Vec<String>, String, String), String> {
     let settings = get_settings(pool).unwrap_or_default();
     let identity = match player_id {
-        Some(pid) if !pid.trim().is_empty() => pid,
-        _ => settings.local_primary_id.clone().unwrap_or_default(),
+        Some(pid) if !pid.trim().is_empty() => vec![pid],
+        _ => settings.local_identity_ids(),
     };
-    if identity.trim().is_empty() {
+    if identity.is_empty() {
         return Err("no identity".into());
     }
-    let days = if period_days == 0 {
-        365
-    } else {
-        period_days as i64
-    };
-    let (start_str, end_str) = local_window(days);
+    let (start_str, end_str) = period.window();
     Ok((identity, start_str, end_str))
 }
 
@@ -1360,7 +1449,7 @@ pub async fn get_session_curve(
 ) -> Result<serde_json::Value, String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let (identity, start_str, end_str) = match pattern_window(&pool, period.days, player_id) {
+        let (identity, start_str, end_str) = match pattern_window(&pool, &period, player_id) {
             Ok(window) => window,
             Err(_) => return Ok(unavailable()),
         };
@@ -1392,7 +1481,7 @@ pub async fn get_teammate_stats(
 ) -> Result<serde_json::Value, String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let (identity, start_str, end_str) = match pattern_window(&pool, period.days, player_id) {
+        let (identity, start_str, end_str) = match pattern_window(&pool, &period, player_id) {
             Ok(window) => window,
             Err(_) => return Ok(unavailable()),
         };
@@ -1438,7 +1527,7 @@ pub async fn get_custom_breakdown(
     }
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let (identity, start_str, end_str) = match pattern_window(&pool, period.days, player_id) {
+        let (identity, start_str, end_str) = match pattern_window(&pool, &period, player_id) {
             Ok(window) => window,
             Err(_) => return Ok(unavailable()),
         };
@@ -1478,7 +1567,7 @@ pub async fn recompute_kickoff_goals(
         let player_names = storage::identity_candidate_names(&settings);
         match storage::rebuild_daily_rollups_for_identity(
             &pool,
-            settings.local_primary_id.as_deref(),
+            &settings.local_identity_ids(),
             &player_names,
         ) {
             Ok(()) => report["rollupsRebuilt"] = serde_json::json!(true),
@@ -1501,7 +1590,7 @@ pub async fn get_training_analytics(
 ) -> Result<serde_json::Value, String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if period.days == 0 {
+        if period.days == 0 && !period.has_explicit_range() {
             // "Session" view has no meaning for training; report an empty window
             // so the UI can hide the panel instead of guessing a range.
             return Ok(serde_json::json!({
@@ -1528,7 +1617,7 @@ pub async fn get_training_analytics(
             }));
         }
 
-        let (start_str, end_str) = local_window(period.days.max(1) as i64);
+        let (start_str, end_str) = period.window();
 
         let mut stats =
             storage::get_training_stats(&pool, &start_str, &end_str).map_err(|e| e.to_string())?;
@@ -1546,8 +1635,8 @@ pub async fn get_career_records(state: State<'_, AppState>) -> Result<serde_json
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let settings = get_settings(&pool).unwrap_or_default();
-        let identity = settings.local_primary_id.clone().unwrap_or_default();
-        if identity.trim().is_empty() {
+        let identity = settings.local_identity_ids();
+        if identity.is_empty() {
             return Ok(serde_json::json!({ "available": false }));
         }
         storage::get_career_records(&pool, &identity, settings.session_gap_minutes)

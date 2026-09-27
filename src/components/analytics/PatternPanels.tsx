@@ -3,7 +3,7 @@ import { ChemistryPanel } from "@/components/analytics/ChemistryPanel";
 import { MoodPanel } from "@/components/analytics/MoodPanel";
 import { CustomBuilderPanel } from "@/components/analytics/CustomBuilderPanel";
 import { LazyMount } from "@/components/ui/LazyMount";
-import type { AnalyticsPeriod, PlaylistFilter, MatchTypeFilter, DataScope } from "@/lib/types";
+import type { AnalyticsPeriod, DateRange, PlaylistFilter, MatchTypeFilter, DataScope } from "@/lib/types";
 
 interface PatternPanelsProps {
   period: AnalyticsPeriod;
@@ -14,11 +14,12 @@ interface PatternPanelsProps {
   username: string;
   friendsPresent: string[];
   dateLabel: string;
+  dateRange?: DateRange;
 }
 
 export function PatternPanels(props: PatternPanelsProps) {
-  const { period, playlist, matchType, scope, playerId, username, friendsPresent, dateLabel } = props;
-  const shared = { period, playlist, matchType, scope, playerId, username, friendsPresent, dateLabel };
+  const { period, playlist, matchType, scope, playerId, username, friendsPresent, dateLabel, dateRange } = props;
+  const shared = { period, playlist, matchType, scope, playerId, username, friendsPresent, dateLabel, dateRange };
   return (
     <>
       {/* Each panel runs its own aggregate query; off-screen ones mount when

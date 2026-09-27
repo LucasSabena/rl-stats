@@ -21,6 +21,7 @@ import { useSessionCurve } from "@/hooks/useAnalytics";
 import type {
   AnalyticsPeriod,
   DataScope,
+  DateRange,
   MatchTypeFilter,
   PlaylistFilter,
   ShareContext,
@@ -36,6 +37,7 @@ interface FatiguePanelProps {
   username: string;
   friendsPresent: string[];
   dateLabel: string;
+  dateRange?: DateRange;
 }
 
 const TOOLTIP_STYLE = {
@@ -54,14 +56,15 @@ export const FatiguePanel = memo(function FatiguePanel({
   username,
   friendsPresent,
   dateLabel,
+  dateRange,
 }: FatiguePanelProps) {
   const { t } = useTranslation(["analytics", "common"]);
   const [tab, setTab] = useState<"game" | "minutes">("game");
   const [shareOpen, setShareOpen] = useState(false);
 
   const filters = useMemo(
-    () => ({ playlist, matchType, scope, playerId }),
-    [playlist, matchType, scope, playerId],
+    () => ({ playlist, matchType, scope, playerId, dateRange }),
+    [playlist, matchType, scope, playerId, dateRange],
   );
   const { data: curve, isLoading, isError, refetch } = useSessionCurve(period, filters);
 

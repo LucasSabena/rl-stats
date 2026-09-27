@@ -5,6 +5,7 @@ import {
   type CareerRecords,
   type DailyRollup,
   type DataScope,
+  type DateRange,
   type InsightsData,
   type KickoffBackfillReport,
   type MatchSession,
@@ -17,6 +18,7 @@ import {
   type TrainingStats,
 } from "../types";
 import {
+  buildPeriodArg,
   invokeCommand,
   mapRollup,
   mapSummaryToAnalyticsData,
@@ -38,14 +40,16 @@ export async function getAnalytics(
     playlist?: PlaylistFilter;
     matchType?: MatchTypeFilter;
     scope?: DataScope;
+    dateRange?: DateRange;
   },
 ): Promise<{
   data: AnalyticsData;
   rollups?: DailyRollup[];
   sessions?: MatchSession[];
 }> {
-  const days = periodToDays(period);
-  const args: Record<string, unknown> = { period: { days } };
+  const args: Record<string, unknown> = {
+    period: buildPeriodArg(period, filters?.dateRange),
+  };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
   }
@@ -95,6 +99,7 @@ export async function getDailyRollups(
     playlist?: PlaylistFilter;
     matchType?: MatchTypeFilter;
     scope?: DataScope;
+    dateRange?: DateRange;
   },
 ): Promise<DailyRollup[]> {
   const end = new Date();
@@ -104,10 +109,16 @@ export async function getDailyRollups(
   // so querying with UTC dates would shift matches around midnight.
   const toLocalDate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const args: Record<string, unknown> = {
-    startDate: toLocalDate(start),
-    endDate: toLocalDate(end),
-  };
+  // An explicit range (season filter) wins over the relative-days window.
+  const args: Record<string, unknown> = filters?.dateRange
+    ? {
+        startDate: filters.dateRange.startDate,
+        endDate: filters.dateRange.endDate,
+      }
+    : {
+        startDate: toLocalDate(start),
+        endDate: toLocalDate(end),
+      };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
   }
@@ -142,6 +153,10 @@ export interface MmrHistoryPoint {
   start_time: string;
   mmr: number;
   playlist: string | null;
+  /** Canonical ladder key `match_type:playlist` (e.g. "ranked:standard",
+   * "casual:doubles"). Casual and ranked ladders can share a playlist label;
+   * `series` is the only safe grouping key. */
+  series: string;
   is_win: boolean;
   overtime: boolean;
 }
@@ -149,6 +164,7 @@ export interface MmrHistoryPoint {
 export interface MmrHistoryData {
   available: boolean;
   points: MmrHistoryPoint[];
+  /** Canonical series keys present in the player's history. */
   playlists: string[];
   startDate?: string;
   endDate?: string;
@@ -156,14 +172,15 @@ export interface MmrHistoryData {
 
 export async function getMmrHistory(
   playerId: string | null,
-  playlist: string | null,
+  series: string | null,
   period: AnalyticsPeriod,
+  dateRange?: DateRange,
 ): Promise<MmrHistoryData> {
   const args: Record<string, unknown> = {
-    period: { days: periodToDays(period) },
+    period: buildPeriodArg(period, dateRange),
   };
   if (playerId) args.playerId = playerId;
-  if (playlist && playlist !== "all") args.playlist = playlist;
+  if (series && series !== "all") args.series = series;
   const response = await invokeCommand<MmrHistoryData>("get_mmr_history", args);
   return {
     available: response.available ?? false,
@@ -205,11 +222,15 @@ export async function getAnalyticsComparison(
   playerId: string | null,
   rivalId: string | null,
   period: AnalyticsPeriod,
-  filters?: { playlist?: PlaylistFilter; matchType?: MatchTypeFilter },
+  filters?: {
+    playlist?: PlaylistFilter;
+    matchType?: MatchTypeFilter;
+    dateRange?: DateRange;
+  },
 ): Promise<ComparisonData> {
   const args: Record<string, unknown> = {
     mode,
-    period: { days: periodToDays(period) },
+    period: buildPeriodArg(period, filters?.dateRange),
   };
   if (playerId) args.playerId = playerId;
   if (rivalId) args.rivalId = rivalId;
@@ -229,10 +250,12 @@ export async function getInsights(
     matchType?: MatchTypeFilter;
     scope?: DataScope;
     playerId?: string | null;
+    dateRange?: DateRange;
   },
 ): Promise<InsightsData> {
-  const days = periodToDays(period);
-  const args: Record<string, unknown> = { period: { days } };
+  const args: Record<string, unknown> = {
+    period: buildPeriodArg(period, filters?.dateRange),
+  };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
   }
@@ -255,10 +278,13 @@ export async function getPlayerAnalyticsMatches(
     playlist?: PlaylistFilter;
     matchType?: MatchTypeFilter;
     limit?: number;
+    dateRange?: DateRange;
   },
 ): Promise<PlayerAnalyticsMatch[]> {
-  const days = periodToDays(period);
-  const args: Record<string, unknown> = { playerId, period: { days } };
+  const args: Record<string, unknown> = {
+    playerId,
+    period: buildPeriodArg(period, filters?.dateRange),
+  };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
   }
@@ -281,10 +307,13 @@ export async function getPlayerAnalyticsSummary(
   filters?: {
     playlist?: PlaylistFilter;
     matchType?: MatchTypeFilter;
+    dateRange?: DateRange;
   },
 ): Promise<AnalyticsData> {
-  const days = periodToDays(period);
-  const args: Record<string, unknown> = { playerId, period: { days } };
+  const args: Record<string, unknown> = {
+    playerId,
+    period: buildPeriodArg(period, filters?.dateRange),
+  };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
   }
@@ -303,13 +332,16 @@ export interface PatternFilters {
   matchType?: MatchTypeFilter;
   scope?: DataScope;
   playerId?: string | null;
+  dateRange?: DateRange;
 }
 
 function patternArgs(
   period: AnalyticsPeriod,
   filters?: PatternFilters,
 ): Record<string, unknown> {
-  const args: Record<string, unknown> = { period: { days: periodToDays(period) } };
+  const args: Record<string, unknown> = {
+    period: buildPeriodArg(period, filters?.dateRange),
+  };
   if (filters?.playlist && filters.playlist !== "all") {
     args.playlist = filters.playlist;
   }
@@ -357,10 +389,10 @@ export async function recomputeKickoffGoals(): Promise<KickoffBackfillReport> {
 // Training tracking
 export async function getTrainingAnalytics(
   period: AnalyticsPeriod,
+  dateRange?: DateRange,
 ): Promise<TrainingStats> {
-  const days = periodToDays(period);
   return invokeCommand<TrainingStats>("get_training_analytics", {
-    period: { days },
+    period: buildPeriodArg(period, dateRange),
   });
 }
 

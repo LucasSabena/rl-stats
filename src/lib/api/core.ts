@@ -11,6 +11,7 @@ import {
   type AnalyticsData,
   type AnalyticsPeriod,
   type DailyRollup,
+  type DateRange,
 } from "../types";
 
 export class ApiError extends Error {
@@ -78,6 +79,8 @@ export interface RawMatchSummary {
   score_blue: number;
   score_orange: number;
   winner: number | null;
+  /** Lifecycle outcome: completed | draw | cancelled (older DBs may omit it). */
+  status?: string | null;
   local_team_num?: number | null;
   is_online: boolean;
   is_overtime: boolean;
@@ -239,6 +242,7 @@ export function mapMatchSummary(match: RawMatchSummary): MatchSummary {
     teamBlueScore: match.score_blue,
     teamOrangeScore: match.score_orange,
     winnerTeamNum: match.winner,
+    status: match.status ?? null,
     localTeamNum: match.local_team_num ?? null,
     isOnline: match.is_online,
     isOvertime: match.is_overtime,
@@ -292,6 +296,24 @@ export function mapGoal(goal: RawGoal): Goal {
     time: goal.time,
     ballSpeed: goal.ballSpeed,
   };
+}
+
+/**
+ * Builds the `period` argument for analytics commands. The nested struct
+ * keeps serde's snake_case field names, so explicit ranges travel as
+ * `start_date`/`end_date` (season filters) and win over `days` on the Rust
+ * side.
+ */
+export function buildPeriodArg(
+  period: AnalyticsPeriod,
+  dateRange?: DateRange,
+): Record<string, unknown> {
+  const arg: Record<string, unknown> = { days: periodToDays(period) };
+  if (dateRange) {
+    arg.start_date = dateRange.startDate;
+    arg.end_date = dateRange.endDate;
+  }
+  return arg;
 }
 
 export function periodToDays(period: AnalyticsPeriod): number {

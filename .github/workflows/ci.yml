@@ -12,12 +12,14 @@ on:
       - '**.md'
       - 'docs/**'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'landing/**'
   pull_request:
     branches: [main, develop]
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'landing/**'
   workflow_dispatch:
 
 concurrency:
@@ -26,8 +28,8 @@ concurrency:
 
 jobs:
   # ───────────────────────────────────────────────
-  # Todo el gate en un solo job: lint, typecheck, tests, build, escaneo de
-  # secretos y auditoría de dependencias.
+  # Todo el gate de frontend en un solo job: lint, typecheck, tests, build,
+  # escaneo de secretos y auditoría de dependencias JavaScript.
   #
   # GitHub redondea al minuto POR JOB y cada job paga su propio runner,
   # checkout y setup. `secret-scan` (9s) y `dependency-audit` (18s) costaban un
@@ -49,7 +51,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         # Historial completo para que gitleaks vea todos los commits, no solo
         # el último: un secreto agregado en un commit anterior debe aparecer.
         with:
@@ -61,7 +63,7 @@ jobs:
           node-version: '22'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
           version: 9
           run_install: false
@@ -72,7 +74,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
 
       - name: Setup pnpm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -80,9 +82,10 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install frontend dependencies
-        # Scoped to the app: the landing (landing/) is a separate package with
-        # its own toolchain and must not affect the app build or the audit.
+        # El typecheck, los tests y el build consumen las dependencias del
+        # workspace principal; landing tiene su propio workflow y queda fuera.
         run: pnpm install --frozen-lockfile --filter rl-stats
+
 
       - name: Run TypeScript check
         run: pnpm exec tsc --noEmit
@@ -98,7 +101,7 @@ jobs:
 
       - name: Upload frontend build artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist-${{ github.run_id }}
           path: dist/
@@ -114,81 +117,3 @@ jobs:
       - name: pnpm audit
         continue-on-error: true
         run: pnpm audit --audit-level high
-
-      - name: Install cargo-audit
-        continue-on-error: true
-        uses: taiki-e/install-action@cargo-audit
-
-      - name: cargo audit
-        continue-on-error: true
-        working-directory: src-tauri
-        run: cargo audit
-
-  # ───────────────────────────────────────────────
-  # Warm the release-profile cache for the tag that follows a release commit.
-  #
-  # GitHub scopes Actions caches per ref: a cache saved by a tag run is only
-  # visible to that same tag, so every release was a cold ~15 minute build.
-  # Caches saved on the default branch ARE visible to tag runs, so this job
-  # compiles the release profile on the version-bump commit (message starts
-  # with "chore(release)") and the tag run only has to bundle and sign.
-  # ───────────────────────────────────────────────
-  release-prebuild:
-    name: Prebuild Release Cache
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release)')
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-          run_install: false
-
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git
-          # `hashFiles` + prefijo en `restore-keys` en vez de `run_id`: con
-          # `run_id` la key nunca coincide y cada run vuelve a subir la caché.
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Cargo target (release)
-        uses: actions/cache@v4
-        with:
-          path: src-tauri/target
-          # Mismo lockfile que `release.yml`: el tag hace acierto exacto de esta
-          # caché y no recompila nada. Antes usaba `run_id`, así que el tag
-          # restauraba por prefijo una caché que no coincidía con la key.
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-release-
-
-      - name: Install frontend dependencies
-        # Scoped to the app: the landing (landing/) is a separate package with
-        # its own toolchain and must not affect the app build or the audit.
-        run: pnpm install --frozen-lockfile --filter rl-stats
-
-      - name: Build release profile (no bundles)
-        run: pnpm tauri build --no-bundle
-        env:
-          NODE_OPTIONS: '--max-old-space-size=4096'

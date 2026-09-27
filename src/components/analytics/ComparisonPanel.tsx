@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, GitCompare, Minus } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
-import type { AnalyticsPeriod, MatchTypeFilter, PlaylistFilter } from "@/lib/types";
+import type { AnalyticsPeriod, DateRange, MatchTypeFilter, PlaylistFilter } from "@/lib/types";
 import { useAnalyticsComparison } from "@/hooks/useAnalyticsComparison";
 
 type Mode = "players" | "periods";
@@ -72,6 +72,7 @@ export function ComparisonPanel({
   playerId,
   playerOptions,
   username,
+  dateRange,
 }: {
   period: AnalyticsPeriod;
   playlist: PlaylistFilter;
@@ -79,6 +80,7 @@ export function ComparisonPanel({
   playerId: string | null;
   playerOptions: PlayerOption[];
   username: string;
+  dateRange?: DateRange;
 }) {
   const { t } = useTranslation(["analytics", "common"]);
   const [mode, setMode] = useState<Mode>("periods");
@@ -99,7 +101,7 @@ export function ComparisonPanel({
     playerId,
     mode === "players" ? rivalId : null,
     period,
-    { playlist, matchType },
+    { playlist, matchType, dateRange },
   );
 
   const labels = useMemo(

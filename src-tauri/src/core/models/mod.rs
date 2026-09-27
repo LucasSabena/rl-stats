@@ -11,7 +11,7 @@ pub struct Match {
     pub arena: Option<String>,
     pub score_blue: i32,
     pub score_orange: i32,
-    pub winner: Option<i32>, // 0 = blue, 1 = orange, None = draw/unknown
+    pub winner: Option<i32>, // 0 = blue, 1 = orange, None = no result (see `status`)
     pub is_online: bool,
     pub is_overtime: bool,
     pub duration_seconds: i32,
@@ -28,6 +28,49 @@ pub struct Match {
     /// User tags stored as a JSON array string (migration v27).
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Match lifecycle outcome (migration v31): `completed` (a winner was
+    /// recorded), `draw` (ran its course with no winner), or `cancelled`
+    /// (aborted before producing a result — never really started or quit
+    /// early). Cancelled matches stay in history but are excluded from every
+    /// analytic aggregate.
+    #[serde(default = "default_match_status")]
+    pub status: String,
+}
+
+fn default_match_status() -> String {
+    MATCH_STATUS_COMPLETED.to_string()
+}
+
+pub const MATCH_STATUS_COMPLETED: &str = "completed";
+pub const MATCH_STATUS_DRAW: &str = "draw";
+pub const MATCH_STATUS_CANCELLED: &str = "cancelled";
+
+/// Wall-clock duration a no-winner match must reach to be treated as a real
+/// draw instead of a cancelled/abandoned game. Regulation is 300s plus replay
+/// time; anything that ended well short of that without a winner never
+/// produced a result.
+pub const DRAW_MIN_DURATION_SECONDS: i32 = 280;
+
+/// Derive the stored `matches.status` from the recorded outcome fields.
+///
+/// A match with a winner is `completed`. Without a winner the only
+/// legitimate draw is a tied scoreboard after roughly a full regulation
+/// period (overtime-disabled private matches); everything else — a lobby
+/// cancelled before kickoff or a game abandoned mid-play — is `cancelled`
+/// and must not count as a played match in analytics.
+pub fn derive_match_status(
+    winner: Option<i32>,
+    score_blue: i32,
+    score_orange: i32,
+    duration_seconds: i32,
+) -> &'static str {
+    if winner.is_some() {
+        MATCH_STATUS_COMPLETED
+    } else if score_blue == score_orange && duration_seconds >= DRAW_MIN_DURATION_SECONDS {
+        MATCH_STATUS_DRAW
+    } else {
+        MATCH_STATUS_CANCELLED
+    }
 }
 
 /// Represents a player in a match.
@@ -314,6 +357,10 @@ pub struct SessionSummary {
     pub local_team_num: Option<i32>,
     pub players: Vec<Player>,
     pub match_type: Option<String>,
+    /// Match lifecycle outcome; `completed` for summaries written before the
+    /// `status` concept existed.
+    #[serde(default = "default_match_status")]
+    pub status: String,
     pub kickoff_goals_scored: i32,
     pub kickoff_goals_conceded: i32,
 }
@@ -412,4 +459,41 @@ pub struct UserPresetInput {
     pub controls: Option<ControlSettings>,
     pub deadzone: Option<DeadzoneSettings>,
     pub hardware: Option<HardwareSettings>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn winner_means_completed_regardless_of_duration() {
+        assert_eq!(
+            derive_match_status(Some(0), 1, 0, 30),
+            MATCH_STATUS_COMPLETED
+        );
+        assert_eq!(
+            derive_match_status(Some(1), 0, 0, 0),
+            MATCH_STATUS_COMPLETED
+        );
+    }
+
+    #[test]
+    fn tied_full_length_game_without_winner_is_a_draw() {
+        assert_eq!(
+            derive_match_status(None, 2, 2, DRAW_MIN_DURATION_SECONDS),
+            MATCH_STATUS_DRAW
+        );
+        assert_eq!(derive_match_status(None, 0, 0, 300), MATCH_STATUS_DRAW);
+    }
+
+    #[test]
+    fn short_or_zero_length_game_without_winner_is_cancelled() {
+        assert_eq!(derive_match_status(None, 0, 0, 0), MATCH_STATUS_CANCELLED);
+        assert_eq!(
+            derive_match_status(None, 0, 0, DRAW_MIN_DURATION_SECONDS - 1),
+            MATCH_STATUS_CANCELLED
+        );
+        // Abandoned mid-game with an untied score still never produced a result.
+        assert_eq!(derive_match_status(None, 1, 0, 120), MATCH_STATUS_CANCELLED);
+    }
 }

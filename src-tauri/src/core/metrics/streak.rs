@@ -10,7 +10,7 @@ pub struct StreakData {
 
 pub fn calculate_streaks(
     pool: &DbPool,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -18,20 +18,29 @@ pub fn calculate_streaks(
 ) -> AppResult<StreakData> {
     let conn = get_conn(pool)?;
 
-    let mut sql = String::from(
-        "SELECT m.winner, mp.team_num
+    let id_placeholders = vec!["?"; local_primary_ids.len().max(1)].join(", ");
+    let mut sql = format!(
+        "SELECT m.id, p.primary_id, m.winner, mp.team_num
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
-         WHERE p.primary_id = ?1
+         WHERE p.primary_id IN ({id_placeholders})
            AND m.winner IS NOT NULL
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
+    let (day_start, day_end) =
+        crate::core::storage::local_day_range_utc_bounds(Some(start_date), Some(end_date));
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-    args.push(Box::new(local_primary_id.to_string()));
-    args.push(Box::new(start_date.to_string()));
-    args.push(Box::new(end_date.to_string()));
+    for pid in local_primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if local_primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
 
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
@@ -51,9 +60,13 @@ pub fn calculate_streaks(
     let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
 
-    let results: Vec<(Option<i32>, i32)> = stmt
-        .query_map(&*params_refs, |row| Ok((row.get(0)?, row.get(1)?)))?
+    let raw: Vec<(i64, String, (Option<i32>, i32))> = stmt
+        .query_map(&*params_refs, |row| {
+            Ok((row.get(0)?, row.get(1)?, (row.get(2)?, row.get(3)?)))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
+    // Linked identities appearing in one match count the match once.
+    let results = crate::core::storage::dedup_local_rows(raw, local_primary_ids);
 
     let (best_streak, current_streak) = compute_streaks(&results);
     Ok(StreakData {
@@ -64,25 +77,37 @@ pub fn calculate_streaks(
 
 pub fn calculate_streaks_for_sessions(
     pool: &DbPool,
-    local_primary_id: &str,
+    local_primary_ids: &[String],
 ) -> AppResult<StreakData> {
     let conn = get_conn(pool)?;
-    let mut stmt = conn.prepare(
-        "SELECT m.winner, mp.team_num
+    let id_placeholders = vec!["?"; local_primary_ids.len().max(1)].join(", ");
+    let sql = format!(
+        "SELECT m.id, p.primary_id, m.winner, mp.team_num
          FROM matches m
          JOIN match_players mp ON m.id = mp.match_id
          JOIN players p ON mp.player_id = p.id
-         WHERE p.primary_id = ?1
+         WHERE p.primary_id IN ({id_placeholders})
            AND m.winner IS NOT NULL
+           AND m.status != 'cancelled'
            AND LOWER(COALESCE(m.match_type, '')) != 'training'
          ORDER BY m.start_time ASC",
-    )?;
+    );
+    let mut stmt = conn.prepare(&sql)?;
 
-    let results: Vec<(Option<i32>, i32)> = stmt
-        .query_map(rusqlite::params![local_primary_id], |row| {
-            Ok((row.get(0)?, row.get(1)?))
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    for pid in local_primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if local_primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
+    let arg_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
+    let raw: Vec<(i64, String, (Option<i32>, i32))> = stmt
+        .query_map(&*arg_refs, |row| {
+            Ok((row.get(0)?, row.get(1)?, (row.get(2)?, row.get(3)?)))
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    let results = crate::core::storage::dedup_local_rows(raw, local_primary_ids);
 
     let (best_streak, current_streak) = compute_streaks(&results);
     Ok(StreakData {

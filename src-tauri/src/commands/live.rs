@@ -23,11 +23,11 @@ pub async fn get_live_head_to_head(
     opponent_ids: Vec<String>,
 ) -> Result<HashMap<String, HeadToHeadRecord>, String> {
     let settings = crate::core::settings::get_settings(&state.db_pool).unwrap_or_default();
-    let local_pid = match settings.local_primary_id.as_deref() {
-        Some(pid) if !pid.is_empty() => pid,
-        _ => return Ok(HashMap::new()),
-    };
-    storage::get_head_to_head_records(&state.db_pool, local_pid, &opponent_ids)
+    let local_pids = settings.local_identity_ids();
+    if local_pids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    storage::get_head_to_head_records(&state.db_pool, &local_pids, &opponent_ids)
         .map_err(|e| e.to_string())
 }
 

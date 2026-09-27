@@ -500,7 +500,7 @@ pub fn find_profile_by_primary_id(app_dir: &Path, primary_id: &str) -> AppResult
     let all = get_all_profile_settings(app_dir)?;
 
     for (profile, settings) in &all {
-        if settings.local_primary_id.as_deref() == Some(primary_id) {
+        if settings.is_local_id(primary_id) {
             return Ok(Some(profile.clone()));
         }
     }
@@ -508,7 +508,8 @@ pub fn find_profile_by_primary_id(app_dir: &Path, primary_id: &str) -> AppResult
     Ok(None)
 }
 
-/// Finds a profile whose `local_primary_id` or `player_name` matches the given identity.
+/// Finds a profile whose `local_primary_id` (or a linked platform id) or
+/// `player_name` matches the given identity.
 pub fn find_matching_profile(
     app_dir: &Path,
     primary_id: &str,
@@ -517,10 +518,8 @@ pub fn find_matching_profile(
     let all = get_all_profile_settings(app_dir)?;
 
     for (profile, settings) in &all {
-        if let Some(ref stored_pid) = settings.local_primary_id {
-            if stored_pid == primary_id {
-                return Ok(Some(profile.clone()));
-            }
+        if settings.is_local_id(primary_id) {
+            return Ok(Some(profile.clone()));
         }
         if !player_name.is_empty()
             && !settings.player_name.trim().is_empty()

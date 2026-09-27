@@ -18,6 +18,7 @@ import type {
   AnalyticsData,
   AnalyticsPeriod,
   DailyRollup,
+  DateRange,
   MatchSession,
   InsightsData,
   PlayerAnalyticsMatch,
@@ -42,6 +43,8 @@ interface AnalyticsFiltersState {
   matchType?: MatchTypeFilter;
   scope?: DataScope;
   playerId?: string | null;
+  /** Explicit season bounds; wins over the relative `period` window. */
+  dateRange?: DateRange;
 }
 
 export function useAnalytics(
@@ -148,6 +151,7 @@ export function usePlayerAnalyticsMatches(
         playlist: filters?.playlist,
         matchType: filters?.matchType,
         limit: 50,
+        dateRange: filters?.dateRange,
       }),
     enabled: !!playerId,
     staleTime: QUERY_STALE_TIME.analytics,
@@ -165,6 +169,7 @@ export function usePlayerAnalyticsSummary(
       getPlayerAnalyticsSummary(playerId!, period, {
         playlist: filters?.playlist,
         matchType: filters?.matchType,
+        dateRange: filters?.dateRange,
       }),
     enabled: !!playerId,
     staleTime: QUERY_STALE_TIME.analytics,

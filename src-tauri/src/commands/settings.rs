@@ -42,6 +42,17 @@ pub async fn set_settings_cmd(
     if let Some(existing) = &existing {
         settings.data_retention_days = existing.data_retention_days;
     }
+    // Rollups only depend on the resolved identity inputs (ids + candidate
+    // names). Rebuilding them on every settings save — theme, overlay port,
+    // autostart — rewrote the whole table for no reason and blocked the
+    // command while it scanned every match.
+    let identity_inputs_changed = existing
+        .as_ref()
+        .map(|old| {
+            old.local_identity_ids() != settings.local_identity_ids()
+                || identity_candidate_names(old) != identity_candidate_names(&settings)
+        })
+        .unwrap_or(true);
     match set_settings(pool, &settings) {
         Ok(()) => {
             if auto_start_changed {
@@ -58,13 +69,23 @@ pub async fn set_settings_cmd(
                 .write()
                 .await
                 .set_kickoff_threshold_seconds(settings.kickoff_goal_threshold_seconds);
-            let player_names = identity_candidate_names(&settings);
-            if let Err(e) = storage::rebuild_daily_rollups_for_identity(
-                pool,
-                settings.local_primary_id.as_deref(),
-                &player_names,
-            ) {
-                error!(error = %e, "Failed to rebuild daily rollups after saving settings");
+            if identity_inputs_changed {
+                let pool = state.db_pool.clone();
+                let identity_ids = settings.local_identity_ids();
+                let player_names = identity_candidate_names(&settings);
+                let result = tauri::async_runtime::spawn_blocking(move || {
+                    storage::rebuild_daily_rollups_for_identity(&pool, &identity_ids, &player_names)
+                })
+                .await;
+                match result {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        error!(error = %e, "Failed to rebuild daily rollups after saving settings")
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Daily rollup rebuild task failed after saving settings")
+                    }
+                }
             }
             Ok(())
         }
@@ -246,7 +267,7 @@ fn export_data_json_internal(pool: &storage::DbPool) -> Result<String, String> {
             date_from: None,
             date_to: None,
             search: None,
-            local_primary_id: None,
+            local_primary_ids: &[],
             local_player_names: &[],
         },
     )
@@ -377,6 +398,17 @@ fn import_data_json_internal(
                 let match_type = m.get("match_type").and_then(|v| v.as_str());
                 let playlist = m.get("playlist").and_then(|v| v.as_str());
                 let mood = m.get("mood").and_then(|v| v.as_str());
+                // Older exports lack `status`: derive it from the outcome
+                // fields so an imported cancelled lobby is not stored as a
+                // completed match.
+                let status = m.get("status").and_then(|v| v.as_str()).or_else(|| {
+                    Some(crate::core::models::derive_match_status(
+                        winner,
+                        score_blue,
+                        score_orange,
+                        duration_seconds,
+                    ))
+                });
 
                 let match_id = storage::upsert_match_by_guid(
                     &conn,
@@ -394,6 +426,7 @@ fn import_data_json_internal(
                         match_type,
                         playlist,
                         mood,
+                        status,
                     },
                 )
                 .map_err(|e| e.to_string())?;
@@ -652,7 +685,7 @@ fn import_data_json_internal(
                 let player_names = identity_candidate_names(&merged);
                 storage::rebuild_daily_rollups_for_identity(
                     pool,
-                    merged.local_primary_id.as_deref(),
+                    &merged.local_identity_ids(),
                     &player_names,
                 )
                 .map_err(|e| e.to_string())?;
@@ -661,7 +694,7 @@ fn import_data_json_internal(
                 let player_names = identity_candidate_names(&current_settings);
                 storage::rebuild_daily_rollups_for_identity(
                     pool,
-                    current_settings.local_primary_id.as_deref(),
+                    &current_settings.local_identity_ids(),
                     &player_names,
                 )
                 .map_err(|e| e.to_string())?;

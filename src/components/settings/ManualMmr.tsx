@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation } from "@tanstack/react-query";
-import { setLocalMmr } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getLocalMmr, setLocalMmr } from "@/lib/api";
 import { useSettings } from "@/hooks/useSettings";
 import { useUIStore } from "@/stores/uiStore";
 import { Button } from "@/components/ui/Button";
@@ -21,13 +21,21 @@ const PLAYLISTS = [
 ] as const;
 
 export function ManualMmr() {
-  const { t } = useTranslation(["settings", "common"]);
+  const { t, i18n } = useTranslation(["settings", "common"]);
   const { data: settings } = useSettings();
   const addToast = useUIStore((state) => state.addToast);
+  const queryClient = useQueryClient();
   const [playlist, setPlaylist] = useState<string>("standard");
   const [mmr, setMmr] = useState<string>("");
 
   const hasProfile = Boolean(settings?.localPrimaryId);
+
+  const { data: entries } = useQuery({
+    queryKey: ["local-mmr-entries"],
+    queryFn: getLocalMmr,
+    enabled: hasProfile,
+  });
+  const current = entries?.[playlist];
 
   const mutation = useMutation({
     mutationFn: () => setLocalMmr(playlist, Number(mmr)),
@@ -41,6 +49,7 @@ export function ManualMmr() {
         }),
       });
       setMmr("");
+      void queryClient.invalidateQueries({ queryKey: ["local-mmr-entries"] });
     },
     onError: (err: Error) =>
       addToast({
@@ -74,50 +83,73 @@ export function ManualMmr() {
           {t("settings:manualMmr.noProfile")}
         </p>
       ) : (
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex min-w-40 flex-1 flex-col gap-1.5">
-            <label className="text-[13px] font-medium text-text-secondary">
-              {t("settings:manualMmr.playlist")}
-            </label>
-            <Select
-              value={playlist}
-              onChange={setPlaylist}
-              options={PLAYLISTS.map((key) => ({
-                value: key,
-                label: t(`settings:playlistNames.${key}`),
-              }))}
-            />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-40 flex-1 flex-col gap-1.5">
+              <label className="text-[13px] font-medium text-text-secondary">
+                {t("settings:manualMmr.playlist")}
+              </label>
+              <Select
+                value={playlist}
+                onChange={setPlaylist}
+                options={PLAYLISTS.map((key) => ({
+                  value: key,
+                  label: t(`settings:playlistNames.${key}`),
+                }))}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[13px] font-medium text-text-secondary">
+                {t("settings:manualMmr.mmr")}
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={3000}
+                value={mmr}
+                onChange={(e) => setMmr(e.target.value)}
+                placeholder={current ? String(current.mmr) : "1363"}
+                aria-label={t("settings:manualMmr.mmr")}
+                className={cn(
+                  "h-9 w-28 rounded-md border border-border-default bg-bg-surface px-2.5 text-sm text-text-primary",
+                  "placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20",
+                )}
+              />
+            </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              disabled={!valid}
+              isLoading={mutation.isPending}
+              onClick={() => mutation.mutate()}
+            >
+              {t("settings:manualMmr.save")}
+            </Button>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-[13px] font-medium text-text-secondary">
-              {t("settings:manualMmr.mmr")}
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={3000}
-              value={mmr}
-              onChange={(e) => setMmr(e.target.value)}
-              placeholder="1363"
-              aria-label={t("settings:manualMmr.mmr")}
-              className={cn(
-                "h-9 w-28 rounded-md border border-border-default bg-bg-surface px-2.5 text-sm text-text-primary",
-                "placeholder:text-text-muted focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/20",
-              )}
-            />
-          </div>
-
-          <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            disabled={!valid}
-            isLoading={mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
-            {t("settings:manualMmr.save")}
-          </Button>
+          {current ? (
+            <p className="text-xs text-text-muted">
+              {t("settings:manualMmr.current")}{" "}
+              <span className="font-semibold text-text-primary">
+                {current.mmr}
+              </span>
+              {" · "}
+              {current.estimated
+                ? t("settings:manualMmr.estimated", {
+                    count: current.matchesSinceRefresh,
+                  })
+                : t("settings:manualMmr.trusted")}
+              {current.updatedAt &&
+                ` · ${new Date(current.updatedAt).toLocaleDateString(i18n.language)}`}
+            </p>
+          ) : (
+            <p className="text-xs text-text-muted">
+              {t("settings:manualMmr.noEntry")}
+            </p>
+          )}
         </div>
       )}
     </section>

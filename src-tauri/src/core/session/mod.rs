@@ -172,6 +172,16 @@ impl SessionManager {
         if self.winner_team_num.is_some() {
             return false;
         }
+        // A server-side match carries a real match_guid (`is_online`): it can
+        // never be Free Play. A party lobby destroyed before kickoff used to
+        // fall through to the party-training rule below and was discarded as
+        // a "training" stint instead of being kept as a cancelled match.
+        // (PlaylistId is not a safe discriminator here: Free Play reports
+        // playlist ids too, so it cannot separate Free Play from a cancelled
+        // queue lobby.)
+        if self.is_online {
+            return false;
+        }
         if self.max_player_count <= 1 {
             return true;
         }
@@ -201,14 +211,25 @@ impl SessionManager {
         }
 
         // Fall back to the display name, which the parser also uses as a key
-        // when no id is present.
+        // when no id is present. Two roster entries can share a name (party
+        // members, bots vs humans): a bare first-match could attribute the
+        // kickoff goal to the wrong team. Only accept a unique name, or
+        // disambiguate by the scorer's team from the goal payload.
         if !scorer.name.is_empty() {
-            if let Some((key, _)) = self
+            let mut by_name = self
                 .players
                 .iter()
-                .find(|(_, p)| p.name.eq_ignore_ascii_case(&scorer.name))
-            {
-                return Some(key.clone());
+                .filter(|(_, p)| p.name.eq_ignore_ascii_case(&scorer.name));
+            match (by_name.next(), by_name.next()) {
+                (Some((key, _)), None) => return Some(key.clone()),
+                (Some(_), Some(_)) => {
+                    if let Some((key, _)) = self.players.iter().find(|(_, p)| {
+                        p.name.eq_ignore_ascii_case(&scorer.name) && p.team == scorer.team_num
+                    }) {
+                        return Some(key.clone());
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -583,6 +604,21 @@ impl SessionManager {
             }
         });
         let is_training = self.is_training_by_content();
+        // A match that ended without a winner and never reached a drawn
+        // regulation period is cancelled (lobby dissolved before kickoff) or
+        // abandoned (quit mid-game) — it stays in history as `cancelled` but
+        // must not count as a played match anywhere.
+        let status = if is_training {
+            crate::core::models::MATCH_STATUS_COMPLETED
+        } else {
+            crate::core::models::derive_match_status(
+                winner,
+                self.score_blue,
+                self.score_orange,
+                duration,
+            )
+        };
+        let is_cancelled = status == crate::core::models::MATCH_STATUS_CANCELLED;
         let mut settings = get_settings(pool).unwrap_or_else(|_| AppSettings::default());
 
         // Training-tracking opt-out: when the setting is off, solo sessions are
@@ -605,6 +641,7 @@ impl SessionManager {
                     local_team_num: None,
                     players: Vec::new(),
                     match_type: Some("training".into()),
+                    status: crate::core::models::MATCH_STATUS_COMPLETED.to_string(),
                     kickoff_goals_scored: 0,
                     kickoff_goals_conceded: 0,
                 },
@@ -655,7 +692,8 @@ impl SessionManager {
                     .filter(|id| *id != local_pid)
                     .cloned()
                     .collect();
-                compute_head_to_head_conn(&conn, local_pid, &opponent_ids).unwrap_or_default()
+                compute_head_to_head_conn(&conn, std::slice::from_ref(local_pid), &opponent_ids)
+                    .unwrap_or_default()
             } else {
                 HashMap::new()
             };
@@ -731,6 +769,7 @@ impl SessionManager {
                     winner,
                     is_overtime: self.is_overtime,
                     duration_seconds: duration,
+                    status,
                 },
             )?;
 
@@ -842,6 +881,7 @@ impl SessionManager {
             local_team_num: my_team,
             players: players_vec,
             match_type: effective_match_type,
+            status: status.to_string(),
             kickoff_goals_scored: my_kickoff_goals,
             kickoff_goals_conceded: their_kickoff_goals,
         };
@@ -851,10 +891,12 @@ impl SessionManager {
             return Err(error);
         }
 
-        // Update daily rollup — skip for training matches.
+        // Update daily rollup — skip for training matches and for cancelled
+        // ones: an aborted game is not a played match, so it must not inflate
+        // `matches_played` or dilute the averages.
         // The bucket date is local time: rollups grouped by UTC date split
         // evening sessions across two days.
-        if !is_training {
+        if !is_training && !is_cancelled {
             let date = start_time
                 .with_timezone(&Local)
                 .format("%Y-%m-%d")
@@ -918,15 +960,20 @@ impl SessionManager {
         });
 
         if let Some((local_primary_id, _)) = &local_identity {
+            // Only learn the identity when nothing is configured yet. If a
+            // primary id (or linked ids) already exists and the detected player
+            // resolved through another path, silently overwriting it would hide
+            // prior match history — the mismatch flow decides instead.
             let should_save =
-                settings.local_primary_id.as_deref() != Some(local_primary_id.as_str());
+                settings.local_primary_id.is_none() && settings.linked_player_ids.is_empty();
             if should_save {
                 settings.local_primary_id = Some(local_primary_id.clone());
+                settings.link_player_id(local_primary_id);
                 if let Err(e) = set_settings(pool, &settings) {
                     warn!(error = %e, "Failed to persist local primary id");
                 } else if let Err(e) = rebuild_daily_rollups_for_identity(
                     pool,
-                    settings.local_primary_id.as_deref(),
+                    &settings.local_identity_ids(),
                     &identity_candidate_names(&settings),
                 ) {
                     warn!(error = %e, "Failed to rebuild daily rollups after learning local primary id");
@@ -1050,7 +1097,11 @@ impl SessionManager {
     }
 
     fn has_meaningful_match_data(&self) -> bool {
-        !self.players.is_empty()
+        // A server guid alone is proof a real match existed — a lobby torn
+        // down before the first roster snapshot is still a cancelled match
+        // the user wants on record.
+        self.match_guid.is_some()
+            || !self.players.is_empty()
             || !self.events.is_empty()
             || self.score_blue != 0
             || self.score_orange != 0
@@ -1106,8 +1157,14 @@ pub fn resolve_local_player_identity<'a>(
 ) -> Option<(String, i32)> {
     let players = players.collect::<Vec<_>>();
 
-    if let Some(local_primary_id) = settings.local_primary_id.as_deref() {
-        if let Some(player) = players.iter().find(|player| player.id == local_primary_id) {
+    // Any linked identity counts as the local player — Steam and Epic report
+    // different PrimaryIds for the same Rocket League account.
+    let linked_ids = settings.local_identity_ids();
+    if !linked_ids.is_empty() {
+        if let Some(player) = players
+            .iter()
+            .find(|player| linked_ids.iter().any(|id| id == &player.id))
+        {
             return Some((player.id.clone(), player.team));
         }
     }

@@ -25,6 +25,8 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
     { value: "all", label: t("history:filters.results.all") },
     { value: "win", label: t("history:filters.results.wins") },
     { value: "loss", label: t("history:filters.results.losses") },
+    { value: "draw", label: t("history:filters.results.draws") },
+    { value: "cancelled", label: t("history:filters.results.cancelled") },
   ];
 
   const matchTypeOptions = [
@@ -74,7 +76,8 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
       const currentFilters = filtersRef.current;
       onChange({
         ...currentFilters,
-        result: value === "all" ? null : (value as "win" | "loss"),
+        result:
+          value === "all" ? null : (value as NonNullable<MatchFilters["result"]>),
       });
     },
     [onChange]

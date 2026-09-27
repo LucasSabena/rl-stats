@@ -3,6 +3,7 @@ import {
   type ConnectionStatus,
   type PlayerStats,
   type LiveMmrSnapshot,
+  type LocalMmrEntry,
   type MmrProviderHealth,
   type MmrProviderTestResult,
 } from "../types";
@@ -59,6 +60,11 @@ export async function setLocalMmr(
   mmr: number,
 ): Promise<void> {
   return invokeCommand<void>("set_local_mmr", { playlist, mmr });
+}
+
+/** Stored local MMR per playlist for the active profile. */
+export async function getLocalMmr(): Promise<Record<string, LocalMmrEntry>> {
+  return invokeCommand<Record<string, LocalMmrEntry>>("get_local_mmr");
 }
 
 export async function getMmrProviderHealth(): Promise<MmrProviderHealth[]> {

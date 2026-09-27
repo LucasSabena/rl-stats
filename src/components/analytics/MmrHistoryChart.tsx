@@ -15,60 +15,126 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
 import { deriveRank, TIER_COLOR } from "@/lib/rank";
-import type { AnalyticsPeriod } from "@/lib/types";
+import type { AnalyticsPeriod, DateRange } from "@/lib/types";
 import { useMmrHistory } from "@/hooks/useMmrHistory";
 
 const ALL_PLAYLISTS = "all";
 
-function formatDate(value: string, language: string) {
+/** Distinct, theme-safe line colors for the simultaneous ladders. */
+const SERIES_COLORS = [
+  "var(--color-accent-primary)",
+  "#f59e0b",
+  "#10b981",
+  "#8b5cf6",
+  "#ec4899",
+  "#06b6d4",
+  "#f97316",
+  "#84cc16",
+];
+
+function formatDate(value: string | number, language: string, withYear = false) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString(language, { day: "numeric", month: "short" });
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(language, {
+    day: "numeric",
+    month: "short",
+    ...(withYear ? { year: "2-digit" } : {}),
+  });
+}
+
+/** Split a canonical `match_type:playlist` key. */
+function splitSeries(series: string): { matchType: string; playlist: string } {
+  const idx = series.indexOf(":");
+  if (idx < 0) return { matchType: "other", playlist: series };
+  return {
+    matchType: series.slice(0, idx) || "other",
+    playlist: series.slice(idx + 1) || "other",
+  };
 }
 
 export function MmrHistoryChart({
   playerId,
   period,
+  dateRange,
 }: {
   playerId: string | null;
   period: AnalyticsPeriod;
+  dateRange?: DateRange;
 }) {
-  const { t, i18n } = useTranslation(["analytics", "common"]);
-  const [playlist, setPlaylist] = useState<string>(ALL_PLAYLISTS);
+  const { t, i18n } = useTranslation(["analytics", "common", "history"]);
+  const [series, setSeries] = useState<string>(ALL_PLAYLISTS);
 
   const { data, isLoading, isError, refetch } = useMmrHistory(
     playerId,
-    playlist === ALL_PLAYLISTS ? null : playlist,
+    series === ALL_PLAYLISTS ? null : series,
     period,
+    dateRange,
   );
 
   const points = useMemo(() => data?.points ?? [], [data]);
 
-  const stats = useMemo(() => {
-    if (points.length === 0) return null;
-    const first = points[0].mmr;
-    const last = points[points.length - 1].mmr;
-    const peak = Math.max(...points.map((p) => p.mmr));
-    const low = Math.min(...points.map((p) => p.mmr));
-    // Rank is derived on the ladder of the playlist being shown (or the last
-    // reading's playlist when "all" is selected).
-    const lastPlaylist = points[points.length - 1].playlist;
-    const rank = deriveRank(last, lastPlaylist);
-    const peakRank = deriveRank(peak, lastPlaylist);
-    return { current: last, delta: last - first, peak, low, games: points.length, rank, peakRank };
+  /** Human label for a canonical series key: "Casual · Doubles (2v2)". */
+  const seriesLabel = (key: string) => {
+    const { matchType, playlist } = splitSeries(key);
+    const playlistLabel = t(`history:playlists.${playlist}`, {
+      defaultValue:
+        playlist === "other"
+          ? t("history:playlists.other")
+          : playlist.charAt(0).toUpperCase() + playlist.slice(1),
+    });
+    if (matchType === "ranked" || matchType === "other") return playlistLabel;
+    return `${t(`history:matchTypes.${matchType}`, { defaultValue: matchType })} · ${playlistLabel}`;
+  };
+
+  // Ordered list of ladders actually present in the loaded points.
+  const seriesList = useMemo(() => {
+    const seen: string[] = [];
+    for (const point of points) {
+      if (!seen.includes(point.series)) seen.push(point.series);
+    }
+    return seen;
   }, [points]);
 
-  const chartData = useMemo(
-    () =>
-      points.map((point) => ({
-        date: formatDate(point.start_time, i18n.language),
-        mmr: point.mmr,
-        win: point.is_win,
-      })),
-    [points, i18n.language],
-  );
+  // The ladder the headline stats describe: the selected one, or the ladder
+  // of the most recent reading when everything is overlaid.
+  const statsSeries = useMemo(() => {
+    if (series !== ALL_PLAYLISTS) return series;
+    return points[points.length - 1]?.series ?? null;
+  }, [series, points]);
 
-  const rankPlaylist = points[points.length - 1]?.playlist ?? null;
+  const stats = useMemo(() => {
+    if (!statsSeries) return null;
+    const seriesPoints = points.filter((p) => p.series === statsSeries);
+    if (seriesPoints.length === 0) return null;
+    const first = seriesPoints[0].mmr;
+    const last = seriesPoints[seriesPoints.length - 1].mmr;
+    const peak = Math.max(...seriesPoints.map((p) => p.mmr));
+    const playlistPart = splitSeries(statsSeries).playlist;
+    return {
+      current: last,
+      delta: last - first,
+      peak,
+      games: seriesPoints.length,
+      rank: deriveRank(last, playlistPart),
+      peakRank: deriveRank(peak, playlistPart),
+    };
+  }, [points, statsSeries]);
+
+  // Numeric timestamp axis so sparse ladders align on real dates: each row is
+  // one instant carrying the readings of whichever series had a match then.
+  const chartData = useMemo(() => {
+    const rows = new Map<number, Record<string, number>>();
+    for (const point of points) {
+      const ts = new Date(point.start_time).getTime();
+      if (Number.isNaN(ts)) continue;
+      const row = rows.get(ts) ?? { ts };
+      row[point.series] = point.mmr;
+      rows.set(ts, row);
+    }
+    return [...rows.values()].sort((a, b) => Number(a.ts) - Number(b.ts));
+  }, [points]);
+
+  const multiSeries = series === ALL_PLAYLISTS && seriesList.length > 1;
 
   return (
     <Card className="p-4">
@@ -81,17 +147,17 @@ export function MmrHistoryChart({
         </div>
         {(data?.playlists?.length ?? 0) > 1 && (
           <select
-            value={playlist}
-            onChange={(event) => setPlaylist(event.target.value)}
+            value={series}
+            onChange={(event) => setSeries(event.target.value)}
             aria-label={t("analytics:mmrHistory.playlistLabel", { defaultValue: "Playlist" })}
             className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-xs text-text-secondary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
           >
             <option value={ALL_PLAYLISTS}>
               {t("analytics:mmrHistory.allPlaylists", { defaultValue: "Todas" })}
             </option>
-            {data?.playlists.map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {data?.playlists.map((key) => (
+              <option key={key} value={key}>
+                {seriesLabel(key)}
               </option>
             ))}
           </select>
@@ -132,6 +198,9 @@ export function MmrHistoryChart({
             <div>
               <p className="text-[10px] uppercase tracking-wide text-text-tertiary">
                 {t("analytics:mmrHistory.current", { defaultValue: "Actual" })}
+                {statsSeries && series === ALL_PLAYLISTS && (
+                  <span className="ml-1 normal-case">· {seriesLabel(statsSeries)}</span>
+                )}
               </p>
               <p className="numeral text-xl font-bold text-text-primary">
                 {Math.round(stats.current)}
@@ -194,9 +263,11 @@ export function MmrHistoryChart({
               <LineChart data={chartData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle)" />
                 <XAxis
-                  dataKey="date"
+                  dataKey="ts"
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
                   tick={{ fontSize: 10, fill: "var(--color-text-tertiary)" }}
-                  interval="preserveStartEnd"
+                  tickFormatter={(ts: number) => formatDate(ts, i18n.language)}
                   minTickGap={24}
                 />
                 <YAxis
@@ -212,25 +283,61 @@ export function MmrHistoryChart({
                     fontSize: 12,
                   }}
                   labelStyle={{ color: "var(--color-text-secondary)" }}
-                  formatter={(value: number) => {
-                    const rank = deriveRank(Number(value), rankPlaylist);
+                  labelFormatter={(ts: number) => formatDate(ts, i18n.language, true)}
+                  formatter={(value: number, key: string) => {
+                    const playlistPart = splitSeries(key).playlist;
+                    const rank = deriveRank(Number(value), playlistPart);
                     return [
                       rank ? `${value} · ${rank.label}` : `${value}`,
-                      "MMR",
+                      seriesLabel(key),
                     ];
                   }}
                 />
-                <Line
-                  type="monotone"
-                  dataKey="mmr"
-                  stroke="var(--color-accent-primary)"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 3 }}
-                />
+                {seriesList.map((key, index) => (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    name={seriesLabel(key)}
+                    stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 3 }}
+                    connectNulls
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
+
+          {multiSeries && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+              {seriesList.map((key, index) => {
+                const lastPoint = [...points].reverse().find((p) => p.series === key);
+                const rank = lastPoint
+                  ? deriveRank(lastPoint.mmr, splitSeries(key).playlist)
+                  : null;
+                return (
+                  <span
+                    key={key}
+                    className="flex items-center gap-1.5 text-[11px] text-text-secondary"
+                  >
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ background: SERIES_COLORS[index % SERIES_COLORS.length] }}
+                    />
+                    {seriesLabel(key)}
+                    {lastPoint && (
+                      <span className="text-text-tertiary">
+                        · {lastPoint.mmr}
+                        {rank ? ` (${rank.short})` : ""}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </Card>

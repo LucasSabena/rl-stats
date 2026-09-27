@@ -40,20 +40,23 @@ export const MatchCard = memo(function MatchCard({
 
   const hasLocalTeam = match.localTeamNum !== null && match.localTeamNum !== undefined;
   const isTraining = match.matchType === "training";
+  const isCancelled = match.status === "cancelled";
   const isWin = hasLocalTeam && match.winnerTeamNum === match.localTeamNum;
   const isLoss = hasLocalTeam && match.winnerTeamNum !== null && match.winnerTeamNum !== match.localTeamNum;
 
   const resultLabel = isTraining
     ? t("history:results.training")
-    : isWin
-      ? t("history:results.win")
-      : isLoss
-        ? t("history:results.loss")
-        : match.winnerTeamNum === 0
-          ? t("history:results.blueWon")
-          : match.winnerTeamNum === 1
-            ? t("history:results.orangeWon")
-            : t("history:results.draw");
+    : isCancelled
+      ? t("history:results.cancelled")
+      : isWin
+        ? t("history:results.win")
+        : isLoss
+          ? t("history:results.loss")
+          : match.winnerTeamNum === 0
+            ? t("history:results.blueWon")
+            : match.winnerTeamNum === 1
+              ? t("history:results.orangeWon")
+              : t("history:results.draw");
 
   const resultTone = isTraining
     ? "text-accent-primary"

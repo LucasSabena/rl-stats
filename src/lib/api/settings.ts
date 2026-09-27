@@ -12,6 +12,7 @@ import { invokeCommand } from "./core";
 interface RawAppSettings {
   player_name: string;
   local_primary_id?: string | null;
+  linked_player_ids?: string[];
   auto_start: boolean;
   port: number;
   data_retention_days: number;
@@ -87,6 +88,7 @@ export async function getSettings(): Promise<AppSettings> {
   return {
     playerName: settings.player_name,
     localPrimaryId: settings.local_primary_id ?? null,
+    linkedPlayerIds: settings.linked_player_ids ?? [],
     autoStart: settings.auto_start,
     port: settings.port ?? 49123,
     dataRetentionDays: settings.data_retention_days ?? 90,
@@ -162,6 +164,7 @@ export async function setSettings(settings: AppSettings): Promise<void> {
     settings: {
       player_name: settings.playerName ?? "",
       local_primary_id: settings.localPrimaryId ?? null,
+      linked_player_ids: settings.linkedPlayerIds ?? [],
       auto_start: settings.autoStart,
       port: settings.port ?? 49123,
       data_retention_days: settings.dataRetentionDays ?? 90,
@@ -356,6 +359,21 @@ export async function updateProfilePlayerIdentity(
     profileId,
     primaryId,
     playerName,
+  });
+}
+
+/**
+ * Links an extra platform id (Steam/Epic) of the SAME Rocket League account
+ * to the active profile. Unlike `updateProfilePlayerIdentity`, this never
+ * replaces the canonical identity — both ids count as the local player.
+ */
+export async function linkPlayerIdentity(
+  primaryId: string,
+  playerName?: string,
+): Promise<void> {
+  return invokeCommand<void>("link_player_identity_cmd", {
+    primaryId,
+    playerName: playerName ?? null,
   });
 }
 

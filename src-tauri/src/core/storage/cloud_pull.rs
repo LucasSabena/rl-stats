@@ -134,11 +134,22 @@ fn apply_match(
 
     let start_time =
         string_field(p, "start_time").unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    // `status` travels in the payload from devices on the new schema; payloads
+    // written by older versions re-derive it from the outcome fields.
+    let status = string_field(p, "status").unwrap_or_else(|| {
+        crate::core::models::derive_match_status(
+            i64_field(p, "winner").map(|w| w as i32),
+            i64_field(p, "score_blue").unwrap_or(0) as i32,
+            i64_field(p, "score_orange").unwrap_or(0) as i32,
+            i64_field(p, "duration_seconds").unwrap_or(0) as i32,
+        )
+        .to_string()
+    });
     conn.execute(
         "INSERT INTO matches (
             guid, start_time, end_time, arena, score_blue, score_orange, winner,
-            is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            is_online, is_overtime, duration_seconds, match_type, playlist, mood, notes, tags_json, status
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
          ON CONFLICT(guid) DO UPDATE SET
             start_time = excluded.start_time,
             end_time = COALESCE(excluded.end_time, matches.end_time),
@@ -153,7 +164,8 @@ fn apply_match(
             playlist = COALESCE(excluded.playlist, matches.playlist),
             mood = COALESCE(excluded.mood, matches.mood),
             notes = COALESCE(excluded.notes, matches.notes),
-            tags_json = CASE WHEN excluded.tags_json = '[]' THEN matches.tags_json ELSE excluded.tags_json END",
+            tags_json = CASE WHEN excluded.tags_json = '[]' THEN matches.tags_json ELSE excluded.tags_json END,
+            status = excluded.status",
         params![
             guid,
             start_time,
@@ -173,6 +185,7 @@ fn apply_match(
                 let tags = p.get("tags").cloned().unwrap_or(serde_json::json!([]));
                 serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())
             },
+            status,
         ],
     )
     .map_err(|e| AppError::StorageError(e.to_string()))?;

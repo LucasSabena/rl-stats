@@ -1,5 +1,7 @@
 use crate::commands::analytics::AnalyticsPeriod;
-use crate::core::mmr::{resolve_lobby_mmr, set_local_mmr_manual, LiveMmrSnapshot};
+use crate::core::mmr::{
+    get_local_mmr_entries, resolve_lobby_mmr, set_local_mmr_manual, LiveMmrSnapshot, LocalMmrEntry,
+};
 use crate::core::settings::get_settings;
 use crate::core::storage::{
     get_mmr_history_playlists, get_mmr_history_points, list_mmr_provider_health,
@@ -14,20 +16,21 @@ use tauri::State;
 ///
 /// The window is a local calendar range (matching every other analytics
 /// window). `player_id` selects a friend/teammate; local player otherwise.
+/// `series` is the canonical ladder key (`match_type:playlist`) or "all".
 #[tauri::command]
 pub async fn get_mmr_history(
     state: State<'_, AppState>,
     player_id: Option<String>,
-    playlist: Option<String>,
+    series: Option<String>,
     period: AnalyticsPeriod,
 ) -> Result<serde_json::Value, String> {
     let pool = state.db_pool.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let settings = get_settings(&pool).unwrap_or_default();
         let identity = match player_id {
-            Some(pid) if !pid.trim().is_empty() => pid,
-            _ => match settings.local_primary_id.clone() {
-                Some(id) if !id.trim().is_empty() => id,
+            Some(pid) if !pid.trim().is_empty() => vec![pid],
+            _ => match settings.local_identity_ids() {
+                ids if !ids.is_empty() => ids,
                 _ => {
                     return Ok(serde_json::json!({
                         "available": false,
@@ -38,15 +41,14 @@ pub async fn get_mmr_history(
             },
         };
 
-        let days = if period.days == 0 { 365 } else { period.days };
-        let (start_date, end_date) = crate::commands::analytics::local_window(days as i64);
-        let playlist_filter = playlist
+        let (start_date, end_date) = period.window();
+        let series_filter = series
             .as_deref()
             .filter(|value| !value.trim().is_empty() && *value != "all");
 
         let playlists = get_mmr_history_playlists(&pool, &identity).map_err(|e| e.to_string())?;
         let points =
-            get_mmr_history_points(&pool, &identity, playlist_filter, &start_date, &end_date)
+            get_mmr_history_points(&pool, &identity, series_filter, &start_date, &end_date)
                 .map_err(|e| e.to_string())?;
 
         Ok(serde_json::json!({
@@ -114,7 +116,7 @@ pub async fn fetch_live_mmr_snapshot(
         settings.parsebot_scraper_id.clone(),
         settings.parsebot_endpoint.clone(),
         settings.parsebot_enabled,
-        settings.local_primary_id.clone(),
+        settings.local_identity_ids(),
         !force_refresh,
         exact_playlist,
         settings
@@ -147,18 +149,46 @@ pub async fn set_local_mmr(
     mmr: i32,
 ) -> Result<(), String> {
     let settings = get_settings(&state.db_pool).map_err(|e| e.to_string())?;
-    let local_primary_id = settings
-        .local_primary_id
-        .as_deref()
-        .filter(|id| !id.is_empty())
-        .ok_or_else(|| "No hay un perfil local configurado para guardar MMR.".to_string())?;
+    let local_primary_ids = settings.local_identity_ids();
+    if local_primary_ids.is_empty() {
+        return Err("No hay un perfil local configurado para guardar MMR.".into());
+    }
 
     if !(0..=3000).contains(&mmr) {
         return Err("El MMR debe estar entre 0 y 3000.".into());
     }
 
-    set_local_mmr_manual(&state.db_pool, local_primary_id, &playlist, mmr)
-        .map_err(|e| e.to_string())
+    // Write under every linked platform id so the manual value is visible no
+    // matter which client (Steam/Epic) the next match runs on.
+    for local_primary_id in &local_primary_ids {
+        set_local_mmr_manual(&state.db_pool, local_primary_id, &playlist, mmr)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Stored local MMR per playlist for the active profile, so the manual-entry
+/// form can display the value currently on file.
+#[tauri::command]
+pub async fn get_local_mmr(
+    state: State<'_, AppState>,
+) -> Result<HashMap<String, LocalMmrEntry>, String> {
+    let settings = get_settings(&state.db_pool).map_err(|e| e.to_string())?;
+    let local_primary_ids = settings.local_identity_ids();
+    if local_primary_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Merge entries across linked ids; the canonical primary id wins ties.
+    let mut entries = HashMap::new();
+    for local_primary_id in local_primary_ids.iter().rev() {
+        for (playlist, entry) in
+            get_local_mmr_entries(&state.db_pool, local_primary_id).map_err(|e| e.to_string())?
+        {
+            entries.insert(playlist, entry);
+        }
+    }
+    Ok(entries)
 }
 
 #[tauri::command]

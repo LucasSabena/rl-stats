@@ -158,10 +158,10 @@ describe("IPC argument contract", () => {
       },
     });
 
-    await api.getMmrHistory("Steam|1|2", "doubles", "month");
+    await api.getMmrHistory("Steam|1|2", "ranked:doubles", "month");
     expect(lastCall()).toMatchObject({
       command: "get_mmr_history",
-      args: { playerId: "Steam|1|2", playlist: "doubles", period: { days: 30 } },
+      args: { playerId: "Steam|1|2", series: "ranked:doubles", period: { days: 30 } },
     });
   });
 });

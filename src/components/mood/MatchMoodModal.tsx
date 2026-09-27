@@ -15,6 +15,8 @@ interface MatchFinishedPayload {
   winner?: number | null;
   scoreBlue?: number;
   scoreOrange?: number;
+  /** "completed" | "draw" | "cancelled" (older builds omit it). */
+  status?: string;
   /** True when the backend showed the focus prompt window instead. */
   promptShown?: boolean;
 }
@@ -51,6 +53,8 @@ export function MatchMoodModal() {
           if (cancelled) return;
           const payload = event.payload;
           if (payload.isTraining) return;
+          // A cancelled lobby never produced a match — no mood to rate.
+          if (payload.status === "cancelled") return;
           // The focus prompt window handles this match — stand down so the
           // player is never asked twice.
           if (payload.promptShown) return;

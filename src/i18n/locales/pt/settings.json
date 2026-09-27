@@ -58,7 +58,11 @@
     "savedMessage": "Seu MMR de {{playlist}} foi atualizado para {{mmr}}.",
     "error": "Erro ao salvar",
     "errorMessage": "Não foi possível salvar o MMR.",
-    "noProfile": "Configure seu perfil local (nome ou PrimaryId) para salvar MMR manual."
+    "noProfile": "Configure seu perfil local (nome ou PrimaryId) para salvar MMR manual.",
+    "current": "Atual:",
+    "trusted": "confirmado",
+    "estimated": "estimado · {{count}} partidas sem sincronização online",
+    "noEntry": "Nenhum valor registrado para este modo."
   },
   "playlistNames": {
     "duel": "1v1 Duel",

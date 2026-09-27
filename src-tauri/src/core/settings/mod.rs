@@ -13,6 +13,11 @@ use tracing::{info, warn};
 pub struct AppSettings {
     pub player_name: String,
     pub local_primary_id: Option<String>,
+    /// Other platform ids bound to the same local player (e.g. the same
+    /// Rocket League account reached through Steam and Epic). `local_primary_id`
+    /// stays the canonical identity; entries here count as "me" for match
+    /// detection and analytics instead of silently replacing the primary id.
+    pub linked_player_ids: Vec<String>,
     pub auto_start: bool,
     pub port: u16,
     pub data_retention_days: i32,
@@ -112,6 +117,7 @@ impl Default for AppSettings {
         Self {
             player_name: String::new(),
             local_primary_id: None,
+            linked_player_ids: Vec::new(),
             auto_start: true,
             port: 49123,
             // 0 = keep the full history. The old value (90) was never applied
@@ -202,6 +208,10 @@ impl AppSettings {
             (
                 "local_primary_id",
                 self.local_primary_id.clone().unwrap_or_default(),
+            ),
+            (
+                "linked_player_ids",
+                serde_json::to_string(&self.linked_player_ids).unwrap_or_else(|_| "[]".into()),
             ),
             ("auto_start", self.auto_start.to_string()),
             ("port", self.port.to_string()),
@@ -353,6 +363,52 @@ impl AppSettings {
         ]
     }
 
+    /// Every platform id that resolves to the local player: the canonical
+    /// `local_primary_id` first, then each linked account. Empty strings are
+    /// dropped so callers can treat an empty vec as "no identity configured".
+    pub fn local_identity_ids(&self) -> Vec<String> {
+        let mut ids = Vec::with_capacity(1 + self.linked_player_ids.len());
+        if let Some(pid) = &self.local_primary_id {
+            if !pid.is_empty() {
+                ids.push(pid.clone());
+            }
+        }
+        for id in &self.linked_player_ids {
+            if !id.is_empty() && !ids.contains(id) {
+                ids.push(id.clone());
+            }
+        }
+        ids
+    }
+
+    /// Whether `primary_id` is one of the local player's platform ids.
+    pub fn is_local_id(&self, primary_id: &str) -> bool {
+        if primary_id.is_empty() {
+            return false;
+        }
+        self.local_primary_id.as_deref() == Some(primary_id)
+            || self.linked_player_ids.iter().any(|id| id == primary_id)
+    }
+
+    /// Registers `primary_id` as another platform id of the local player.
+    /// Returns true when the set changed. When the canonical id is still
+    /// unset the id becomes the primary instead of a link.
+    pub fn link_player_id(&mut self, primary_id: &str) -> bool {
+        let primary_id = primary_id.trim();
+        if primary_id.is_empty() {
+            return false;
+        }
+        if self.local_primary_id.is_none() {
+            self.local_primary_id = Some(primary_id.to_string());
+            return true;
+        }
+        if self.is_local_id(primary_id) {
+            return false;
+        }
+        self.linked_player_ids.push(primary_id.to_string());
+        true
+    }
+
     /// Settings payload safe to send to the cloud: API keys stripped.
     pub fn for_sync(&self) -> AppSettings {
         let mut settings = self.clone();
@@ -451,6 +507,12 @@ fn settings_from_connection(conn: &rusqlite::Connection) -> AppResult<AppSetting
             "player_name" => settings.player_name = value,
             "local_primary_id" => {
                 settings.local_primary_id = if value.is_empty() { None } else { Some(value) };
+            }
+            "linked_player_ids" => {
+                if !value.is_empty() {
+                    settings.linked_player_ids =
+                        serde_json::from_str(&value).unwrap_or_else(|_| Vec::new());
+                }
             }
             "auto_start" => settings.auto_start = value.parse().unwrap_or(true),
             "port" => settings.port = value.parse().unwrap_or(49123),

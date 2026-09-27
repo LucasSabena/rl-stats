@@ -72,6 +72,7 @@
     "currentProfile": "Tu perfil activo es <bold>{{profile}}</bold>",
     "switchTo": "Cambiar a {{profile}}",
     "associate": "Asociar {{name}} con este perfil",
+    "linkSameAccount": "Es mi misma cuenta (vincular {{name}})",
     "dismiss": "Ignorar",
     "switchAndRestart": "Cambiar a {{name}} y reiniciar"
   },

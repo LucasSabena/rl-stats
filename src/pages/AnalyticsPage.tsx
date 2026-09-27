@@ -28,6 +28,7 @@ import { ShareModal } from "@/components/share/ShareModal";
 import { WeeklyGoalCard } from "@/components/analytics/WeeklyGoalCard";
 import { buildDayShareContext, buildWeekShareContext, buildSessionShareContext, buildSummaryShareContext } from "@/lib/shareContext";
 import type { AnalyticsPeriod, MatchSession, PlaylistFilter, MatchTypeFilter, DataScope, ShareContext } from "@/lib/types";
+import { seasonByNumber, seasonDateRange } from "@/lib/seasons";
 import { BarChart3, X, Share2 } from "lucide-react";
 
 const PERIODS: AnalyticsPeriod[] = ["day", "week", "month", "year", "alltime", "session"];
@@ -73,6 +74,12 @@ export function AnalyticsPage() {
     paramOr(searchParams.get("scope"), ["me", "team"] as const, "me")
   );
   const [playerId, setPlayerId] = useState<string | null>(() => searchParams.get("player"));
+  const [season, setSeason] = useState<number | null>(() => {
+    const raw = searchParams.get("season");
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return seasonByNumber(parsed) ? parsed : null;
+  });
   const [selectedSession, setSelectedSession] = useState<MatchSession | null>(null);
   const [sessionShareOpen, setSessionShareOpen] = useState(false);
   const [sessionShareContext, setSessionShareContext] = useState<ShareContext | null>(null);
@@ -85,15 +92,32 @@ export function AnalyticsPage() {
     if (matchType !== "all") params.set("type", matchType);
     if (scope !== "me") params.set("scope", scope);
     if (playerId) params.set("player", playerId);
+    if (season !== null) params.set("season", String(season));
     setSearchParams(params, { replace: true });
-  }, [period, playlist, matchType, scope, playerId, setSearchParams]);
+  }, [period, playlist, matchType, scope, playerId, season, setSearchParams]);
+
+  // A selected season turns into an explicit date window that overrides the
+  // relative period on the backend.
+  const dateRange = useMemo(() => {
+    if (season === null) return undefined;
+    const entry = seasonByNumber(season);
+    return entry ? seasonDateRange(entry) : undefined;
+  }, [season]);
 
   const filters = useMemo(
-    () => ({ playlist, matchType, scope, playerId }),
-    [playlist, matchType, scope, playerId]
+    () => ({ playlist, matchType, scope, playerId, dateRange }),
+    [playlist, matchType, scope, playerId, dateRange]
   );
 
-  const hasActiveFilters = playlist !== "all" || matchType !== "all" || scope !== "me" || !!playerId;
+  const hasActiveFilters =
+    playlist !== "all" || matchType !== "all" || scope !== "me" || !!playerId || season !== null;
+
+  const handlePeriodChange = useCallback((next: AnalyticsPeriod) => {
+    setPeriod(next);
+    // Picking a relative period again drops the season override, otherwise
+    // the explicit range would silently keep winning on the backend.
+    setSeason(null);
+  }, []);
 
   const { data: result, isLoading, isError, refetch: refetchAnalytics } = useAnalytics(period, filters, {
     // In player mode the page renders the player summary/matches instead;
@@ -164,7 +188,16 @@ export function AnalyticsPage() {
     setMatchType("all");
     setScope("me");
     setPlayerId(null);
+    setSeason(null);
   }, []);
+
+  const activeDateLabel = useMemo(
+    () =>
+      season !== null
+        ? `${t("analytics:filters.season.label")} ${season}`
+        : t(`analytics:periods.${period}`, { defaultValue: period.toUpperCase() }),
+    [season, period, t],
+  );
 
   const [shareOpen, setShareOpen] = useState(false);
 
@@ -195,14 +228,14 @@ export function AnalyticsPage() {
       result.data,
       friendsPresent,
       username,
-      t(`analytics:periods.${period}`, { defaultValue: period.toUpperCase() }),
+      activeDateLabel,
       ""
     );
-  }, [result, period, friendsPresent, username, i18n.language, t]);
+  }, [result, period, friendsPresent, username, i18n.language, t, activeDateLabel]);
 
   const panelNodes: Record<AnalyticsPanelId, React.ReactNode> = {
     primary: result ? <PrimaryStatsRow data={result.data} scope={scope} /> : null,
-    training: result ? <TrainingTimeCard period={period} /> : null,
+    training: result ? <TrainingTimeCard period={period} dateRange={dateRange} /> : null,
     chart:
       result && result.rollups.length > 0 ? (
         <PerformanceChart
@@ -215,7 +248,7 @@ export function AnalyticsPage() {
           }}
         />
       ) : null,
-    mmr: <MmrHistoryChart playerId={null} period={period} />,
+    mmr: <MmrHistoryChart playerId={null} period={period} dateRange={dateRange} />,
     secondary: result ? (
       <SecondaryStatsRow
         data={result.data}
@@ -238,6 +271,7 @@ export function AnalyticsPage() {
         playerId={null}
         playerOptions={playerOptions}
         username={username}
+        dateRange={dateRange}
       />
     ),
     patterns: (
@@ -249,7 +283,8 @@ export function AnalyticsPage() {
         playerId={null}
         username={username}
         friendsPresent={friendsPresent}
-        dateLabel={t("analytics:periods." + period, { defaultValue: period.toUpperCase() })}
+        dateLabel={activeDateLabel}
+        dateRange={dateRange}
       />
     ),
     sessions:
@@ -320,7 +355,7 @@ export function AnalyticsPage() {
         <div className="rounded-lg border border-border-subtle bg-bg-surface p-2.5">
           <AnalyticsFilters
             period={period}
-            onPeriodChange={setPeriod}
+            onPeriodChange={handlePeriodChange}
             playlist={playlist}
             onPlaylistChange={setPlaylist}
             matchType={matchType}
@@ -330,6 +365,8 @@ export function AnalyticsPage() {
             playerId={playerId}
             onPlayerChange={setPlayerId}
             playerOptions={playerOptions}
+            season={season}
+            onSeasonChange={setSeason}
             isLoading={isLoading}
           />
         </div>
@@ -464,7 +501,7 @@ export function AnalyticsPage() {
           ) : playerSummary && playerSummary.totalMatches > 0 ? (
             <>
               <PrimaryStatsRow data={playerSummary} scope="me" />
-              <MmrHistoryChart playerId={playerId} period={period} />
+              <MmrHistoryChart playerId={playerId} period={period} dateRange={dateRange} />
               <SecondaryStatsRow
                 data={playerSummary}
                 scope="me"
@@ -484,7 +521,8 @@ export function AnalyticsPage() {
                 playerId={playerId}
                 username={selectedPlayerName}
                 friendsPresent={friendsPresent}
-                dateLabel={t('analytics:periods.' + period, { defaultValue: period.toUpperCase() })}
+                dateLabel={activeDateLabel}
+                dateRange={dateRange}
               />
             </>
           ) : (

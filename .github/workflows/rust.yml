@@ -44,7 +44,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -53,7 +53,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Only the downloaded crates + index: caching the extracted
           # ~/.cargo/registry/src (thousands of small files) made every cache
@@ -69,7 +69,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache Cargo target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: src-tauri/target
           # `hashFiles` + `restore-keys` en vez de `run_id`: con `run_id` la key
@@ -105,12 +105,22 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # La auditoría de crates corre acá, donde ya existe el runner de Rust,
+      # y no en cada cambio de React/TypeScript.
+      - name: Install cargo-audit
+        continue-on-error: true
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: cargo audit
+        continue-on-error: true
+        run: cargo audit
+
       - name: Check formatting
         run: cargo fmt -- --check
 
       - name: Upload Cargo build artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cargo-build-${{ github.run_id }}
           path: src-tauri/target/

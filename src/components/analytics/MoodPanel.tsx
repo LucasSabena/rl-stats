@@ -11,6 +11,7 @@ import { moodIcon, moodLabelKey, moodTone, MOODS } from "@/lib/moods";
 import type {
   AnalyticsPeriod,
   DataScope,
+  DateRange,
   MatchTypeFilter,
   PlaylistFilter,
   ShareContext,
@@ -26,6 +27,7 @@ interface MoodPanelProps {
   username: string;
   friendsPresent: string[];
   dateLabel: string;
+  dateRange?: DateRange;
 }
 
 const MOOD_ORDER = [...MOODS, "unrated"];
@@ -43,13 +45,14 @@ export const MoodPanel = memo(function MoodPanel({
   username,
   friendsPresent,
   dateLabel,
+  dateRange,
 }: MoodPanelProps) {
   const { t } = useTranslation(["analytics", "common", "mood"]);
   const [shareOpen, setShareOpen] = useState(false);
 
   const filters = useMemo(
-    () => ({ playlist, matchType, scope, playerId }),
-    [playlist, matchType, scope, playerId],
+    () => ({ playlist, matchType, scope, playerId, dateRange }),
+    [playlist, matchType, scope, playerId, dateRange],
   );
   const { data, isLoading, isError, refetch } = useCustomBreakdown(period, "mood", filters);
   const minSample = data?.minSample ?? 3;

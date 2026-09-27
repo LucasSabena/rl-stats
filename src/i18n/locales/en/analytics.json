@@ -237,6 +237,10 @@
       "tournament": "Tournament",
       "training": "Training",
       "other": "Other"
+    },
+    "season": {
+      "all": "All seasons",
+      "label": "Season"
     }
   },
   "heatmap": {

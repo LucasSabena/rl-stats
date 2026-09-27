@@ -6,6 +6,7 @@ import {
   findMatchingProfile,
   getActiveProfile,
   getSettings,
+  linkPlayerIdentity,
   restartApp,
   switchProfile,
   updateProfilePlayerIdentity,
@@ -74,10 +75,12 @@ export function useAccountMismatch() {
           detectLocalAccounts(),
         ]);
         const activeAccount = accounts.find((account) => account.active);
+        const linkedIds = settings.linkedPlayerIds ?? [];
         if (
           activeAccount &&
           settings.warnOnProfileMismatch !== false &&
-          settings.localPrimaryId !== activeAccount.primary_id
+          settings.localPrimaryId !== activeAccount.primary_id &&
+          !linkedIds.includes(activeAccount.primary_id)
         ) {
           const match = await findMatchingProfile(
             activeAccount.primary_id,
@@ -132,6 +135,11 @@ export function useAccountMismatch() {
     useAccountMismatchStore.getState().clearMismatch();
   };
 
+  const handleLinkIdentity = async (primaryId: string, playerName: string) => {
+    await linkPlayerIdentity(primaryId, playerName);
+    useAccountMismatchStore.getState().clearMismatch();
+  };
+
   const handleDismiss = () => {
     useAccountMismatchStore.getState().dismissDialog();
   };
@@ -140,6 +148,7 @@ export function useAccountMismatch() {
     handleSwitchProfile,
     handleSwitchProfileAndRestart,
     handleSaveIdentity,
+    handleLinkIdentity,
     handleDismiss,
   };
 }

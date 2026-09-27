@@ -19,21 +19,24 @@ export const MatchInfoPanel = memo(function MatchInfoPanel({ match }: MatchInfoP
   };
 
   const isTraining = match.matchType === "training";
+  const isCancelled = match.status === "cancelled";
   const hasLocalTeam = match.localTeamNum !== null && match.localTeamNum !== undefined;
   const isWin = hasLocalTeam && match.winnerTeamNum === match.localTeamNum;
   const isLoss = hasLocalTeam && match.winnerTeamNum !== null && match.winnerTeamNum !== match.localTeamNum;
 
   const resultLabel = isTraining
     ? t("matchType.training")
-    : isWin
-      ? t("infoPanel.win")
-      : isLoss
-        ? t("infoPanel.loss")
-        : match.winnerTeamNum === 0
-          ? t("infoPanel.blueWon")
-          : match.winnerTeamNum === 1
-            ? t("infoPanel.orangeWon")
-            : t("infoPanel.draw");
+    : isCancelled
+      ? t("infoPanel.cancelled")
+      : isWin
+        ? t("infoPanel.win")
+        : isLoss
+          ? t("infoPanel.loss")
+          : match.winnerTeamNum === 0
+            ? t("infoPanel.blueWon")
+            : match.winnerTeamNum === 1
+              ? t("infoPanel.orangeWon")
+              : t("infoPanel.draw");
   const resultColor = isTraining
     ? "text-accent-primary"
     : isWin

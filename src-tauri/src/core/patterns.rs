@@ -60,30 +60,38 @@ pub struct CurveRow {
 #[allow(clippy::too_many_arguments)]
 fn fetch_curve_rows(
     conn: &rusqlite::Connection,
-    player_primary_id: &str,
+    player_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
     match_type: Option<&str>,
     gap_minutes: u32,
 ) -> AppResult<Vec<CurveRow>> {
-    let mut sql = String::from(
-        "SELECT m.id, m.start_time, m.end_time, m.duration_seconds, m.winner,
+    let id_placeholders = vec!["?"; player_primary_ids.len().max(1)].join(", ");
+    let mut sql = format!(
+        "SELECT m.id, p.primary_id, m.start_time, m.end_time, m.duration_seconds, m.winner,
                 mp.team_num, m.playlist, m.arena, m.match_type, m.is_overtime,
                 mp.goals, mp.assists, mp.saves, mp.shots, mp.demos, mp.score,
                 m.mood
          FROM matches m
          JOIN match_players mp ON mp.match_id = m.id
          JOIN players p ON p.id = mp.player_id
-         WHERE p.primary_id = ?1
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+         WHERE p.primary_id IN ({id_placeholders})
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
-    let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![
-        Box::new(player_primary_id.to_string()),
-        Box::new(start_date.to_string()),
-        Box::new(end_date.to_string()),
-    ];
+    let (day_start, day_end) =
+        crate::core::storage::local_day_range_utc_bounds(Some(start_date), Some(end_date));
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    for pid in player_primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if player_primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
@@ -106,30 +114,56 @@ fn fetch_curve_rows(
 
     let params_refs: Vec<&dyn rusqlite::ToSql> = args.iter().map(|a| a.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let raw = stmt
+    #[allow(clippy::type_complexity)]
+    type RawRow = (
+        i64,
+        String,
+        Option<String>,
+        i32,
+        Option<i32>,
+        i32,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        i32,
+        Option<String>,
+    );
+    let raw: Vec<(i64, String, RawRow)> = stmt
         .query_map(&*params_refs, |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, i32>(3)?,
-                row.get::<_, Option<i32>>(4)?,
-                row.get::<_, i32>(5)?,
-                row.get::<_, Option<String>>(6)?,
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, Option<String>>(8)?,
-                row.get::<_, i32>(9)?,
-                row.get::<_, i32>(10)?,
-                row.get::<_, i32>(11)?,
-                row.get::<_, i32>(12)?,
-                row.get::<_, i32>(13)?,
-                row.get::<_, i32>(14)?,
-                row.get::<_, i32>(15)?,
-                row.get::<_, Option<String>>(16)?,
+                (
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, i32>(4)?,
+                    row.get::<_, Option<i32>>(5)?,
+                    row.get::<_, i32>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, i32>(10)?,
+                    row.get::<_, i32>(11)?,
+                    row.get::<_, i32>(12)?,
+                    row.get::<_, i32>(13)?,
+                    row.get::<_, i32>(14)?,
+                    row.get::<_, i32>(15)?,
+                    row.get::<_, i32>(16)?,
+                    row.get::<_, Option<String>>(17)?,
+                ),
             ))
         })?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| AppError::StorageError(e.to_string()))?;
+    // Linked identities coexisting in one match count the match once.
+    let raw = crate::core::storage::dedup_local_rows(raw, player_primary_ids);
 
     // Assign every match to a session: consecutive matches belong together
     // while the gap between the previous match's end and this match's start
@@ -325,7 +359,7 @@ fn is_win(row: &CurveRow) -> bool {
 #[allow(clippy::too_many_arguments)]
 pub fn get_session_curve(
     pool: &DbPool,
-    player_primary_id: &str,
+    player_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -335,7 +369,7 @@ pub fn get_session_curve(
     let conn = get_conn(pool)?;
     let rows = fetch_curve_rows(
         &conn,
-        player_primary_id,
+        player_primary_ids,
         start_date,
         end_date,
         playlist,
@@ -480,7 +514,7 @@ pub fn get_session_curve(
 /// player's team, plus results by team size (solo queue vs premade stacks).
 pub fn get_teammate_stats(
     pool: &DbPool,
-    player_primary_id: &str,
+    player_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -488,7 +522,8 @@ pub fn get_teammate_stats(
 ) -> AppResult<serde_json::Value> {
     let conn = get_conn(pool)?;
 
-    let mut sql = String::from(
+    let id_placeholders = vec!["?"; player_primary_ids.len().max(1)].join(", ");
+    let mut sql = format!(
         "SELECT m.id, m.winner, mp_me.team_num,
                 p2.primary_id, p2.name,
                 (SELECT COUNT(*) FROM match_players mpc
@@ -496,21 +531,28 @@ pub fn get_teammate_stats(
                 CASE WHEN f.id IS NULL THEN 0 ELSE 1 END AS is_friend
          FROM matches m
          JOIN match_players mp_me ON mp_me.match_id = m.id
-         JOIN players pme ON pme.id = mp_me.player_id AND pme.primary_id = ?1
+         JOIN players pme ON pme.id = mp_me.player_id AND pme.primary_id IN ({id_placeholders})
          JOIN match_players mate ON mate.match_id = m.id
              AND mate.team_num = mp_me.team_num
              AND mate.player_id != mp_me.player_id
          JOIN players p2 ON p2.id = mate.player_id
          LEFT JOIN friends f ON f.player_id = p2.id
          WHERE m.winner IS NOT NULL
-           AND date(m.start_time, 'localtime') >= ?2
-           AND date(m.start_time, 'localtime') <= ?3",
+           AND m.status != 'cancelled'
+           AND m.start_time >= ?
+           AND m.start_time < ?",
     );
-    let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![
-        Box::new(player_primary_id.to_string()),
-        Box::new(start_date.to_string()),
-        Box::new(end_date.to_string()),
-    ];
+    let (day_start, day_end) =
+        crate::core::storage::local_day_range_utc_bounds(Some(start_date), Some(end_date));
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    for pid in player_primary_ids {
+        args.push(Box::new(pid.clone()));
+    }
+    if player_primary_ids.is_empty() {
+        args.push(Box::new(String::new()));
+    }
+    args.push(Box::new(day_start));
+    args.push(Box::new(day_end));
     if let Some(mt) = match_type {
         sql.push_str(" AND LOWER(m.match_type) = LOWER(?)");
         args.push(Box::new(mt.to_string()));
@@ -631,7 +673,7 @@ pub fn get_teammate_stats(
 #[allow(clippy::too_many_arguments)]
 pub fn get_custom_breakdown(
     pool: &DbPool,
-    player_primary_id: &str,
+    player_primary_ids: &[String],
     start_date: &str,
     end_date: &str,
     playlist: Option<&str>,
@@ -642,7 +684,7 @@ pub fn get_custom_breakdown(
     let conn = get_conn(pool)?;
     let rows = fetch_curve_rows(
         &conn,
-        player_primary_id,
+        player_primary_ids,
         start_date,
         end_date,
         playlist,
@@ -1050,7 +1092,11 @@ fn parse_goal_evidence(event_data: &str) -> Option<GoalEvidence> {
         .and_then(|s| s.get("name"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let goal_time = value.get("goalTime").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+    let goal_time = value
+        .get("goalTime")
+        .and_then(|v| v.as_f64())
+        .map(|v| v.round() as i64)
+        .unwrap_or(0) as i32;
     if name.trim().is_empty() && goal_time <= 0 {
         return None;
     }
@@ -1348,6 +1394,7 @@ mod db_tests {
                         winner: Some(winner),
                         is_overtime: false,
                         duration_seconds: 360,
+                        status: "completed",
                     },
                 )
                 .unwrap();
@@ -1360,8 +1407,16 @@ mod db_tests {
         let pool = temp_pool("curve");
         seed_two_sessions(&pool);
 
-        let curve =
-            get_session_curve(&pool, "me-pid", "2026-09-01", "2026-09-02", None, None, 30).unwrap();
+        let curve = get_session_curve(
+            &pool,
+            &["me-pid".to_string()],
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+            30,
+        )
+        .unwrap();
         assert_eq!(curve["available"], true);
         assert_eq!(curve["totalMatches"], 10);
         assert_eq!(curve["totalSessions"], 2);
@@ -1381,8 +1436,15 @@ mod db_tests {
         set_match_mood(&pool, 1, Some("very_happy")).unwrap();
         set_match_mood(&pool, 6, Some("angry")).unwrap();
 
-        let mates =
-            get_teammate_stats(&pool, "me-pid", "2026-09-01", "2026-09-02", None, None).unwrap();
+        let mates = get_teammate_stats(
+            &pool,
+            &["me-pid".to_string()],
+            "2026-09-01",
+            "2026-09-02",
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(mates["available"], true);
         let list = mates["teammates"].as_array().unwrap();
         assert_eq!(list.len(), 1);
@@ -1393,7 +1455,7 @@ mod db_tests {
         for dim in ["hour", "weekday", "playlist", "arena", "match_type", "mood"] {
             let bd = get_custom_breakdown(
                 &pool,
-                "me-pid",
+                &["me-pid".to_string()],
                 "2026-09-01",
                 "2026-09-02",
                 None,
@@ -1411,7 +1473,7 @@ mod db_tests {
 
         let mood = get_custom_breakdown(
             &pool,
-            "me-pid",
+            &["me-pid".to_string()],
             "2026-09-01",
             "2026-09-02",
             None,
@@ -1432,7 +1494,7 @@ mod db_tests {
 
         assert!(get_custom_breakdown(
             &pool,
-            "me-pid",
+            &["me-pid".to_string()],
             "2026-09-01",
             "2026-09-02",
             None,
@@ -1523,6 +1585,7 @@ mod backfill_tests {
                 winner: Some(0),
                 is_overtime: false,
                 duration_seconds: 360,
+                status: "completed",
             },
         )
         .unwrap();
@@ -1699,6 +1762,7 @@ mod insights_tests {
                     winner: Some(*winner),
                     is_overtime: false,
                     duration_seconds: 360,
+                    status: "completed",
                 },
             )
             .unwrap();
@@ -1712,7 +1776,7 @@ mod insights_tests {
 
         let ins = get_insights(
             &pool,
-            "op-pid",
+            &["op-pid".to_string()],
             "2026-09-01",
             "2026-09-02",
             None,
@@ -1811,7 +1875,8 @@ mod insights_tests {
 
         let pool = temp_pool("rollup");
         seed_comeback_week(&pool);
-        rebuild_daily_rollups_for_identity(&pool, Some("op-pid"), &["Op".to_string()]).unwrap();
+        rebuild_daily_rollups_for_identity(&pool, &["op-pid".to_string()], &["Op".to_string()])
+            .unwrap();
 
         let rollups = get_daily_rollups(&pool, "2026-08-30", "2026-09-05").unwrap();
         assert_eq!(rollups.len(), 1);

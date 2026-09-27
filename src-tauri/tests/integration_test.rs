@@ -291,7 +291,7 @@ mod session_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
-                local_primary_id: None,
+                local_primary_ids: &[],
                 local_player_names: &[],
             },
         )
@@ -577,7 +577,7 @@ mod storage_crud_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
-                local_primary_id: None,
+                local_primary_ids: &[],
                 local_player_names: &[],
             },
         )
@@ -737,7 +737,7 @@ mod storage_crud_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
-                local_primary_id: None,
+                local_primary_ids: &[],
                 local_player_names: &[],
             },
         )
@@ -756,7 +756,7 @@ mod storage_crud_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
-                local_primary_id: None,
+                local_primary_ids: &[],
                 local_player_names: &[],
             },
         )
@@ -822,6 +822,7 @@ mod storage_crud_tests {
                 winner: Some(0),
                 is_overtime: true,
                 duration_seconds: 300,
+                status: "completed",
             },
         )
         .unwrap();
@@ -896,6 +897,12 @@ mod storage_crud_tests {
                 winner,
                 is_overtime,
                 duration_seconds: 420,
+                status: rl_stats_lib::core::models::derive_match_status(
+                    winner,
+                    score_blue,
+                    score_orange,
+                    420,
+                ),
             },
         )
         .unwrap();
@@ -974,9 +981,16 @@ mod storage_crud_tests {
         );
         seed_player_stats(&pool, m2, "me", 0);
 
-        let insights =
-            storage::get_insights(&pool, "me", "2000-01-01", "2100-01-01", None, None, None)
-                .unwrap();
+        let insights = storage::get_insights(
+            &pool,
+            &["me".to_string()],
+            "2000-01-01",
+            "2100-01-01",
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(insights["otGames"], 2);
         assert_eq!(insights["otWins"], 1);
         assert_eq!(insights["otLosses"], 1);
@@ -1033,9 +1047,16 @@ mod storage_crud_tests {
         );
         seed_player_stats(&pool, m3, "me", 0);
 
-        let insights =
-            storage::get_insights(&pool, "me", "2000-01-01", "2100-01-01", None, None, None)
-                .unwrap();
+        let insights = storage::get_insights(
+            &pool,
+            &["me".to_string()],
+            "2000-01-01",
+            "2100-01-01",
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(insights["blowoutGames"], 2);
         assert_eq!(insights["blowoutWins"], 1);
         assert_eq!(insights["blowoutLosses"], 1);
@@ -1105,9 +1126,16 @@ mod storage_crud_tests {
         );
         seed_player_stats(&pool, m3, "me", 0);
 
-        let insights =
-            storage::get_insights(&pool, "me", "2000-01-01", "2100-01-01", None, None, None)
-                .unwrap();
+        let insights = storage::get_insights(
+            &pool,
+            &["me".to_string()],
+            "2000-01-01",
+            "2100-01-01",
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(insights["comebackWins"], 1);
         assert_eq!(insights["collapseLosses"], 1);
 
@@ -1241,7 +1269,7 @@ fn full_match_lifecycle_persist_and_verify() {
             date_from: None,
             date_to: None,
             search: None,
-            local_primary_id: None,
+            local_primary_ids: &[],
             local_player_names: &[],
         },
     )
@@ -1350,7 +1378,7 @@ mod end_to_end_training_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
-                local_primary_id: None,
+                local_primary_ids: &[],
                 local_player_names: &[],
             },
         )
@@ -1375,7 +1403,80 @@ mod end_to_end_training_tests {
         assert_eq!(training_stats["totalSessions"], 1);
 
         let summary = storage::get_analytics_summary_for_identity(
-            &pool, "Steam|me", &today, &today, None, None,
+            &pool,
+            &["Steam|me".to_string()],
+            &today,
+            &today,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(summary.total_matches, 2);
+        assert_eq!(summary.wins, 1);
+        assert_eq!(summary.losses, 1);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    // ── Linked platform identities: Steam and Epic ids of the same account
+    // resolve to one local player, history aggregates across both, and the
+    // canonical primary id is never overwritten by post-match detection. ──
+    #[test]
+    fn linked_platform_identities_share_one_history() {
+        let (pool, path) = temp_db_pool();
+
+        let mut settings = get_settings(&pool).unwrap();
+        settings.local_primary_id = Some("Steam|me".into());
+        settings.link_player_id("Epic|me");
+        set_settings(&pool, &settings).unwrap();
+
+        assert!(settings.is_local_id("Steam|me"));
+        assert!(settings.is_local_id("Epic|me"));
+        assert_eq!(
+            settings.local_identity_ids(),
+            vec!["Steam|me".to_string(), "Epic|me".to_string()]
+        );
+
+        let mut session = SessionManager::new(7);
+
+        // Match 1 on Steam: local player wins.
+        session.handle_event(RlEvent::MatchCreated);
+        let mut roster = HashMap::new();
+        roster.insert("Steam|me".into(), live("Steam|me", "Me", 0));
+        roster.insert("Steam|rival".into(), live("Steam|rival", "Rival", 1));
+        session.handle_event(update(Some("match-steam"), roster));
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: Some(0),
+        });
+        session.persist_finished_match(&pool).unwrap();
+
+        // Match 2 on Epic: same account name, different platform id. The
+        // resolver must still find the local player through the linked id.
+        session.handle_event(RlEvent::MatchCreated);
+        let mut roster2 = HashMap::new();
+        roster2.insert("Epic|me".into(), live("Epic|me", "Me", 0));
+        roster2.insert("Epic|rival".into(), live("Epic|rival", "Rival", 1));
+        session.handle_event(update(Some("match-epic"), roster2));
+        session.handle_event(RlEvent::MatchEnded {
+            winner_team_num: Some(1),
+        });
+        let persisted = session.persist_finished_match(&pool).unwrap();
+        assert_eq!(persisted.detected_primary_id.as_deref(), Some("Epic|me"));
+
+        // The canonical identity must not have been overwritten by the Epic
+        // platform id seen in match 2.
+        let after = get_settings(&pool).unwrap();
+        assert_eq!(after.local_primary_id.as_deref(), Some("Steam|me"));
+
+        // Analytics built over the linked identity set see both matches.
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let summary = storage::get_analytics_summary_for_identity(
+            &pool,
+            &after.local_identity_ids(),
+            &today,
+            &today,
+            None,
+            None,
         )
         .unwrap();
         assert_eq!(summary.total_matches, 2);
@@ -1421,7 +1522,7 @@ mod end_to_end_training_tests {
                 date_from: None,
                 date_to: None,
                 search: None,
-                local_primary_id: None,
+                local_primary_ids: &[],
                 local_player_names: &[],
             },
         )

@@ -43,7 +43,8 @@
     "loss": "Defeat",
     "blueWon": "Blue won",
     "orangeWon": "Orange won",
-    "draw": "Draw"
+    "draw": "Draw",
+    "cancelled": "Cancelled"
   },
   "stats": {
     "title": "Player stats",

@@ -20,7 +20,8 @@
     "blueWon": "Blue Won",
     "orangeWon": "Orange Won",
     "draw": "Draw",
-    "training": "Training"
+    "training": "Training",
+    "cancelled": "Cancelled"
   },
   "contextMenu": {
     "viewDetail": "View Details",
@@ -83,7 +84,9 @@
       "placeholder": "Result",
       "all": "All results",
       "wins": "Wins",
-      "losses": "Losses"
+      "losses": "Losses",
+      "draws": "Draws",
+      "cancelled": "Cancelled"
     },
     "matchTypes": {
       "placeholder": "Type",

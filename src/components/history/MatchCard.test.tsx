@@ -64,4 +64,39 @@ describe("MatchCard", () => {
     // The right column shows an em dash when the stint length is unknown.
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
+
+  it("labels a cancelled lobby as cancelled, never as a draw", () => {
+    render(
+      <MatchCard
+        match={makeMatch({
+          matchType: "ranked",
+          playlist: "Doubles",
+          durationSeconds: 0,
+          status: "cancelled",
+          winnerTeamNum: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("history:results.cancelled")).toBeTruthy();
+    expect(screen.queryByText("history:results.draw")).toBeNull();
+    expect(screen.queryByText("history:results.loss")).toBeNull();
+  });
+
+  it("keeps the draw label for a status='draw' match", () => {
+    render(
+      <MatchCard
+        match={makeMatch({
+          matchType: "ranked",
+          playlist: "Doubles",
+          durationSeconds: 300,
+          status: "draw",
+          winnerTeamNum: null,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("history:results.draw")).toBeTruthy();
+    expect(screen.queryByText("history:results.cancelled")).toBeNull();
+  });
 });

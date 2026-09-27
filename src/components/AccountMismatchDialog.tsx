@@ -13,6 +13,7 @@ export function AccountMismatchDialog() {
     handleSwitchProfile,
     handleSwitchProfileAndRestart,
     handleSaveIdentity,
+    handleLinkIdentity,
     handleDismiss,
   } = useAccountMismatch();
 
@@ -81,6 +82,21 @@ export function AccountMismatchDialog() {
 
           <Button
             variant={mismatch.matchedProfileId ? "secondary" : "primary"}
+            className="w-full"
+            onClick={() =>
+              handleLinkIdentity(
+                mismatch.detectedPrimaryId,
+                mismatch.detectedPlayerName,
+              )
+            }
+          >
+            {t("accountMismatch.linkSameAccount", {
+              name: mismatch.detectedPlayerName,
+            })}
+          </Button>
+
+          <Button
+            variant="secondary"
             className="w-full"
             onClick={() =>
               handleSaveIdentity(

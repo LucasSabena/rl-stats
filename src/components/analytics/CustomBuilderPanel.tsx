@@ -24,6 +24,7 @@ import type {
   AnalyticsPeriod,
   BreakdownDimension,
   DataScope,
+  DateRange,
   MatchTypeFilter,
   PlaylistFilter,
   ShareContext,
@@ -39,6 +40,7 @@ interface CustomBuilderPanelProps {
   username: string;
   friendsPresent: string[];
   dateLabel: string;
+  dateRange?: DateRange;
 }
 
 type BuilderMetric =
@@ -112,6 +114,7 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
   username,
   friendsPresent,
   dateLabel,
+  dateRange,
 }: CustomBuilderPanelProps) {
   const { t } = useTranslation(["analytics", "common", "mood"]);
   const [dimension, setDimension] = useState<BreakdownDimension>("hour");
@@ -130,8 +133,8 @@ export const CustomBuilderPanel = memo(function CustomBuilderPanel({
   }, [saved]);
 
   const filters = useMemo(
-    () => ({ playlist, matchType, scope, playerId }),
-    [playlist, matchType, scope, playerId],
+    () => ({ playlist, matchType, scope, playerId, dateRange }),
+    [playlist, matchType, scope, playerId, dateRange],
   );
   const { data, isLoading, isError, refetch } = useCustomBreakdown(period, dimension, filters);
 

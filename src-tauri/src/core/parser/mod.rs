@@ -350,10 +350,16 @@ fn parse_goal_scored(data: &Value) -> GoalScoredData {
             .get("Assister")
             .or_else(|| data.get("assister"))
             .map(|value| parse_target(Some(value))),
+        // `GoalTime` arrives as a float (e.g. 4.523): `as_i64()` silently
+        // dropped every value to 0 and killed the authoritative kickoff path.
         goal_time: data
             .get("GoalTime")
             .or_else(|| data.get("goalTime"))
-            .and_then(|v| v.as_i64())
+            .and_then(|v| {
+                v.as_f64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))
+            })
+            .map(|v| v.round() as i64)
             .unwrap_or(0) as i32,
     }
 }

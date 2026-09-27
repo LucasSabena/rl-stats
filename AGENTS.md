@@ -54,6 +54,8 @@ pnpm tauri build          # Production bundle; output in src-tauri/target/releas
 
 ## Toolchain Quirks
 
+- **Linux dev box cross-compiles to Windows**: `src-tauri/.cargo/config.toml` pins `x86_64-pc-windows-msvc`, but only the GNU target works here. Run Rust commands as `cargo <cmd> --target x86_64-pc-windows-gnu` with the rustup stable toolchain first in PATH (`~/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin`; `/usr/bin` ships an incompatible Rust 1.93). `cargo check`/`clippy`/`fmt` work; `cargo test` cannot run (no wine, and GNU ld hits the cdylib export-ordinal limit), so test suites are verified via `cargo check --all-targets` + CI.
+- **Flaky target resolution after `cargo fmt`**: a `cargo check`/`clippy` chained right after `cargo fmt` can fail with `can't find crate for 'core'` (target reported as not installed). It's transient — just re-run the command alone, don't chain fmt and check in one line.
 - **Tailwind CSS v4** via `@tailwindcss/vite` plugin (not v3)
 - **TypeScript strict** with `noUnusedLocals` and `noUnusedParameters` enabled
 - **Path alias**: `@/` → `src/` (configured in both `vite.config.ts` and `tsconfig.json`)

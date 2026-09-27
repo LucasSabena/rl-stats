@@ -48,14 +48,16 @@ function filtersToParams(filters: MatchFilters): URLSearchParams {
 function paramsToFilters(params: URLSearchParams): MatchFilters {
   const filters: MatchFilters = {};
   const search = params.get("search");
-  const result = params.get("result") as "win" | "loss" | null;
+  const result = params.get("result") as MatchFilters["result"] | null;
   const type = params.get("type");
   const mode = params.get("mode");
   const from = params.get("from");
   const to = params.get("to");
 
   if (search) filters.search = search;
-  if (result === "win" || result === "loss") filters.result = result;
+  if (result === "win" || result === "loss" || result === "draw" || result === "cancelled") {
+    filters.result = result;
+  }
   if (type) filters.matchType = type as MatchFilters["matchType"];
   if (mode) filters.mode = mode;
   if (from) filters.dateFrom = Number(from);
@@ -439,7 +441,7 @@ export function HistoryPage() {
           </h2>
           {visibleData && visibleData.length > 0 && (
             <p className="mt-1 text-xs text-text-tertiary">
-              {t("history:summary.count", { count: visibleData.filter((m) => m.matchType !== "training").length })}
+              {t("history:summary.count", { count: visibleData.filter((m) => m.matchType !== "training" && m.status !== "cancelled").length })}
               {" · "}
               <span className="text-accent-success">
                 {t("history:summary.wins", { count: visibleData.filter((m) => m.localTeamNum !== null && m.winnerTeamNum === m.localTeamNum).length })}
