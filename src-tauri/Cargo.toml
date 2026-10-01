@@ -32,19 +32,19 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-dirs = "6"
-sysinfo = "0.38"
+dirs = "7"
+sysinfo = "0.39"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies"], default-features = false }
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
 mime_guess = "2"
 form_urlencoded = "1"
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-base64 = "0.22"
+base64 = "0.23"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
